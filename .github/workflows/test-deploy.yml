@@ -83,9 +83,10 @@ jobs:
           echo "✅ 三路并行上传完成"
 
           # 4. bare URL：用 OSS 内部复制实现
-          ossutil ls oss://amazingindex/__test__/ -s --recursive $CREDS \
-            | grep '/index.html$' \
-            | grep -v '^oss://amazingindex/__test__/index.html$' \
+          ossutil ls oss://amazingindex/__test__/ --recursive $CREDS \
+            | awk '{print $NF}' \
+            | grep '^oss://amazingindex/__test__/.*/index\.html$' \
+            | grep -v '^oss://amazingindex/__test__/index\.html$' \
             | sed 's|^oss://amazingindex/||' \
             | while read key; do
                 dst="${key%/index.html}"
