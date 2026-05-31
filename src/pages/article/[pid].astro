@@ -1,7 +1,7 @@
 ---
 import ArticleLayout from '../../layouts/ArticleLayout.astro';
 import type { ProcessedItem } from '../../lib/types';
-import { getAllItems, getItemsByDate, getGlobalStats, getDailyArchives } from '../../lib/data';
+import { getAllItems, getItemsByDate } from '../../lib/data';
 
 export async function getStaticPaths() {
   const allItems = await getAllItems();
@@ -22,12 +22,18 @@ const { item } = Astro.props;
 const date = item.snapshot_date;
 
 const items = await getItemsByDate(date);
-const stats = await getGlobalStats();
-
-const now = new Date();
-const days = await getDailyArchives(now.getFullYear(), now.getMonth() + 1);
+const currentIndex = items.findIndex(i => i.processed_item_id === item.processed_item_id);
+const prevItem = currentIndex > 0 ? items[currentIndex - 1] : null;
+const nextItem = currentIndex >= 0 && currentIndex < items.length - 1 ? items[currentIndex + 1] : null;
 
 const categories = ['全部', ...Array.from(new Set(items.map(i => i.category).filter(Boolean) as string[]))];
 ---
 
-<ArticleLayout item={item} date={date} items={items} stats={stats} days={days} categories={categories} />
+<ArticleLayout
+  item={item}
+  date={date}
+  items={items}
+  categories={categories}
+  prevItem={prevItem}
+  nextItem={nextItem}
+/>
