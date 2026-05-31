@@ -40,6 +40,7 @@ function trackEvent(
   if (!userId || !itemId || !snapshotDate) return;
   fetch(`${SUPABASE_URL}/rest/v1/user_events`, {
     method: 'POST',
+    keepalive: true,
     headers: {
       'Content-Type': 'application/json',
       'apikey': SUPABASE_ANON_KEY,
@@ -51,7 +52,7 @@ function trackEvent(
 }
 
 function initImpressionTracking() {
-  const cards = document.querySelectorAll<HTMLElement>('[data-item-id][data-snapshot-date]');
+  const cards = document.querySelectorAll<HTMLElement>('[data-track-impression="true"][data-item-id][data-snapshot-date]');
 
   const observer = new IntersectionObserver(
     (entries) => {
@@ -91,6 +92,16 @@ function initClickOriginalTracking() {
 }
 
 function initClickTracking() {
+  document.addEventListener('click', (e) => {
+    const el = (e.target as HTMLElement).closest<HTMLElement>('[data-event="click_article"]');
+    if (!el) return;
+    const itemId = el.dataset.itemId;
+    const snapshotDate = el.dataset.snapshotDate;
+    if (itemId && snapshotDate) {
+      trackEvent(itemId, snapshotDate, 'click');
+    }
+  });
+
   document.addEventListener('aha:modal-opened', ((e: CustomEvent) => {
     const { item_id, snapshot_date } = e.detail;
     if (item_id && snapshot_date) {

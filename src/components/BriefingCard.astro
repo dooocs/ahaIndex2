@@ -36,6 +36,8 @@ const articleUrl = item.processed_item_id ? `/article/${item.processed_item_id}`
     data-item-id={item.processed_item_id}
     data-snapshot-date={item.snapshot_date}
     data-category={item.category}
+    data-event="click_article"
+    data-track-impression="true"
   >
     <span class="article-num">NO. {numStr}</span>
     <div class="featured-accent"></div>
@@ -66,6 +68,8 @@ const articleUrl = item.processed_item_id ? `/article/${item.processed_item_id}`
     data-item-id={item.processed_item_id}
     data-snapshot-date={item.snapshot_date}
     data-category={item.category}
+    data-event="click_article"
+    data-track-impression="true"
   >
     <div class="article-num">{displayLeft}</div>
     <div class="article-body">

@@ -1,208 +1,301 @@
 ---
 import BaseLayout from './BaseLayout.astro';
-import DailyPage from '../components/DailyPage.astro';
-import type { ProcessedItem, DailyArchive, GlobalStats } from '../lib/types';
-import { getDailyArchiveByDate } from '../lib/data';
+import Masthead from '../components/Masthead.astro';
+import NavBar from '../components/NavBar.astro';
+import Footer from '../components/Footer.astro';
+import type { ProcessedItem } from '../lib/types';
 
 interface Props {
   item: ProcessedItem;
   date: string;
   items: ProcessedItem[];
-  stats: GlobalStats;
-  days: DailyArchive[];
   categories: string[];
+  prevItem?: ProcessedItem | null;
+  nextItem?: ProcessedItem | null;
 }
 
-const { item, date, items, stats, days, categories } = Astro.props;
-const dailyArchive = await getDailyArchiveByDate(date);
+type Metric = {
+  label: string;
+  value: string;
+};
 
-const title = (item.processed_title || item.title || '无标题') + ' | AmazingIndex';
-const desc = (item.summary || '').slice(0, 150);
+const {
+  item,
+  date,
+  items,
+  categories,
+  prevItem = null,
+  nextItem = null,
+} = Astro.props;
+
+function parseRecord(value: unknown): Record<string, any> {
+  if (!value) return {};
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return {};
+    }
+  }
+  return typeof value === 'object' ? value as Record<string, any> : {};
+}
+
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+    : [];
+}
+
+function formatNumber(value: unknown): string {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return String(value ?? '');
+  if (Math.abs(num) >= 1000000) return `${(num / 1000000).toFixed(1)}m`;
+  if (Math.abs(num) >= 1000) return `${(num / 1000).toFixed(1)}k`;
+  return String(num);
+}
+
+function formatDate(dateValue: string): string {
+  return dateValue ? dateValue.replace(/-/g, '.') : '';
+}
+
+function cleanMetricLabel(label: string): string {
+  return label.replace(/^[^A-Za-z0-9\u4e00-\u9fff]+/, '').trim() || label;
+}
+
+function articleUrlFor(target: ProcessedItem | null): string {
+  return target?.processed_item_id ? `/article/${target.processed_item_id}` : '#';
+}
+
+function articleTitleFor(target: ProcessedItem | null): string {
+  return target?.processed_title || target?.title || '无标题';
+}
+
+const extra = parseRecord(item.extra);
+const rawMetrics = parseRecord(item.raw_metrics);
+const enrichment = parseRecord(extra.enrichment);
+const tweets = Array.isArray(extra.tweets)
+  ? extra.tweets.filter((tweet: unknown): tweet is Record<string, any> => Boolean(tweet) && typeof tweet === 'object')
+  : [];
+
+const titleText = item.processed_title || item.title || '无标题';
+const summaryText = item.summary || '';
+const dateText = formatDate(item.snapshot_date || date);
+const rankText = String(item.rank || 0).padStart(3, '0');
+const ahaScore = ((Number(item.aha_index) || 0) * 100).toFixed(1);
 const articleUrl = `https://www.amazingindex.com/article/${item.processed_item_id}`;
+const dailyUrl = `https://www.amazingindex.com/daily/${date}`;
+const backUrl = `/daily/${date}`;
+const sourceName = item.source_name || 'Unknown Source';
+const originalUrl = item.original_url || item.url || '';
+const contentTypeLabel = item.content_type ? `#${item.content_type.toUpperCase()}` : '#SNAPSHOT';
+const metaDescription = [
+  summaryText.slice(0, 150),
+  sourceName ? `来源：${sourceName}` : '',
+  `值得看指数 ${ahaScore}`,
+].filter(Boolean).join(' · ');
 
-let extra: any = {};
-if (typeof item.extra === 'string') {
-  try { extra = JSON.parse(item.extra); } catch {}
-} else if (item.extra) {
-  extra = item.extra;
+const sourceMetrics: Metric[] = [];
+const seenMetricKeys = new Set<string>();
+function addMetric(label: string, value: unknown) {
+  if (value === undefined || value === null || value === '') return;
+  const cleanLabel = cleanMetricLabel(label);
+  const key = cleanLabel.toLowerCase();
+  if (seenMetricKeys.has(key)) return;
+  seenMetricKeys.add(key);
+  sourceMetrics.push({ label: cleanLabel, value: typeof value === 'number' ? formatNumber(value) : String(value) });
 }
 
-let rawMetrics: any = {};
-if (typeof item.raw_metrics === 'string') {
-  try { rawMetrics = JSON.parse(item.raw_metrics); } catch {}
-} else if (item.raw_metrics) {
-  rawMetrics = item.raw_metrics;
+if (item.display_metrics?.items) {
+  for (const metric of item.display_metrics.items) {
+    if (metric.label !== '📖 来源') addMetric(metric.label, metric.value);
+  }
+}
+
+const lowerSource = sourceName.toLowerCase();
+if (lowerSource.includes('github')) {
+  addMetric('Stars', rawMetrics.stars ?? rawMetrics.stargazers_count);
+  addMetric('Forks', rawMetrics.forks ?? rawMetrics.forks_count);
+  addMetric('Issues', rawMetrics.open_issues ?? rawMetrics.open_issues_count ?? rawMetrics.issues);
+  addMetric('Language', extra.language ?? rawMetrics.language);
+}
+if (lowerSource.includes('hackernews') || lowerSource.includes('hacker news')) {
+  addMetric('Score', rawMetrics.score);
+  addMetric('Comments', rawMetrics.comments);
+}
+if (lowerSource.includes('twitter') || lowerSource.includes('x')) {
+  addMetric('Tweets', rawMetrics.tweet_count);
+  addMetric('Likes', rawMetrics.likes);
+  addMetric('Reposts', rawMetrics.retweets);
 }
 
 const paragraphs = (item.expert_insight || '').split('\n').filter((p: string) => p.trim());
-const dateStr = item.snapshot_date ? item.snapshot_date.replace(/-/g, '.') : '';
-const backUrl = `/daily/${date}`;
+const readmeImages = asStringArray(extra.readme_images);
+const mediaUrls = asStringArray(extra.media_urls);
+const videoUrl = mediaUrls.find((url) => /\.(mp4|webm|mov)(\?|#|$)/i.test(url));
+const mediaImageUrl = mediaUrls.find((url) => /\.(png|jpg|jpeg|webp|gif)(\?|#|$)/i.test(url));
+const previewImageUrl = mediaImageUrl || extra.thumbnail_url || readmeImages[0];
 
-const enrichment = extra?.enrichment || {};
 const sentimentLabel: Record<string, string> = { positive: '正面', mixed: '意见分歧', negative: '负面' };
 const sentimentClass: Record<string, string> = { positive: 'positive', mixed: 'mixed', negative: 'negative' };
 const maturityLabel: Record<string, string> = { production: 'Production', beta: 'Beta', experimental: 'Experimental' };
 const maturityClass: Record<string, string> = { production: 'production', beta: 'beta', experimental: 'experimental' };
-
-const tweets: any[] = extra?.tweets || [];
-
-function formatNumber(num: number) {
-  if (num >= 1000) return (num / 1000).toFixed(1) + 'k';
-  return String(num);
-}
 ---
 
 <BaseLayout
-  title={title}
-  description={desc}
+  title={`${titleText} | ${dateText} 日报快照 | AmazingIndex`}
+  description={metaDescription}
   canonicalUrl={articleUrl}
   ogType="article"
-  ogTitle={item.processed_title || item.title || '无标题'}
-  ogDescription={desc}
+  ogTitle={titleText}
+  ogDescription={metaDescription}
   ogUrl={articleUrl}
   jsonLd={{
     "@context": "https://schema.org",
     "@type": "Article",
-    "headline": item.processed_title || item.title || '无标题',
-    "description": desc,
+    "headline": titleText,
+    "description": metaDescription,
     "url": articleUrl,
     "datePublished": item.created_at || item.snapshot_date,
+    "isPartOf": {
+      "@type": "CreativeWork",
+      "name": `${dateText} AI 日报`,
+      "url": dailyUrl,
+    },
     "publisher": { "@type": "Organization", "name": "AmazingIndex" }
   }}
 >
-  <div class="article-page-bg" aria-hidden="true">
-    <DailyPage items={items} stats={stats} days={days} dailyArchive={dailyArchive} date={date} categories={categories} showArchiveBanner={true} />
-  </div>
+  <Masthead items={items} />
+  <NavBar categories={categories} selectedCategory={item.category || '全部'} date={date} />
 
-  <div class="backdrop" data-back-url={backUrl}>
-    <div class="modal" transition:animate="slide">
-      <div class="drag-handle"></div>
-
-      <div class="modal-header">
-        <div class="modal-topbar">
-          <div class="tag-row">
-            {item.content_type && <span class="tag">#{item.content_type.toUpperCase()}</span>}
+  <main class="snapshot-page">
+    <div class="snapshot-shell">
+      <article class="snapshot-main">
+        <header class="snapshot-header">
+          <div class="snapshot-prelude">
+            <a href={backUrl} class="snapshot-back">← 返回 {dateText} 日报</a>
+            <div class="snapshot-kicker">日报快照 · Daily Snapshot</div>
+            <div class="snapshot-rank-line">
+              <span>NO. {rankText}</span>
+              <i></i>
+            </div>
           </div>
-          <button class="close-btn" aria-label="Close">×</button>
+          <h1 class="snapshot-title">{titleText}</h1>
+          <div class="snapshot-meta">
+            <span>{contentTypeLabel}</span>
+            <span>{sourceName}</span>
+            <span>{dateText}</span>
+          </div>
+        </header>
+
+        <div class="snapshot-mobile-info" aria-label="值得看指数与来源指标">
+          <div class="snapshot-mobile-score">
+            <span>值得看指数</span>
+            <strong>{ahaScore}</strong>
+            <em>NO. {rankText} · {dateText}</em>
+          </div>
+          {sourceMetrics.length > 0 && (
+            <div class="snapshot-mobile-metrics">
+              {sourceMetrics.slice(0, 4).map((metric) => (
+                <span><b>{metric.label}</b>{metric.value}</span>
+              ))}
+            </div>
+          )}
+          {originalUrl && (
+            <a
+              href={originalUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="snapshot-original-btn mobile"
+              data-item-id={item.processed_item_id}
+              data-snapshot-date={item.snapshot_date}
+              data-event="click_original"
+            >
+              查看原文 →
+            </a>
+          )}
         </div>
 
-        <h1 class="modal-title">{item.processed_title || item.title || '无标题'}</h1>
-
-        <div class="modal-meta">
-          {item.source_name && <span class="meta-text">{item.source_name.toUpperCase()}</span>}
-          {item.source_name?.includes('GitHub') && rawMetrics.stars !== undefined && (
-            <span class="meta-text"><span class="meta-star-icon">★</span> {formatNumber(rawMetrics.stars)}</span>
-          )}
-          {item.source_name?.includes('GitHub') && rawMetrics.forks !== undefined && (
-            <span class="meta-text">Fork {formatNumber(rawMetrics.forks)}</span>
-          )}
-          {item.source_name?.includes('GitHub') && extra.language && (
-            <span class="meta-text">{extra.language}</span>
-          )}
-          {(item.source_name?.includes('HackerNews')) && rawMetrics.score !== undefined && (
-            <span class="meta-text">▲ {formatNumber(rawMetrics.score)}</span>
-          )}
-          {(item.source_name?.includes('HackerNews')) && rawMetrics.comments !== undefined && (
-            <span class="meta-text">💬 {formatNumber(rawMetrics.comments)}</span>
-          )}
-          {(item.source_name?.includes('Twitter') || item.source_name?.includes('X')) && rawMetrics.tweet_count !== undefined && (
-            <span class="meta-text">{formatNumber(rawMetrics.tweet_count)} tweets</span>
-          )}
-          {dateStr && <span class="meta-date">{dateStr}</span>}
-        </div>
-      </div>
-
-      <div class="modal-body">
-        {item.summary && <p class="summary">{item.summary}</p>}
-
-        {extra?.description && (
-          <p class="modal-description-en">{extra.description}</p>
+        {summaryText && (
+          <section class="snapshot-summary">
+            <div class="snapshot-section-label">为什么值得看</div>
+            <p>{summaryText}</p>
+          </section>
         )}
 
-        {item.content_type === 'repo' && extra?.readme_images?.length > 0 && (
-          <div style="margin-bottom: 24px;" class="repo-cover-wrap">
-            <img
-              src={extra.readme_images[0]}
-              alt="封面图"
-              loading="lazy"
-              width="800"
-              height="400"
-              style="width: 100%; height: auto; border-radius: 6px; border: 1px solid var(--border);"
-              onerror="this.parentElement.style.display='none'"
-            />
-          </div>
+        {extra.description && (
+          <p class="snapshot-description-en">{extra.description}</p>
         )}
 
-        {(() => {
-          const videoUrl = extra?.media_urls?.find((u: string) => /\.(mp4|webm|mov)(\?|#|$)/i.test(u));
-          const imageUrl = extra?.media_urls?.find((u: string) => /\.(png|jpg|jpeg|webp|gif)(\?|#|$)/i.test(u));
-          if (videoUrl) return (
-            <div style="margin-bottom: 24px;">
-              <video src={videoUrl} poster={extra.thumbnail_url || undefined} controls muted playsinline preload="metadata" style="width: 100%; height: auto; border-radius: 6px; border: 1px solid var(--border); background: #000;" />
-            </div>
-          );
-          if (imageUrl) return (
-            <div style="margin-bottom: 24px;">
-              <img src={imageUrl} alt={item.processed_title || '配图'} loading="lazy" width="800" height="450" style="width: 100%; height: auto; border-radius: 6px; border: 1px solid var(--border);" onerror="this.parentElement.style.display='none'" />
-            </div>
-          );
-          if (extra?.thumbnail_url) return (
-            <div style="margin-bottom: 24px;">
-              <img src={extra.thumbnail_url} alt={item.processed_title || '配图'} loading="lazy" width="800" height="450" style="width: 100%; height: auto; border-radius: 6px; border: 1px solid var(--border);" onerror="this.parentElement.style.display='none'" />
-            </div>
-          );
-          return null;
-        })()}
+        {(videoUrl || previewImageUrl) && (
+          <section class="snapshot-media">
+            <div class="snapshot-section-label">媒体预览</div>
+            {videoUrl ? (
+              <video
+                src={videoUrl}
+                poster={extra.thumbnail_url || previewImageUrl || undefined}
+                controls
+                muted
+                playsinline
+                preload="metadata"
+              />
+            ) : (
+              <img
+                src={previewImageUrl}
+                alt={titleText}
+                loading="lazy"
+                width="800"
+                height="450"
+                onerror="this.parentElement.style.display='none'"
+              />
+            )}
+          </section>
+        )}
 
-        <div class="insight-block">
-          <div class="insight-text">
-            <em style="display: block; margin-bottom: 8px;">Editor's Note:</em>
+        <section class="snapshot-editor-note">
+          <div class="snapshot-section-label">编辑判断</div>
+          <div class="snapshot-editor-body">
             {paragraphs.length > 0
-              ? paragraphs.map((p: string) => <p class="insight-paragraph">{p}</p>)
-              : <p class="insight-paragraph">暂无专家洞察</p>
+              ? paragraphs.map((p: string) => <p>{p}</p>)
+              : <p>暂无专家洞察</p>
             }
           </div>
-        </div>
+        </section>
 
-        {item.content_type === 'repo' && extra?.star_history_url && (
-          <div style="margin-bottom: 24px;" class="star-history-wrap">
-            <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); margin-bottom: 8px; font-weight: 600;">STAR HISTORY</div>
+        {item.content_type === 'repo' && extra.star_history_url && (
+          <section class="snapshot-media">
+            <div class="snapshot-section-label">Star History</div>
             <img
               src={extra.star_history_url}
               alt="Star History"
               loading="lazy"
               width="800"
               height="400"
-              style="width: 100%; height: auto; border-radius: 6px; border: 1px solid var(--border);"
               onerror="this.parentElement.style.display='none'"
             />
-          </div>
+          </section>
         )}
 
-        {/* 社区反馈区块 */}
         {enrichment.sentiment && (
-          <div class="enrichment-section">
-            <div class="enrichment-title">社区反馈</div>
+          <section class="snapshot-enrichment">
+            <div class="snapshot-section-label">社区反馈</div>
             <div class="enrichment-badges">
               <span class={`enrichment-badge ${sentimentClass[enrichment.sentiment] || ''}`}>
                 {sentimentLabel[enrichment.sentiment] || enrichment.sentiment}
               </span>
               {enrichment.comment_count && (
-                <span class="enrichment-badge neutral">💬 {enrichment.comment_count} 条评论</span>
+                <span class="enrichment-badge neutral">{enrichment.comment_count} 条评论</span>
               )}
             </div>
-            {enrichment.core_debate && (
-              <p class="enrichment-text">核心争论：{enrichment.core_debate}</p>
-            )}
+            {enrichment.core_debate && <p class="enrichment-text">核心争论：{enrichment.core_debate}</p>}
             {enrichment.top_comments_raw?.length > 0 && (
               <div class="enrichment-comments">
-                {enrichment.top_comments_raw.map((c: any) => (
+                {enrichment.top_comments_raw.map((comment: any) => (
                   <div class="enrichment-comment">
                     <div class="enrichment-comment-header">
-                      <span class="enrichment-comment-author">{c.author}</span>
-                      {c.points > 0 && <span class="enrichment-comment-points">▲ {c.points}</span>}
+                      <span class="enrichment-comment-author">{comment.author}</span>
+                      {comment.points > 0 && <span class="enrichment-comment-points">▲ {comment.points}</span>}
                     </div>
-                    <p class="enrichment-comment-text">{c.text}</p>
+                    <p class="enrichment-comment-text">{comment.text}</p>
                   </div>
                 ))}
               </div>
@@ -210,105 +303,159 @@ function formatNumber(num: number) {
             {enrichment.alternatives?.length > 0 && (
               <div class="enrichment-tags">
                 <span class="enrichment-tag-label">替代方案：</span>
-                {enrichment.alternatives.map((alt: string) => (
-                  <span class="enrichment-tag">{alt}</span>
-                ))}
+                {enrichment.alternatives.map((alt: string) => <span class="enrichment-tag">{alt}</span>)}
               </div>
             )}
-          </div>
+          </section>
         )}
 
-        {/* 生态分析区块 */}
         {enrichment.maturity && (
-          <div class="enrichment-section">
-            <div class="enrichment-title">生态分析</div>
+          <section class="snapshot-enrichment">
+            <div class="snapshot-section-label">生态分析</div>
             <div class="enrichment-badges">
               <span class={`enrichment-badge ${maturityClass[enrichment.maturity] || ''}`}>
                 {maturityLabel[enrichment.maturity] || enrichment.maturity}
               </span>
             </div>
-            {enrichment.ecosystem_position && (
-              <p class="enrichment-text">{enrichment.ecosystem_position}</p>
-            )}
-            {enrichment.unique_value && (
-              <p class="enrichment-text">独特价值：{enrichment.unique_value}</p>
-            )}
+            {enrichment.ecosystem_position && <p class="enrichment-text">{enrichment.ecosystem_position}</p>}
+            {enrichment.unique_value && <p class="enrichment-text">独特价值：{enrichment.unique_value}</p>}
             {enrichment.competitors?.length > 0 && (
               <div class="enrichment-competitors">
                 <div class="enrichment-tag-label">竞品：</div>
-                {enrichment.competitors.map((c: any) => (
+                {enrichment.competitors.map((competitor: any) => (
                   <div class="enrichment-competitor">
-                    <a href={`https://github.com/${c.name}`} target="_blank" rel="noopener noreferrer" class="enrichment-competitor-name">
-                      {c.name}
+                    <a href={`https://github.com/${competitor.name}`} target="_blank" rel="noopener noreferrer" class="enrichment-competitor-name">
+                      {competitor.name}
                     </a>
-                    {c.stars > 0 && <span class="enrichment-competitor-stars">★ {formatNumber(c.stars)}</span>}
-                    {c.comparison && <span class="enrichment-competitor-desc">{c.comparison}</span>}
+                    {competitor.stars > 0 && <span class="enrichment-competitor-stars">★ {formatNumber(competitor.stars)}</span>}
+                    {competitor.comparison && <span class="enrichment-competitor-desc">{competitor.comparison}</span>}
                   </div>
                 ))}
               </div>
             )}
-          </div>
+          </section>
         )}
 
-        {/* 相关内容区块 */}
         {enrichment.related_articles?.length > 0 && (
-          <div class="enrichment-section">
-            <div class="enrichment-title">相关内容</div>
+          <section class="snapshot-enrichment">
+            <div class="snapshot-section-label">相关内容</div>
             <div class="enrichment-articles">
-              {enrichment.related_articles.map((a: any) => (
-                <a href={a.url} target="_blank" rel="noopener noreferrer" class="enrichment-article">
-                  <span class="enrichment-article-title">{a.title}</span>
-                  {a.snippet && <span class="enrichment-article-snippet">{a.snippet}</span>}
+              {enrichment.related_articles.map((article: any) => (
+                <a href={article.url} target="_blank" rel="noopener noreferrer" class="enrichment-article">
+                  <span class="enrichment-article-title">{article.title}</span>
+                  {article.snippet && <span class="enrichment-article-snippet">{article.snippet}</span>}
                 </a>
               ))}
             </div>
             {enrichment.key_discussions?.length > 0 && (
               <div class="enrichment-discussions">
                 <div class="enrichment-tag-label">社区讨论：</div>
-                {enrichment.key_discussions.map((d: any) => (
-                  <a href={d.url} target="_blank" rel="noopener noreferrer" class="enrichment-discussion">
-                    <span class="enrichment-discussion-source">{d.source}</span>
-                    <span class="enrichment-discussion-summary">{d.summary}</span>
+                {enrichment.key_discussions.map((discussion: any) => (
+                  <a href={discussion.url} target="_blank" rel="noopener noreferrer" class="enrichment-discussion">
+                    <span class="enrichment-discussion-source">{discussion.source}</span>
+                    <span class="enrichment-discussion-summary">{discussion.summary}</span>
                   </a>
                 ))}
               </div>
             )}
-          </div>
+          </section>
         )}
 
-        {/* Twitter 推文列表 */}
         {item.content_type === 'tweet_digest' && tweets.length > 0 && (
-          <div class="enrichment-section">
-            <div class="enrichment-title">推文合集 · {tweets.length} 条</div>
+          <section class="snapshot-enrichment">
+            <div class="snapshot-section-label">推文合集 · {tweets.length} 条</div>
             <div class="enrichment-tweets">
-              {tweets.map((t: any) => (
+              {tweets.map((tweet: any) => (
                 <div class="enrichment-tweet">
                   <div class="enrichment-tweet-header">
-                    <span class="enrichment-tweet-author">@{t.author}</span>
+                    <span class="enrichment-tweet-author">@{tweet.author}</span>
                     <span class="enrichment-tweet-stats">
-                      {t.likes > 0 && <span>❤️ {formatNumber(t.likes)}</span>}
-                      {t.retweets > 0 && <span>🔁 {formatNumber(t.retweets)}</span>}
+                      {tweet.likes > 0 && <span>Likes {formatNumber(tweet.likes)}</span>}
+                      {tweet.retweets > 0 && <span>Reposts {formatNumber(tweet.retweets)}</span>}
                     </span>
                   </div>
-                  <p class="enrichment-tweet-text">{t.text}</p>
-                  {t.url && (
-                    <a href={t.url} target="_blank" rel="noopener noreferrer" class="enrichment-tweet-link">查看原文 →</a>
+                  <p class="enrichment-tweet-text">{tweet.text}</p>
+                  {tweet.url && (
+                    <a href={tweet.url} target="_blank" rel="noopener noreferrer" class="enrichment-tweet-link">查看原文 →</a>
                   )}
                 </div>
               ))}
             </div>
+          </section>
+        )}
+
+        <nav class="snapshot-same-day" aria-label="同日精选导航">
+          <div class="snapshot-section-label">同日精选</div>
+          <div class="snapshot-day-nav">
+            {prevItem ? (
+              <a href={articleUrlFor(prevItem)} class="snapshot-day-link">
+                <span>上一篇</span>
+                <strong>NO. {String(prevItem.rank || 0).padStart(3, '0')}</strong>
+                <em>{articleTitleFor(prevItem)}</em>
+              </a>
+            ) : (
+              <span class="snapshot-day-link disabled">
+                <span>上一篇</span>
+                <em>已经是当日第一条</em>
+              </span>
+            )}
+            {nextItem ? (
+              <a href={articleUrlFor(nextItem)} class="snapshot-day-link">
+                <span>下一篇</span>
+                <strong>NO. {String(nextItem.rank || 0).padStart(3, '0')}</strong>
+                <em>{articleTitleFor(nextItem)}</em>
+              </a>
+            ) : (
+              <span class="snapshot-day-link disabled">
+                <span>下一篇</span>
+                <em>已经是当日最后一条</em>
+              </span>
+            )}
+          </div>
+          <a href={backUrl} class="snapshot-return-link">返回 {dateText} 日报 →</a>
+        </nav>
+      </article>
+
+      <aside class="snapshot-sidebar" aria-label="值得看指数与来源指标">
+        <div class="snapshot-score-card">
+          <div class="score-header">值得看指数 / WORTH READING</div>
+          <div class="score-display">
+            <span class="score-number">{ahaScore}</span>
+            <div class="score-unit">综合评分 · 满分 100</div>
+          </div>
+          <div class="score-chart" aria-hidden="true">
+            <div class="bar" style="height: 62%"></div>
+            <div class="bar" style="height: 72%"></div>
+            <div class="bar" style="height: 58%"></div>
+            <div class="bar" style="height: 66%"></div>
+            <div class="bar" style="height: 74%"></div>
+            <div class="bar" style="height: 60%"></div>
+            <div class="bar today" style="height: 82%"></div>
+          </div>
+        </div>
+
+        {sourceMetrics.length > 0 && (
+          <div class="snapshot-side-section">
+            <div class="snapshot-sidebar-label">来源指标</div>
+            <dl class="snapshot-facts">
+              {sourceMetrics.map((metric) => (
+                <div>
+                  <dt>{metric.label}</dt>
+                  <dd>{metric.value}</dd>
+                </div>
+              ))}
+            </dl>
           </div>
         )}
-      </div>
 
-      <div class="modal-footer">
-        <button class="close-footer-btn" aria-label="Close">×</button>
-        {(item.original_url || item.url) && (
+        <p class="snapshot-freeze-note">以上数据为 {dateText} 当日快照，不代表实时指标。</p>
+
+        {originalUrl && (
           <a
-            href={item.original_url || item.url}
+            href={originalUrl}
             target="_blank"
             rel="noopener noreferrer"
-            class="btn-primary"
+            class="snapshot-original-btn"
             data-item-id={item.processed_item_id}
             data-snapshot-date={item.snapshot_date}
             data-event="click_original"
@@ -316,29 +463,9 @@ function formatNumber(num: number) {
             查看原文 →
           </a>
         )}
-      </div>
+      </aside>
     </div>
-  </div>
+  </main>
 
-  <script is:inline>
-    document.addEventListener('astro:page-load', () => {
-      const backdrop = document.querySelector('.backdrop');
-      const closeBtns = document.querySelectorAll('.close-btn, .close-footer-btn');
-      if (!backdrop) return;
-
-      function goBack() {
-        const backUrl = backdrop.getAttribute('data-back-url');
-        if (document.referrer && (document.referrer.includes('/daily/') || document.referrer.includes('amazingindex.com'))) {
-          history.back();
-        } else if (backUrl) {
-          window.location.href = backUrl;
-        }
-      }
-
-      backdrop.addEventListener('click', (e) => {
-        if (e.target === backdrop) goBack();
-      });
-      closeBtns.forEach((btn) => btn.addEventListener('click', goBack));
-    });
-  </script>
+  <Footer showArchiveBanner={true} date={date} />
 </BaseLayout>
