@@ -1,7 +1,6 @@
 @import "tailwindcss";
 
 @theme {
-  --font-playfair: "Playfair Display", serif;
   --font-noto: "Noto Serif SC", serif;
 }
 
@@ -9,7 +8,7 @@
   --font-mono: 'DM Mono', 'SF Mono', Menlo, monospace;
   --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-serif-sc: 'Noto Serif SC', 'Songti SC', 'Noto Serif CJK SC', serif;
-  --font-display: 'Playfair Display', Georgia, serif;
+  --font-display: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
   --fm: var(--font-mono);
   --fs: var(--font-serif-sc);
   --fd: var(--font-display);
@@ -96,7 +95,7 @@ body::before {
 }
 
 .logo-text {
-  font-family: 'Playfair Display', Georgia, serif;
+  font-family: var(--fd);
   font-size: 20px;
   font-weight: 700;
   font-style: italic;
@@ -125,7 +124,7 @@ body::before {
 }
 
 .masthead-subtitle {
-  font-family: 'Playfair Display', Georgia, serif;
+  font-family: var(--fd);
   font-size: 14px;
   font-weight: 400;
   font-style: italic;
@@ -404,8 +403,8 @@ body::before {
 }
 
 .score-number {
-  font-family: 'Playfair Display', serif;
-  font-size: 88px;
+  font-family: var(--fd);
+  font-size: 65px;
   font-weight: 900;
   line-height: 0.9;
   color: var(--ink);
