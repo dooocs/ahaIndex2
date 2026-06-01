@@ -1007,7 +1007,6 @@ body::before {
 /* ─── DAILY SNAPSHOT ARTICLE PAGE ─────────────────── */
 .snapshot-page {
   background: var(--paper);
-  border-top: 1px solid var(--border);
   min-height: 70vh;
 }
 
