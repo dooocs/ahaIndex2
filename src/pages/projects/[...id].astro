@@ -3,17 +3,16 @@ import BaseLayout from '../../layouts/BaseLayout.astro';
 import Masthead from '../../components/Masthead.astro';
 import Footer from '../../components/Footer.astro';
 import ProjectDetailComponent from '../../components/projects/ProjectDetail.astro';
-import { getProjects, getProjectById, getProjectDates } from '../../lib/data';
+import { getProjects, getProjectDates } from '../../lib/data';
 
 export async function getStaticPaths() {
   const projects = await getProjects();
   return projects.map(p => ({
-    params: { id: p.subject_id },
+    params: { id: p.slug },
     props: { project: p },
   }));
 }
 
-const { id } = Astro.params;
 const { project } = Astro.props;
 
 if (!project) {
@@ -31,10 +30,10 @@ const pageDesc = project.summary
 <BaseLayout
   title={pageTitle}
   description={pageDesc}
-  canonicalUrl={`https://www.amazingindex.com/projects/${id}`}
+  canonicalUrl={`https://www.amazingindex.com/projects/${project.slug}`}
   ogTitle={pageTitle}
   ogDescription={pageDesc}
-  ogUrl={`https://www.amazingindex.com/projects/${id}`}
+  ogUrl={`https://www.amazingindex.com/projects/${project.slug}`}
 >
   <Masthead />
 
