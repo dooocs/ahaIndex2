@@ -9,6 +9,11 @@ export type SitemapEntry = {
   lastmod?: string;
 };
 
+export type SitemapIndexEntry = {
+  url: string;
+  lastmod?: string;
+};
+
 function stripTrailingSlash(url: string): string {
   return url.endsWith('/') ? url.slice(0, -1) : url;
 }
@@ -37,6 +42,20 @@ export function renderUrlset(entries: SitemapEntry[]): string {
     '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
     ...entries.map(renderUrl),
     '</urlset>',
+  ].join('');
+}
+
+function renderSitemap(entry: SitemapIndexEntry): string {
+  const lastmod = entry.lastmod ? `<lastmod>${escapeXml(entry.lastmod)}</lastmod>` : '';
+  return `<sitemap><loc>${escapeXml(entry.url)}</loc>${lastmod}</sitemap>`;
+}
+
+export function renderSitemapIndex(entries: SitemapIndexEntry[]): string {
+  return [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    ...entries.map(renderSitemap),
+    '</sitemapindex>',
   ].join('');
 }
 
@@ -72,6 +91,24 @@ export async function getPagesSitemapEntries(): Promise<SitemapEntry[]> {
     ...getStaticSitemapEntries(),
     { url: absoluteUrl('/daily') },
     ...getDailySitemapEntries(dates),
+  ];
+}
+
+export function getArticleSitemapPath(year: string): string {
+  return `/sitemap-articles-${year}.xml`;
+}
+
+export async function getSitemapIndexEntries(): Promise<SitemapIndexEntry[]> {
+  const dates = await getAllDates();
+  const years = await getArticleSitemapYears();
+  const latestDate = dates[0];
+
+  return [
+    { url: absoluteUrl('/sitemap-pages.xml'), lastmod: latestDate },
+    ...years.map((year) => ({
+      url: absoluteUrl(getArticleSitemapPath(year)),
+      lastmod: dates.find((date) => date.startsWith(`${year}-`)),
+    })),
   ];
 }
 
