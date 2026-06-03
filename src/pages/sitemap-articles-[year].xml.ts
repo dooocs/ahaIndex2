@@ -3,7 +3,7 @@ import {
   getArticleSitemapYears,
   renderUrlset,
   sitemapResponse,
-} from '../../lib/sitemap';
+} from '../lib/sitemap';
 
 export async function getStaticPaths() {
   const years = await getArticleSitemapYears();

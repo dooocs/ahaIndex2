@@ -1,13 +1,11 @@
-import { absoluteUrl, getArticleSitemapYears } from '../lib/sitemap';
+import { absoluteUrl } from '../lib/sitemap';
 
 export async function GET() {
-  const years = await getArticleSitemapYears();
   const body = [
     'User-agent: *',
     'Allow: /',
     '',
-    `Sitemap: ${absoluteUrl('/sitemap-pages.xml')}`,
-    ...years.map((year) => `Sitemap: ${absoluteUrl(`/sitemap-articles/${year}.xml`)}`),
+    `Sitemap: ${absoluteUrl('/sitemap.xml')}`,
     '',
   ].join('\n');
 

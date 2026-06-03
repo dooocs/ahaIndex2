@@ -1,8 +1,6 @@
-import { getAllItems } from '../lib/data';
+import { getItemsByDate, getLatestDate } from '../lib/data';
 import { absoluteUrl } from '../lib/sitemap';
 import type { ProcessedItem } from '../lib/types';
-
-const FEED_LIMIT = 50;
 
 function escapeXml(value: string): string {
   return value
@@ -13,25 +11,12 @@ function escapeXml(value: string): string {
     .replace(/'/g, '&apos;');
 }
 
-function uniqueArticleItems(items: ProcessedItem[]): ProcessedItem[] {
-  const seen = new Map<string, ProcessedItem>();
-
-  for (const item of items) {
-    if (!item.processed_item_id) continue;
-    if (!seen.has(item.processed_item_id)) {
-      seen.set(item.processed_item_id, item);
-    }
-  }
-
-  return [...seen.values()];
-}
-
 function itemTitle(item: ProcessedItem): string {
   return item.processed_title || item.title || 'Untitled';
 }
 
-function itemPubDate(item: ProcessedItem): string {
-  const parsed = new Date(`${item.snapshot_date}T00:00:00.000Z`);
+function datePubDate(date: string | null | undefined): string {
+  const parsed = new Date(`${date}T00:00:00.000Z`);
   return Number.isNaN(parsed.getTime()) ? new Date(0).toUTCString() : parsed.toUTCString();
 }
 
@@ -44,12 +29,16 @@ function renderItem(item: ProcessedItem): string {
     `<description>${escapeXml(item.summary || '')}</description>`,
     `<link>${escapeXml(link)}</link>`,
     `<guid isPermaLink="true">${escapeXml(link)}</guid>`,
-    `<pubDate>${escapeXml(itemPubDate(item))}</pubDate>`,
+    `<pubDate>${escapeXml(datePubDate(item.snapshot_date))}</pubDate>`,
     '</item>',
   ].join('');
 }
 
-function renderRss(items: ProcessedItem[]): string {
+function renderRss(items: ProcessedItem[], latestDate: string | null): string {
+  const lastBuildDate = latestDate
+    ? [`<lastBuildDate>${escapeXml(datePubDate(latestDate))}</lastBuildDate>`]
+    : [];
+
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
     '<rss version="2.0">',
@@ -58,6 +47,7 @@ function renderRss(items: ProcessedItem[]): string {
     `<link>${escapeXml(absoluteUrl('/'))}</link>`,
     '<description>每日 AI 行业精选简报，过滤噪音，直达洞察。</description>',
     '<language>zh-CN</language>',
+    ...lastBuildDate,
     ...items.map(renderItem),
     '</channel>',
     '</rss>',
@@ -65,9 +55,10 @@ function renderRss(items: ProcessedItem[]): string {
 }
 
 export async function GET() {
-  const items = uniqueArticleItems(await getAllItems()).slice(0, FEED_LIMIT);
+  const latestDate = await getLatestDate();
+  const items = latestDate ? await getItemsByDate(latestDate) : [];
 
-  return new Response(renderRss(items), {
+  return new Response(renderRss(items, latestDate), {
     headers: {
       'Content-Type': 'application/rss+xml; charset=utf-8',
     },
