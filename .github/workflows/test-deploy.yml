@@ -21,6 +21,8 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
 
+      - run: npm run verify:rss
+
       - name: Install ossutil
         run: |
           curl -Lo ossutil.zip https://gosspublic.alicdn.com/ossutil/v2/2.2.1/ossutil-2.2.1-linux-amd64.zip
@@ -71,7 +73,7 @@ jobs:
             $CREDS &
           PID_HTML=$!
 
-          # 3. 其他静态文件 robots/favicon/sitemap（后台）
+          # 3. 其他静态文件 robots/favicon/sitemap/rss（后台）
           ossutil sync ./dist/ oss://amazingindex/__test__/ \
             --force -j 10 \
             --exclude "*.html" \
