@@ -200,19 +200,6 @@ const maturityClass: Record<string, string> = { production: 'production', beta: 
               ))}
             </div>
           )}
-          {originalUrl && (
-            <a
-              href={originalUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              class="snapshot-original-btn mobile"
-              data-item-id={item.processed_item_id}
-              data-snapshot-date={item.snapshot_date}
-              data-event="click_original"
-            >
-              查看原文 →
-            </a>
-          )}
         </div>
 
         {summaryText && (
@@ -414,6 +401,20 @@ const maturityClass: Record<string, string> = { production: 'production', beta: 
           </div>
           <a href={backUrl} class="snapshot-return-link">返回 {dateText} 日报 →</a>
         </nav>
+
+        {originalUrl && (
+          <a
+            href={originalUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="snapshot-original-btn mobile"
+            data-item-id={item.processed_item_id}
+            data-snapshot-date={item.snapshot_date}
+            data-event="click_original"
+          >
+            查看原文 →
+          </a>
+        )}
       </article>
 
       <aside class="snapshot-sidebar" aria-label="值得看指数与来源指标">

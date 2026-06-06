@@ -1312,6 +1312,10 @@ body::before {
   background: #2d2926;
 }
 
+.snapshot-original-btn.mobile {
+  display: none;
+}
+
 .snapshot-mobile-info {
   display: none;
 }
@@ -1379,6 +1383,7 @@ body::before {
   }
 
   .snapshot-original-btn.mobile {
+    display: inline-flex;
     width: 100%;
     margin-top: 18px;
   }
