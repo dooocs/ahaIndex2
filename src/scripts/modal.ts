@@ -73,6 +73,8 @@ function initModal() {
     const link = (e.target as HTMLElement).closest<HTMLAnchorElement>('a[href^="/article/"]');
     if (!link) return;
     if (document.querySelector('.backdrop')) return;
+    if (link.target && link.target !== '_self') return;
+    if (e instanceof MouseEvent && (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0)) return;
 
     e.preventDefault();
     e.stopPropagation();

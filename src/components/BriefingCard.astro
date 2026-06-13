@@ -29,10 +29,12 @@ const category = item.tags && item.tags.length > 0 ? item.tags[0] : '综合';
 const tags = item.tags ? item.tags.slice(1) : [];
 
 const articleUrl = item.processed_item_id ? `/article/${item.processed_item_id}` : '#';
+const articleTarget = item.processed_item_id ? '_blank' : undefined;
+const articleRel = item.processed_item_id ? 'noopener noreferrer' : undefined;
 ---
 
 {isFeatured ? (
-  <a href={articleUrl} class="article featured" style="position: relative; text-decoration: none; color: inherit;"
+  <a href={articleUrl} target={articleTarget} rel={articleRel} class="article featured" style="position: relative; text-decoration: none; color: inherit;"
     data-item-id={item.processed_item_id}
     data-snapshot-date={item.snapshot_date}
     data-category={item.category}
@@ -64,7 +66,7 @@ const articleUrl = item.processed_item_id ? `/article/${item.processed_item_id}`
     </div>
   </a>
 ) : (
-  <a href={articleUrl} class="article" style="position: relative; text-decoration: none; color: inherit;"
+  <a href={articleUrl} target={articleTarget} rel={articleRel} class="article" style="position: relative; text-decoration: none; color: inherit;"
     data-item-id={item.processed_item_id}
     data-snapshot-date={item.snapshot_date}
     data-category={item.category}
