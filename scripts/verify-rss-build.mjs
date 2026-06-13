@@ -7,12 +7,19 @@ function countMatches(value, pattern) {
   return [...value.matchAll(pattern)].length;
 }
 
+function countHomepageArticleLinks(indexHtml) {
+  return countMatches(
+    indexHtml,
+    /<a\b(?=[^>]*\bhref="\/article\/[^"]+")(?=[^>]*\bclass="\s*(?:[^\s"]+\s+)*article(?:\s+[^"]*)?")[^>]*>/g,
+  );
+}
+
 const [indexHtml, rssXml] = await Promise.all([
   readFile(indexHtmlPath, 'utf8'),
   readFile(rssPath, 'utf8'),
 ]);
 
-const homepageItems = countMatches(indexHtml, /href="\/article\/[^"]+"\s+class="article/g);
+const homepageItems = countHomepageArticleLinks(indexHtml);
 const rssItems = countMatches(rssXml, /<item>/g);
 
 if (rssItems !== homepageItems) {
