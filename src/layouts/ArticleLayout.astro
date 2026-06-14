@@ -91,7 +91,7 @@ const contentTypeLabel = item.content_type ? `#${item.content_type.toUpperCase()
 const metaDescription = [
   summaryText.slice(0, 150),
   sourceName ? `来源：${sourceName}` : '',
-  `值得看指数 ${ahaScore}`,
+  `推荐指数 ${ahaScore}`,
 ].filter(Boolean).join(' · ');
 
 const sourceMetrics: Metric[] = [];
@@ -187,9 +187,9 @@ const maturityClass: Record<string, string> = { production: 'production', beta: 
           </div>
         </header>
 
-        <div class="snapshot-mobile-info" aria-label="值得看指数与来源指标">
+        <div class="snapshot-mobile-info" aria-label="推荐指数与来源指标">
           <div class="snapshot-mobile-score">
-            <span>值得看指数</span>
+            <span>推荐指数</span>
             <strong>{ahaScore}</strong>
             <em>NO. {rankText} · {dateText}</em>
           </div>
@@ -417,9 +417,9 @@ const maturityClass: Record<string, string> = { production: 'production', beta: 
         )}
       </article>
 
-      <aside class="snapshot-sidebar" aria-label="值得看指数与来源指标">
+      <aside class="snapshot-sidebar" aria-label="推荐指数与来源指标">
         <div class="snapshot-score-card">
-          <div class="score-header">值得看指数 / WORTH READING</div>
+          <div class="score-header">推荐指数 / WORTH READING</div>
           <div class="score-display">
             <span class="score-number">{ahaScore}</span>
             <div class="score-unit">综合评分 · 满分 100</div>
