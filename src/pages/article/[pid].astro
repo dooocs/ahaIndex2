@@ -25,15 +25,12 @@ const items = await getItemsByDate(date);
 const currentIndex = items.findIndex(i => i.processed_item_id === item.processed_item_id);
 const prevItem = currentIndex > 0 ? items[currentIndex - 1] : null;
 const nextItem = currentIndex >= 0 && currentIndex < items.length - 1 ? items[currentIndex + 1] : null;
-
-const categories = ['全部', ...Array.from(new Set(items.map(i => i.category).filter(Boolean) as string[]))];
 ---
 
 <ArticleLayout
   item={item}
   date={date}
   items={items}
-  categories={categories}
   prevItem={prevItem}
   nextItem={nextItem}
 />

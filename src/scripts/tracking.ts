@@ -30,6 +30,91 @@ function getUserId() {
 
 const trackedImpressions = new Set<string>();
 let globalListenersAttached = false;
+let diagnosticPath = '';
+let diagnosticInteractionSent = false;
+let diagnosticVisible15sSent = false;
+let diagnosticVisibleStartedAt = 0;
+let diagnosticVisibleMs = 0;
+let diagnosticVisibleTimer: number | undefined;
+
+function getGtag() {
+  return (window as Window & { gtag?: (...args: unknown[]) => void }).gtag;
+}
+
+function trackGaDiagnosticEvent(eventName: 'ai_human_interaction' | 'ai_visible_15s', params: Record<string, string | number | boolean> = {}) {
+  const gtag = getGtag();
+  if (!gtag) return;
+
+  gtag('event', eventName, {
+    page_path: window.location.pathname,
+    page_location: window.location.href,
+    ...params,
+  });
+}
+
+function stopVisible15sTimer() {
+  if (diagnosticVisibleTimer !== undefined) {
+    window.clearTimeout(diagnosticVisibleTimer);
+    diagnosticVisibleTimer = undefined;
+  }
+}
+
+function scheduleVisible15sTimer() {
+  stopVisible15sTimer();
+  if (diagnosticVisible15sSent || document.visibilityState !== 'visible') return;
+
+  const remainingMs = Math.max(0, 15000 - diagnosticVisibleMs);
+  diagnosticVisibleStartedAt = Date.now();
+  diagnosticVisibleTimer = window.setTimeout(() => {
+    if (document.visibilityState !== 'visible') return;
+
+    diagnosticVisibleMs += Date.now() - diagnosticVisibleStartedAt;
+    if (diagnosticVisibleMs < 15000 || diagnosticVisible15sSent) return;
+
+    diagnosticVisible15sSent = true;
+    trackGaDiagnosticEvent('ai_visible_15s', {
+      visible_seconds: Math.round(diagnosticVisibleMs / 1000),
+    });
+  }, remainingMs);
+}
+
+function pauseVisible15sTimer() {
+  stopVisible15sTimer();
+  if (diagnosticVisibleStartedAt > 0) {
+    diagnosticVisibleMs += Date.now() - diagnosticVisibleStartedAt;
+    diagnosticVisibleStartedAt = 0;
+  }
+}
+
+function initGaDiagnosticTracking() {
+  const nextPath = `${window.location.pathname}${window.location.search}`;
+  if (diagnosticPath === nextPath) return;
+
+  pauseVisible15sTimer();
+  diagnosticPath = nextPath;
+  diagnosticInteractionSent = false;
+  diagnosticVisible15sSent = false;
+  diagnosticVisibleMs = 0;
+  diagnosticVisibleStartedAt = 0;
+  scheduleVisible15sTimer();
+}
+
+function handleDiagnosticInteraction(e: Event) {
+  if (diagnosticInteractionSent) return;
+
+  diagnosticInteractionSent = true;
+  trackGaDiagnosticEvent('ai_human_interaction', {
+    interaction_type: e.type,
+  });
+}
+
+function handleDiagnosticVisibilityChange() {
+  if (document.visibilityState === 'visible') {
+    scheduleVisible15sTimer();
+  } else {
+    pauseVisible15sTimer();
+  }
+}
 
 function trackEvent(
   itemId: string,
@@ -111,9 +196,15 @@ function initClickTracking() {
 }
 
 document.addEventListener('astro:page-load', () => {
+  initGaDiagnosticTracking();
   initImpressionTracking();
   if (!globalListenersAttached) {
     globalListenersAttached = true;
+    document.addEventListener('pointerdown', handleDiagnosticInteraction, { passive: true });
+    document.addEventListener('touchstart', handleDiagnosticInteraction, { passive: true });
+    document.addEventListener('wheel', handleDiagnosticInteraction, { passive: true });
+    document.addEventListener('keydown', handleDiagnosticInteraction);
+    document.addEventListener('visibilitychange', handleDiagnosticVisibilityChange);
     initClickOriginalTracking();
     initClickTracking();
   }

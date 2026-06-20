@@ -1,7 +1,6 @@
 ---
 import BaseLayout from './BaseLayout.astro';
 import Masthead from '../components/Masthead.astro';
-import NavBar from '../components/NavBar.astro';
 import Footer from '../components/Footer.astro';
 import type { ProcessedItem } from '../lib/types';
 
@@ -9,7 +8,6 @@ interface Props {
   item: ProcessedItem;
   date: string;
   items: ProcessedItem[];
-  categories: string[];
   prevItem?: ProcessedItem | null;
   nextItem?: ProcessedItem | null;
 }
@@ -23,7 +21,6 @@ const {
   item,
   date,
   items,
-  categories,
   prevItem = null,
   nextItem = null,
 } = Astro.props;
@@ -164,8 +161,7 @@ const maturityClass: Record<string, string> = { production: 'production', beta: 
     "publisher": { "@type": "Organization", "name": "AmazingIndex" }
   }}
 >
-  <Masthead items={items} />
-  <NavBar categories={categories} selectedCategory={item.category || '全部'} date={date} />
+  <Masthead items={items} subtitle="日报快照" />
 
   <main class="snapshot-page">
     <div class="snapshot-shell">

@@ -1,7 +1,6 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Masthead from '../components/Masthead.astro';
-import NavBar from '../components/NavBar.astro';
 import BriefingCard from '../components/BriefingCard.astro';
 import Sidebar from '../components/Sidebar.astro';
 import Footer from '../components/Footer.astro';
@@ -11,8 +10,6 @@ const items = await getHistoryItems();
 const stats = await getGlobalStats();
 const now = new Date();
 const days = await getDailyArchives(now.getFullYear(), now.getMonth() + 1);
-
-const categories = ['全部', ...Array.from(new Set(items.map(item => item.category).filter(Boolean) as string[]))];
 ---
 
 <BaseLayout
@@ -24,7 +21,6 @@ const categories = ['全部', ...Array.from(new Set(items.map(item => item.categ
   ogUrl="https://www.amazingindex.com/history"
 >
   <Masthead items={items} />
-  <NavBar categories={categories} />
 
   <div class="layout">
     <main class="main-col">
@@ -45,26 +41,3 @@ const categories = ['全部', ...Array.from(new Set(items.map(item => item.categ
 
   <Footer />
 </BaseLayout>
-
-<script is:inline>
-document.addEventListener('astro:page-load', () => {
-  const tabs = document.querySelectorAll('#nav-tabs .nav-tab');
-  const cards = document.querySelectorAll('#article-list > [data-category]');
-  if (!tabs.length || !cards.length) return;
-
-  tabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      const cat = tab.getAttribute('data-category');
-      tabs.forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      cards.forEach(card => {
-        if (cat === '全部' || card.getAttribute('data-category') === cat) {
-          card.style.display = '';
-        } else {
-          card.style.display = 'none';
-        }
-      });
-    });
-  });
-});
-</script>

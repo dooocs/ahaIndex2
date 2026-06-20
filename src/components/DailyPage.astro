@@ -1,6 +1,5 @@
 ---
 import Masthead from './Masthead.astro';
-import NavBar from './NavBar.astro';
 import BriefingCard from './BriefingCard.astro';
 import Sidebar from './Sidebar.astro';
 import Footer from './Footer.astro';
@@ -12,18 +11,26 @@ interface Props {
   days: DailyArchive[];
   dailyArchive?: DailyArchive | null;
   date?: string;
-  categories: string[];
   showArchiveBanner?: boolean;
   heading?: string;
+  sidebarMode?: 'score' | 'intro';
 }
 
-const { items, stats, days, dailyArchive = null, date, categories, showArchiveBanner = true, heading } = Astro.props;
+const {
+  items,
+  stats,
+  days,
+  dailyArchive = null,
+  date,
+  showArchiveBanner = true,
+  heading,
+  sidebarMode = 'score',
+} = Astro.props;
 
 const snapshotDate = date || (items.length > 0 ? items[0].snapshot_date : undefined);
 ---
 
 <Masthead items={items} />
-<NavBar categories={categories} date={snapshotDate} />
 
 <div class="layout">
   <main class="main-col">
@@ -39,30 +46,7 @@ const snapshotDate = date || (items.length > 0 ? items[0].snapshot_date : undefi
       )}
     </div>
   </main>
-  <Sidebar items={items} stats={stats} days={days} dailyArchive={dailyArchive} />
+  <Sidebar items={items} stats={stats} days={days} dailyArchive={dailyArchive} mode={sidebarMode} />
 </div>
 
 <Footer showArchiveBanner={showArchiveBanner} date={snapshotDate} />
-
-<script is:inline>
-document.addEventListener('astro:page-load', () => {
-  const tabs = document.querySelectorAll('#nav-tabs .nav-tab');
-  const cards = document.querySelectorAll('#article-list > [data-category]');
-  if (!tabs.length || !cards.length) return;
-
-  tabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      const cat = tab.getAttribute('data-category');
-      tabs.forEach(t => t.classList.remove('active'));
-      tab.classList.add('active');
-      cards.forEach(card => {
-        if (cat === '全部' || card.getAttribute('data-category') === cat) {
-          card.style.display = '';
-        } else {
-          card.style.display = 'none';
-        }
-      });
-    });
-  });
-});
-</script>

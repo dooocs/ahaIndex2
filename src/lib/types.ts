@@ -170,3 +170,62 @@ export interface TrackInfo {
   cover_color: string;
   display_order: number;
 }
+
+export interface SubjectStatsRow {
+  subject_id: string;
+  mention_count: number;
+  first_seen_at: string | null;
+  last_seen_at: string | null;
+  item_count: number;
+}
+
+// ─── Subject V2 types ─────────────────────────────────
+
+export interface SubjectCatalogEntry {
+  id: string;
+  slug: string;
+  type: string;
+  display_name: string;
+  aliases: string[];
+  description: string | null;
+  definition: string | null;
+  homepage_url: string | null;
+  metadata: Record<string, any> | null;
+  first_seen_at: string | null;
+  last_seen_at: string | null;
+  mention_count: number;
+  status: string;
+  directory_visible: boolean;
+  section_slug: string | null;
+  curation_priority: number;
+  created_by: string | null;
+}
+
+export interface SubjectInsight {
+  id: string;
+  subject_id: string;
+  snapshot_date: string | null;
+  module_type: 'timeline' | 'highlight' | 'comparison';
+  insight_key: string;
+  title: string;
+  summary: string | null;
+  analysis: string | null;
+  event_date: string | null;
+  comparison_subject_ids: string[];
+  dimensions_json: Record<string, any> | null;
+  importance_score: number | null;
+  confidence: number | null;
+  evidence_item_ids: string[];
+  evidence_refs_json: Record<string, any> | null;
+  related_subject_ids: string[];
+  generated_by: string;
+  generator_version: string;
+  status: 'draft' | 'published' | 'hidden';
+  published_at: string | null;
+}
+
+export interface SubjectDirectorySection {
+  slug: string;
+  label: string;
+  subjects: SubjectCatalogEntry[];
+}

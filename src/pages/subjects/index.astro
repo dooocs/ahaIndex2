@@ -1,0 +1,72 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Masthead from '../../components/Masthead.astro';
+import Footer from '../../components/Footer.astro';
+import { getSubjectDirectorySections } from '../../lib/data';
+
+const sections = await getSubjectDirectorySections();
+const subjects = sections.flatMap(section => section.subjects);
+
+const pageTitle = 'Subject Directory | AmazingIndex';
+const pageDesc = 'AmazingIndex Subject Directory：按类型整理的 AI 相关人物、公司、任务、产品、项目和概念索引。';
+---
+
+<BaseLayout
+  title={pageTitle}
+  description={pageDesc}
+  canonicalUrl="https://www.amazingindex.com/subjects"
+  ogTitle={pageTitle}
+  ogDescription={pageDesc}
+  ogUrl="https://www.amazingindex.com/subjects"
+>
+  <Masthead subtitle="专题索引" />
+
+  <main class="subjects-page">
+    <header class="subject-dir-head">
+      <div class="subject-kicker">Subject Directory</div>
+      <h1>AI Subject 索引</h1>
+      <div class="subject-dir-meta">
+        <span>{subjects.length} subjects</span>
+        <span>{sections.length} sections</span>
+      </div>
+    </header>
+
+    {sections.length > 0 ? (
+      <div class="subject-directory">
+        {sections.map(section => (
+          <section class="subject-section" id={section.slug}>
+            <div class="subject-section-head">
+              <h2>{section.label}</h2>
+              <span>{section.subjects.length}</span>
+            </div>
+            <div class="subject-link-grid">
+              {section.subjects.map(subject => {
+                const summary = subject.definition || subject.description || '';
+                const tags = [subject.type, ...(subject.aliases || []).slice(0, 2)].filter(Boolean);
+                const lastSeen = subject.last_seen_at ? subject.last_seen_at.slice(0, 10) : '';
+                return (
+                  <a class="subject-link-item" href={`/subjects/${subject.slug}`}>
+                    <div class="subject-link-name">{subject.display_name}</div>
+                    {summary && <p>{summary}</p>}
+                    <div class="subject-link-meta">
+                      {tags.map(tag => <span>{tag}</span>)}
+                      {lastSeen && <span>最新 {lastSeen}</span>}
+                      {subject.mention_count > 0 && <span>{subject.mention_count} mentions</span>}
+                    </div>
+                  </a>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
+    ) : (
+      <section class="subject-empty">
+        <div class="subject-empty-title">暂无已发布 Subject</div>
+        <div class="subject-empty-text">等待 Admin 审核通过后显示。</div>
+      </section>
+    )}
+  </main>
+
+  <Footer />
+</BaseLayout>

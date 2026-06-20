@@ -6,9 +6,16 @@ interface Props {
   stats?: GlobalStats | null;
   days?: DailyArchive[];
   dailyArchive?: DailyArchive | null;
+  mode?: 'score' | 'intro';
 }
 
-const { items = [], stats = null, days = [], dailyArchive = null } = Astro.props;
+const {
+  items = [],
+  stats = null,
+  days = [],
+  dailyArchive = null,
+  mode = 'score',
+} = Astro.props;
 
 const ahaScore = items.length > 0
   ? (items.reduce((sum, item) => sum + (item.aha_index || 0), 0) / items.length * 100).toFixed(1)
@@ -54,26 +61,44 @@ function dateStr(d: number) {
 ---
 
 <aside class="side-col">
-  <div class="aha-score-card">
-    <div class="score-header">推荐指数 / WORTH READING</div>
-    <div class="score-display">
-      <span class="score-number">{ahaScore}</span>
-      <div class="score-unit">综合评分 · 满分 100</div>
-      {dailyArchive?.percentile_tier === 'p90_plus' && (
-        <div class="percentile-line percentile-p90">今日罕见高分 · 近 90 天前 10%</div>
-      )}
-      {dailyArchive?.percentile_tier === 'p70_p90' && (
-        <div class="percentile-line percentile-p70">高于近期均值</div>
-      )}
-    </div>
-    <div class="score-chart">
-      {recentDays.map((d, i) => {
-        const pct = Math.round((d.aha_score / maxScore) * 100);
-        const isLast = i === recentDays.length - 1;
-        const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(d.snapshot_date + 'T00:00:00').getDay()];
-        return <div class={`bar${isLast ? ' today' : ''}`} style={`height: ${pct}%`} title={`${weekday} ${d.aha_score.toFixed(0)}`}></div>;
-      })}
-    </div>
+  <div class={mode === 'intro' ? 'sidebar-panel sidebar-panel-intro' : 'aha-score-card'}>
+    {mode === 'intro' ? (
+      <div class="sidebar-intro-card">
+        <div class="sidebar-intro-kicker">关于本站 / WHAT THIS IS</div>
+        <h2 class="sidebar-intro-title">
+          在信息过载的时代<br />
+          找到值得关注的信号
+        </h2>
+        <p class="sidebar-intro-text">
+          世界正在加速变化，AI、算力、机器人、航天？信息越来越多，也越来越杂。
+          AmazingIndex 用大数据与 AI，每天从噪声里筛出真正关键、代表未来的信号，
+          帮助你把注意力留给少数真正重要的事；认知的领先，终会兑现！
+        </p>
+      </div>
+    ) : (
+      <>
+      <div class="score-header">推荐指数 / WORTH READING</div>
+      <div class="score-display">
+        <span class="score-number">{ahaScore}</span>
+        <div class="score-unit">综合评分 · 满分 100</div>
+        {dailyArchive?.percentile_tier === 'p90_plus' && (
+          <div class="percentile-line percentile-p90">今日罕见高分 · 近 90 天前 10%</div>
+        )}
+        {dailyArchive?.percentile_tier === 'p70_p90' && (
+          <div class="percentile-line percentile-p70">高于近期均值</div>
+        )}
+      </div>
+      <div class="score-chart">
+        {recentDays.map((d, i) => {
+          const pct = Math.round((d.aha_score / maxScore) * 100);
+          const isLast = i === recentDays.length - 1;
+          const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(d.snapshot_date + 'T00:00:00').getDay()];
+          return <div class={`bar${isLast ? ' today' : ''}`} style={`height: ${pct}%`} title={`${weekday} ${d.aha_score.toFixed(0)}`}></div>;
+        })}
+      </div>
+      </>
+    )}
+
     <div class="divider"></div>
     <div class="sidebar-archive">
       <div class="sidebar-archive-section">
@@ -106,9 +131,87 @@ function dateStr(d: number) {
         </a>
       </div>
     </div>
-    <div class="divider"></div>
-    <p class="about-text">
-      "AmazingIndex" 是一套基于多维度量化算法的评估系统，旨在发掘当下最具颠覆性与美学价值的创新成果。
-    </p>
+
+    {mode !== 'intro' && (
+      <>
+      <div class="divider"></div>
+      <p class="about-text">
+        "AmazingIndex" 是一套基于多维度量化算法的评估系统，旨在发掘当下最具颠覆性与美学价值的创新成果。
+      </p>
+      </>
+    )}
   </div>
 </aside>
+
+<style>
+  .sidebar-panel {
+    position: sticky;
+    top: 24px;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+  }
+
+  .sidebar-panel::-webkit-scrollbar {
+    display: none;
+  }
+
+  .sidebar-panel-intro {
+    position: sticky;
+  }
+
+  .sidebar-panel-intro .divider {
+    margin: 22px 0 18px;
+  }
+
+  .sidebar-panel-intro .sidebar-archive-section {
+    margin-bottom: 0;
+  }
+
+  .sidebar-panel-intro .sidebar-archive-title {
+    border-bottom: none;
+    margin-bottom: 10px;
+    padding-bottom: 0;
+    color: rgba(26, 22, 18, 0.34);
+  }
+
+  .sidebar-intro-card {
+    padding-right: 4px;
+  }
+
+  .sidebar-intro-kicker {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 9px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 14px;
+  }
+
+  .sidebar-intro-kicker::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  .sidebar-intro-title {
+    font-family: var(--fd);
+    font-size: 23px;
+    line-height: 1.15;
+    letter-spacing: -0.03em;
+    color: var(--ink);
+    margin: 0 0 16px;
+  }
+
+  .sidebar-intro-text {
+    font-family: var(--fs);
+    font-size: 13px;
+    line-height: 1.9;
+    color: rgba(26, 22, 18, 0.72);
+  }
+
+</style>

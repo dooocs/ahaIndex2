@@ -18,10 +18,8 @@ if (curMonthDays.length < 7) {
   const prevMonthDays = await getDailyArchives(prevYear, prevMonth);
   days = [...curMonthDays, ...prevMonthDays].sort((a, b) => b.snapshot_date.localeCompare(a.snapshot_date));
 }
-
-const categories = ['全部', ...Array.from(new Set(items.map(item => item.category).filter(Boolean) as string[]))];
 ---
 
 <BaseLayout>
-  <DailyPage items={items} stats={stats} days={days} dailyArchive={dailyArchive} categories={categories} heading="每日 AI 行业精选简报" />
+  <DailyPage items={items} stats={stats} days={days} dailyArchive={dailyArchive} heading="每日 AI 行业精选简报" sidebarMode="intro" />
 </BaseLayout>

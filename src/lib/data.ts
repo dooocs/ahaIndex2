@@ -9,6 +9,10 @@ import type {
   ProjectEntry,
   TimelineEntry,
   TrackInfo,
+  SubjectStatsRow,
+  SubjectCatalogEntry,
+  SubjectDirectorySection,
+  SubjectInsight,
 } from './types';
 
 const TABLE = 'display_items';
@@ -34,6 +38,19 @@ function memoBy<T>(prefix: string, fn: (arg: string) => Promise<T>): (arg: strin
     _cache.set(key, result);
     return result;
   };
+}
+
+function isMissingRelationError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+
+  const err = error as { code?: string; message?: string; hint?: string };
+  return Boolean(
+    err.code === '42P01' ||
+    err.code === 'PGRST205' ||
+    err.message?.includes('schema cache') ||
+    err.message?.includes('Could not find the table') ||
+    err.hint?.includes('Perhaps you meant the table')
+  );
 }
 
 async function fetchAllRows<T>(
@@ -488,3 +505,144 @@ export const getProjectDates = memo<string[]>('projectDates', async () => {
   }
   return [...dates].sort();
 });
+
+// ─── Subject V2 directory queries ─────────────────────
+
+export async function getSubjectStats(): Promise<SubjectStatsRow[]> {
+  const { data, error } = await supabase
+    .from('subject_stats')
+    .select('subject_id, mention_count, first_seen_at, last_seen_at, item_count');
+  if (error) {
+    if (isMissingRelationError(error)) return [];
+    throw error;
+  }
+  return (data as SubjectStatsRow[]) ?? [];
+}
+
+function subjectSectionLabel(slug: string): string {
+  const labels: Record<string, string> = {
+    agent: 'Agent',
+    agents: 'Agent',
+    company: '公司',
+    org: '组织',
+    person: '人物',
+    task: '任务',
+    model: '模型',
+    paper: '论文',
+    package: 'Package',
+    product: '产品',
+    project: '项目',
+    concept: '概念',
+    research: '研究',
+    infrastructure: '基础设施',
+  };
+  return labels[slug] || slug.replace(/[-_]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+const DIRECTORY_SECTION_LIMIT = 20;
+
+function compareSubjectCatalogEntries(a: SubjectCatalogEntry, b: SubjectCatalogEntry): number {
+  const priorityA = a.curation_priority || 0;
+  const priorityB = b.curation_priority || 0;
+  if (priorityA !== priorityB) return priorityB - priorityA;
+
+  const lastSeenA = a.last_seen_at ? new Date(a.last_seen_at).getTime() : 0;
+  const lastSeenB = b.last_seen_at ? new Date(b.last_seen_at).getTime() : 0;
+  if (lastSeenA !== lastSeenB) return lastSeenB - lastSeenA;
+
+  const mentionA = a.mention_count || 0;
+  const mentionB = b.mention_count || 0;
+  if (mentionA !== mentionB) return mentionB - mentionA;
+
+  return a.display_name.localeCompare(b.display_name);
+}
+
+function mergeSubjectStats(
+  subjects: SubjectCatalogEntry[],
+  stats: SubjectStatsRow[],
+): SubjectCatalogEntry[] {
+  if (stats.length === 0) return [...subjects];
+
+  const statsBySubject = new Map(stats.map(stat => [stat.subject_id, stat]));
+  return subjects.map(subject => {
+    const stat = statsBySubject.get(subject.id);
+    if (!stat) return subject;
+    return {
+      ...subject,
+      mention_count: stat.mention_count ?? subject.mention_count,
+      first_seen_at: stat.first_seen_at ?? subject.first_seen_at,
+      last_seen_at: stat.last_seen_at ?? subject.last_seen_at,
+    };
+  });
+}
+
+export async function getDirectorySubjects(): Promise<SubjectCatalogEntry[]> {
+  const { data, error } = await supabase
+    .from('subjects')
+    .select('id, slug, type, display_name, aliases, description, definition, homepage_url, metadata, first_seen_at, last_seen_at, mention_count, status, directory_visible, section_slug, curation_priority, created_by')
+    .eq('status', 'active')
+    .eq('directory_visible', true)
+    .neq('type', 'project')
+    .order('curation_priority', { ascending: false })
+    .order('display_name', { ascending: true });
+  if (error) {
+    if (isMissingRelationError(error)) return [];
+    throw error;
+  }
+  const subjects = (data as SubjectCatalogEntry[]) ?? [];
+  const stats = await getSubjectStats();
+  return mergeSubjectStats(subjects, stats).sort(compareSubjectCatalogEntries);
+}
+
+export async function getSubjectDirectorySections(): Promise<SubjectDirectorySection[]> {
+  const subjects = await getDirectorySubjects();
+  const sections = new Map<string, SubjectCatalogEntry[]>();
+
+  for (const subject of subjects) {
+    const key = subject.section_slug || subject.type || 'other';
+    const existing = sections.get(key) || [];
+    existing.push(subject);
+    sections.set(key, existing);
+  }
+
+  return [...sections.entries()]
+    .map(([slug, sectionSubjects]) => ({
+      slug,
+      label: subjectSectionLabel(slug),
+      subjects: [...sectionSubjects].sort(compareSubjectCatalogEntries).slice(0, DIRECTORY_SECTION_LIMIT),
+    }))
+    .filter(section => section.subjects.length > 0)
+    .sort((a, b) => {
+      const priorityA = Math.max(...a.subjects.map(s => s.curation_priority || 0), 0);
+      const priorityB = Math.max(...b.subjects.map(s => s.curation_priority || 0), 0);
+      if (priorityA !== priorityB) return priorityB - priorityA;
+      if (a.subjects.length !== b.subjects.length) return b.subjects.length - a.subjects.length;
+      return a.label.localeCompare(b.label);
+    });
+}
+
+export async function getPublicDirectorySubjects(): Promise<SubjectCatalogEntry[]> {
+  const sections = await getSubjectDirectorySections();
+  return sections.flatMap(section => section.subjects);
+}
+
+export async function getSubjectBySlug(slug: string): Promise<SubjectCatalogEntry | null> {
+  const subjects = await getPublicDirectorySubjects();
+  return subjects.find(subject => subject.slug === slug) ?? null;
+}
+
+export async function getSubjectInsights(subjectId: string): Promise<SubjectInsight[]> {
+  const { data, error } = await supabase
+    .from('subject_insights')
+    .select('id, subject_id, snapshot_date, module_type, insight_key, title, summary, analysis, event_date, comparison_subject_ids, dimensions_json, importance_score, confidence, evidence_item_ids, evidence_refs_json, related_subject_ids, generated_by, generator_version, status, published_at')
+    .eq('subject_id', subjectId)
+    .eq('status', 'published')
+    .order('module_type', { ascending: true })
+    .order('event_date', { ascending: false, nullsFirst: false })
+    .order('importance_score', { ascending: false, nullsFirst: false });
+  if (error) {
+    if (isMissingRelationError(error)) return [];
+    throw error;
+  }
+  return (data as SubjectInsight[]) ?? [];
+}

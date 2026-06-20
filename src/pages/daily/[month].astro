@@ -1,7 +1,6 @@
 ---
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import Masthead from '../../components/Masthead.astro';
-import NavBar from '../../components/NavBar.astro';
 import Footer from '../../components/Footer.astro';
 import { getAllDates, getItemsByDate, getGlobalStats, getMonthlyArchives, getWeeklyArchives, getDailyArchives } from '../../lib/data';
 import type { ProcessedItem } from '../../lib/types';
@@ -61,7 +60,6 @@ const pageDesc = `在 AmazingIndex 探索 ${year}年${MONTH_NAMES[monthNum - 1]}
 >
   <div class="archive-page">
     <Masthead />
-    <NavBar />
 
     <div class="layout">
       <div class="main-col">

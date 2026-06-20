@@ -1,0 +1,159 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Masthead from '../../components/Masthead.astro';
+import Footer from '../../components/Footer.astro';
+import { getPublicDirectorySubjects, getSubjectInsights } from '../../lib/data';
+import type { SubjectInsight } from '../../lib/types';
+
+export async function getStaticPaths() {
+  const subjects = await getPublicDirectorySubjects();
+  return subjects.map(subject => ({
+    params: { slug: subject.slug },
+    props: { subject },
+  }));
+}
+
+const { subject } = Astro.props;
+
+if (!subject) {
+  return Astro.redirect('/subjects');
+}
+
+const insights = await getSubjectInsights(subject.id);
+const timeline = insights
+  .filter((insight: SubjectInsight) => insight.module_type === 'timeline')
+  .sort((a: SubjectInsight, b: SubjectInsight) => {
+    const ad = a.event_date || a.snapshot_date || '';
+    const bd = b.event_date || b.snapshot_date || '';
+    return bd.localeCompare(ad);
+  });
+const highlights = insights.filter((insight: SubjectInsight) => insight.module_type === 'highlight');
+const comparisons = insights.filter((insight: SubjectInsight) => insight.module_type === 'comparison');
+
+function dateLabel(value: string | null) {
+  if (!value) return '';
+  return value.slice(0, 10);
+}
+
+function evidenceCount(insight: SubjectInsight) {
+  return Array.isArray(insight.evidence_item_ids) ? insight.evidence_item_ids.length : 0;
+}
+
+const pageTitle = `${subject.display_name} | AmazingIndex Subject`;
+const pageDesc = subject.definition || subject.description || `${subject.display_name} 的关键事件、突出点和横向对比。`;
+const lastSeen = subject.last_seen_at ? subject.last_seen_at.slice(0, 10) : '';
+---
+
+<BaseLayout
+  title={pageTitle}
+  description={pageDesc}
+  canonicalUrl={`https://www.amazingindex.com/subjects/${subject.slug}`}
+  ogTitle={pageTitle}
+  ogDescription={pageDesc}
+  ogUrl={`https://www.amazingindex.com/subjects/${subject.slug}`}
+>
+  <Masthead subtitle="专题详情" />
+
+  <main class="subject-detail-page">
+    <header class="subject-detail-head">
+      <a href="/subjects" class="subject-back">← Subject Directory</a>
+      <div class="subject-detail-kicker">{subject.type}</div>
+      <h1>{subject.display_name}</h1>
+      {(subject.definition || subject.description) && (
+        <p>{subject.definition || subject.description}</p>
+      )}
+      <div class="subject-detail-meta">
+        <span>{subject.slug}</span>
+        {subject.section_slug && <span>{subject.section_slug}</span>}
+        {lastSeen && <span>最新 {lastSeen}</span>}
+        {subject.mention_count > 0 && <span>{subject.mention_count} mentions</span>}
+        {subject.homepage_url && <a href={subject.homepage_url} target="_blank" rel="noreferrer">Homepage</a>}
+      </div>
+    </header>
+
+    <section class="subject-module subject-timeline">
+      <div class="subject-module-head">
+        <div>
+          <span>01</span>
+          <h2>关键事件时间线</h2>
+        </div>
+        <strong>{timeline.length}</strong>
+      </div>
+      {timeline.length > 0 ? (
+        <ol class="subject-timeline-list">
+          {timeline.map((item: SubjectInsight) => (
+            <li>
+              <time>{dateLabel(item.event_date || item.snapshot_date)}</time>
+              <div>
+                <h3>{item.title}</h3>
+                {item.summary && <p>{item.summary}</p>}
+                {item.analysis && <div class="subject-analysis">{item.analysis}</div>}
+                {evidenceCount(item) > 0 && <span class="subject-evidence">{evidenceCount(item)} evidence</span>}
+              </div>
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <div class="subject-module-empty">暂无发布内容</div>
+      )}
+    </section>
+
+    <section class="subject-module">
+      <div class="subject-module-head">
+        <div>
+          <span>02</span>
+          <h2>突出点</h2>
+        </div>
+        <strong>{highlights.length}</strong>
+      </div>
+      {highlights.length > 0 ? (
+        <div class="subject-highlight-list">
+          {highlights.map((item: SubjectInsight) => (
+            <article class="subject-highlight">
+              <h3>{item.title}</h3>
+              {item.summary && <p>{item.summary}</p>}
+              {item.analysis && <div class="subject-analysis">{item.analysis}</div>}
+              <div class="subject-insight-meta">
+                {item.confidence !== null && <span>{Math.round((item.confidence || 0) * 100)}%</span>}
+                {evidenceCount(item) > 0 && <span>{evidenceCount(item)} evidence</span>}
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div class="subject-module-empty">暂无发布内容</div>
+      )}
+    </section>
+
+    <section class="subject-module">
+      <div class="subject-module-head">
+        <div>
+          <span>03</span>
+          <h2>横向对比</h2>
+        </div>
+        <strong>{comparisons.length}</strong>
+      </div>
+      {comparisons.length > 0 ? (
+        <div class="subject-comparison-list">
+          {comparisons.map((item: SubjectInsight) => (
+            <article class="subject-comparison">
+              <div>
+                <h3>{item.title}</h3>
+                {item.summary && <p>{item.summary}</p>}
+              </div>
+              {item.analysis && <div class="subject-analysis">{item.analysis}</div>}
+              <div class="subject-insight-meta">
+                {item.comparison_subject_ids.length > 0 && <span>{item.comparison_subject_ids.length} subjects</span>}
+                {evidenceCount(item) > 0 && <span>{evidenceCount(item)} evidence</span>}
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <div class="subject-module-empty">暂无发布内容</div>
+      )}
+    </section>
+  </main>
+
+  <Footer />
+</BaseLayout>

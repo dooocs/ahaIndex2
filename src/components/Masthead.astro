@@ -1,11 +1,13 @@
 ---
 import type { ProcessedItem } from '../lib/types';
+import SiteNav from './SiteNav.astro';
 
 interface Props {
   items?: ProcessedItem[];
+  subtitle?: string;
 }
 
-const { items = [] } = Astro.props;
+const { items = [], subtitle = '每日 AI 简报' } = Astro.props;
 
 const displayDate = items.length > 0 && items[0].snapshot_date
   ? new Date(items[0].snapshot_date + 'T00:00:00')
@@ -33,7 +35,7 @@ const ahaScore = items.length > 0
 
     <div class="masthead-title">
       <span class="masthead-tagline">AMAZINGINDEX.COM</span>
-      <span class="masthead-subtitle">每日 AI 简报</span>
+      <span class="masthead-subtitle">{subtitle}</span>
     </div>
 
     <div class="masthead-meta">
@@ -46,4 +48,5 @@ const ahaScore = items.length > 0
       </div>
     </div>
   </div>
+  <SiteNav />
 </header>

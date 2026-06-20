@@ -1,4 +1,4 @@
-import { getAllDates, getAllItems } from './data';
+import { getAllDates, getAllItems, getPublicDirectorySubjects } from './data';
 import type { ProcessedItem } from './types';
 
 const SITE_URL = 'https://www.amazingindex.com';
@@ -84,13 +84,40 @@ function getDailySitemapEntries(dates: string[]): SitemapEntry[] {
   ];
 }
 
+function normalizeSitemapDate(value: string | null | undefined): string | undefined {
+  return value ? value.slice(0, 10) : undefined;
+}
+
+function getLatestSubjectDate(subjects: Awaited<ReturnType<typeof getPublicDirectorySubjects>>): string | undefined {
+  let latest: string | undefined;
+
+  for (const subject of subjects) {
+    const candidate = normalizeSitemapDate(subject.last_seen_at) ?? normalizeSitemapDate(subject.first_seen_at);
+    if (candidate && (!latest || candidate > latest)) {
+      latest = candidate;
+    }
+  }
+
+  return latest;
+}
+
+function getSubjectSitemapEntries(subjects: Awaited<ReturnType<typeof getPublicDirectorySubjects>>): SitemapEntry[] {
+  return subjects.map((subject) => ({
+    url: absoluteUrl(`/subjects/${subject.slug}`),
+    lastmod: normalizeSitemapDate(subject.last_seen_at) ?? normalizeSitemapDate(subject.first_seen_at),
+  }));
+}
+
 export async function getPagesSitemapEntries(): Promise<SitemapEntry[]> {
   const dates = await getAllDates();
+  const subjects = await getPublicDirectorySubjects();
 
   return [
     ...getStaticSitemapEntries(),
     { url: absoluteUrl('/daily') },
+    { url: absoluteUrl('/subjects'), lastmod: getLatestSubjectDate(subjects) },
     ...getDailySitemapEntries(dates),
+    ...getSubjectSitemapEntries(subjects),
   ];
 }
 
