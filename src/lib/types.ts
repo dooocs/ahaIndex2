@@ -179,6 +179,30 @@ export interface SubjectStatsRow {
   item_count: number;
 }
 
+export interface SubjectSignalStats {
+  subject_id: string;
+  signal_count_30d: number;
+  previous_signal_count_30d: number;
+  trend_pct_30d: number;
+  latest_signal_at: string | null;
+  sparkline: number[];
+}
+
+export interface SubjectSignal {
+  subject_id: string;
+  item_id: string;
+  snapshot_date: string;
+  source_name: string | null;
+  title: string;
+  summary: string | null;
+  url: string | null;
+  score: number | null;
+  rank: number | null;
+  confidence: number | null;
+  detected_by: string | null;
+  external: boolean;
+}
+
 // ─── Subject V2 types ─────────────────────────────────
 
 export interface SubjectCatalogEntry {

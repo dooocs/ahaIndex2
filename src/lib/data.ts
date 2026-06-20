@@ -10,6 +10,8 @@ import type {
   TimelineEntry,
   TrackInfo,
   SubjectStatsRow,
+  SubjectSignal,
+  SubjectSignalStats,
   SubjectCatalogEntry,
   SubjectDirectorySection,
   SubjectInsight,
@@ -38,6 +40,14 @@ function memoBy<T>(prefix: string, fn: (arg: string) => Promise<T>): (arg: strin
     _cache.set(key, result);
     return result;
   };
+}
+
+function chunkValues<T>(values: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < values.length; i += size) {
+    chunks.push(values.slice(i, i + size));
+  }
+  return chunks;
 }
 
 function isMissingRelationError(error: unknown): boolean {
@@ -645,4 +655,235 @@ export async function getSubjectInsights(subjectId: string): Promise<SubjectInsi
     throw error;
   }
   return (data as SubjectInsight[]) ?? [];
+}
+
+interface SubjectMentionRow {
+  subject_id: string;
+  item_id: string;
+  snapshot_date: string;
+  source_name: string | null;
+  score: number | null;
+  context: string | null;
+  created_at: string | null;
+  detected_by?: string | null;
+  confidence?: number | null;
+  evidence?: Record<string, any> | null;
+}
+
+interface DisplaySignalItem {
+  processed_item_id: string;
+  snapshot_date: string;
+  source_name: string | null;
+  processed_title: string | null;
+  summary: string | null;
+  original_url: string | null;
+  aha_index: number | null;
+  rank: number | null;
+}
+
+interface RawSnapshotSignalItem {
+  id: string;
+  snapshot_date: string;
+  sub_source_type: string | null;
+  title: string | null;
+  content: string | null;
+  url: string | null;
+}
+
+function dateOnly(value: string | null | undefined): string {
+  return String(value || '').slice(0, 10);
+}
+
+function addDays(date: string, days: number): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function mentionDate(row: SubjectMentionRow): string {
+  return dateOnly(row.snapshot_date);
+}
+
+function evidenceTitle(row: SubjectMentionRow): string {
+  const evidence = row.evidence || {};
+  return String(evidence.title || evidence.item_title || row.context || row.item_id);
+}
+
+function evidenceSummary(row: SubjectMentionRow): string | null {
+  const evidence = row.evidence || {};
+  return (evidence.summary || row.context || null) as string | null;
+}
+
+function evidenceUrl(row: SubjectMentionRow): string | null {
+  const evidence = row.evidence || {};
+  return (evidence.source_url || null) as string | null;
+}
+
+async function fetchSubjectMentions(subjectIds: string[]): Promise<SubjectMentionRow[]> {
+  const ids = [...new Set(subjectIds.filter(Boolean))];
+  if (ids.length === 0) return [];
+
+  const rows: SubjectMentionRow[] = [];
+  for (const batch of chunkValues(ids, 100)) {
+    const { data, error } = await supabase
+      .from('subject_mentions')
+      .select('subject_id, item_id, snapshot_date, source_name, score, context, created_at, detected_by, confidence, evidence')
+      .in('subject_id', batch)
+      .order('snapshot_date', { ascending: false })
+      .order('created_at', { ascending: false });
+    if (error) {
+      if (isMissingRelationError(error)) return [];
+      throw error;
+    }
+    rows.push(...((data as SubjectMentionRow[]) ?? []));
+  }
+
+  return rows;
+}
+
+export async function getSubjectSignalStatsBySubject(
+  subjectIds: string[],
+): Promise<Map<string, SubjectSignalStats>> {
+  const mentions = await fetchSubjectMentions(subjectIds);
+  const fallbackDate = await getLatestDate();
+  const latestDate = mentions
+    .map(mentionDate)
+    .filter(Boolean)
+    .sort()
+    .at(-1) || fallbackDate || new Date().toISOString().slice(0, 10);
+
+  const currentStart = addDays(latestDate, -29);
+  const previousStart = addDays(latestDate, -59);
+  const previousEnd = addDays(currentStart, -1);
+  const sparkDates = Array.from({ length: 14 }, (_, i) => addDays(latestDate, i - 13));
+
+  const bySubject = new Map<string, SubjectMentionRow[]>();
+  for (const mention of mentions) {
+    const existing = bySubject.get(mention.subject_id) || [];
+    existing.push(mention);
+    bySubject.set(mention.subject_id, existing);
+  }
+
+  const stats = new Map<string, SubjectSignalStats>();
+  for (const subjectId of subjectIds) {
+    const rows = bySubject.get(subjectId) || [];
+    const currentRows = rows.filter(row => {
+      const d = mentionDate(row);
+      return d >= currentStart && d <= latestDate;
+    });
+    const previousRows = rows.filter(row => {
+      const d = mentionDate(row);
+      return d >= previousStart && d <= previousEnd;
+    });
+
+    const currentCount = currentRows.length;
+    const previousCount = previousRows.length;
+    const trendPct = previousCount > 0
+      ? Math.round(((currentCount - previousCount) / previousCount) * 100)
+      : currentCount > 0
+        ? 100
+        : 0;
+
+    const latestSignal = [...rows].sort((a, b) => {
+      const ad = a.created_at || a.snapshot_date;
+      const bd = b.created_at || b.snapshot_date;
+      return String(bd).localeCompare(String(ad));
+    })[0];
+
+    stats.set(subjectId, {
+      subject_id: subjectId,
+      signal_count_30d: currentCount,
+      previous_signal_count_30d: previousCount,
+      trend_pct_30d: trendPct,
+      latest_signal_at: latestSignal?.created_at || latestSignal?.snapshot_date || null,
+      sparkline: sparkDates.map(date => rows.filter(row => mentionDate(row) === date).length),
+    });
+  }
+
+  return stats;
+}
+
+async function loadDisplaySignalItems(itemIds: string[]): Promise<Map<string, DisplaySignalItem>> {
+  const map = new Map<string, DisplaySignalItem>();
+  for (const batch of chunkValues([...new Set(itemIds)], 100)) {
+    const { data, error } = await supabase
+      .from('display_items')
+      .select('processed_item_id, snapshot_date, source_name, processed_title, summary, original_url, aha_index, rank')
+      .in('processed_item_id', batch);
+    if (error) {
+      if (isMissingRelationError(error)) return map;
+      throw error;
+    }
+    for (const item of (data as DisplaySignalItem[]) ?? []) {
+      map.set(`${item.processed_item_id}:${dateOnly(item.snapshot_date)}`, item);
+    }
+  }
+  return map;
+}
+
+async function loadRawSnapshotSignalItems(itemIds: string[]): Promise<Map<string, RawSnapshotSignalItem>> {
+  const map = new Map<string, RawSnapshotSignalItem>();
+  for (const batch of chunkValues([...new Set(itemIds)], 100)) {
+    const { data, error } = await supabase
+      .from('octp_snapshot_raw_items')
+      .select('id, snapshot_date, sub_source_type, title, content, url')
+      .in('id', batch);
+    if (error) {
+      if (isMissingRelationError(error)) return map;
+      throw error;
+    }
+    for (const item of (data as RawSnapshotSignalItem[]) ?? []) {
+      map.set(`${item.id}:${dateOnly(item.snapshot_date)}`, item);
+    }
+  }
+  return map;
+}
+
+export async function getSubjectSignals(
+  subjectId: string,
+  limit = 20,
+): Promise<SubjectSignal[]> {
+  const mentions = await fetchSubjectMentions([subjectId]);
+  const sorted = mentions.sort((a, b) => {
+    const dateDiff = mentionDate(b).localeCompare(mentionDate(a));
+    if (dateDiff !== 0) return dateDiff;
+    return Number(b.score || 0) - Number(a.score || 0);
+  });
+  const itemIds = sorted.map(row => row.item_id).filter(Boolean);
+  const displayItems = await loadDisplaySignalItems(itemIds);
+  const rawItems = await loadRawSnapshotSignalItems(itemIds);
+
+  return sorted.slice(0, limit).map(row => {
+    const key = `${row.item_id}:${mentionDate(row)}`;
+    const displayItem = displayItems.get(key);
+    const rawItem = rawItems.get(key);
+    const evidence = row.evidence || {};
+
+    return {
+      subject_id: row.subject_id,
+      item_id: row.item_id,
+      snapshot_date: mentionDate(row),
+      source_name: displayItem?.source_name || rawItem?.sub_source_type || row.source_name || (evidence.source_name as string) || null,
+      title: displayItem?.processed_title || rawItem?.title || evidenceTitle(row),
+      summary: displayItem?.summary || rawItem?.content || evidenceSummary(row),
+      url: displayItem?.original_url || rawItem?.url || evidenceUrl(row),
+      score: displayItem?.aha_index ?? row.score ?? null,
+      rank: displayItem?.rank ?? (typeof evidence.rank === 'number' ? evidence.rank : null),
+      confidence: row.confidence ?? null,
+      detected_by: row.detected_by ?? null,
+      external: Boolean(evidence.external || evidence.source_table === 'web_research'),
+    };
+  });
+}
+
+export async function getRelatedSubjects(
+  subject: SubjectCatalogEntry,
+  limit = 6,
+): Promise<SubjectCatalogEntry[]> {
+  const subjects = await getDirectorySubjects();
+  const siblings = subjects.filter(candidate =>
+    candidate.id !== subject.id &&
+    (candidate.section_slug === subject.section_slug || candidate.type === subject.type)
+  );
+  return siblings.sort(compareSubjectCatalogEntries).slice(0, limit);
 }
