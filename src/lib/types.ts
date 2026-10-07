@@ -82,6 +82,7 @@ export interface GlobalStats {
 // ─── Project Heatmap types ──────────────────────────────
 
 export interface ProjectHeatmapRow {
+  id: string;
   subject_id: string;
   subject_slug: string;
   subject_name: string;
@@ -90,7 +91,6 @@ export interface ProjectHeatmapRow {
   track_name: string | null;
   track_group: string | null;
   snapshot_date: string;
-  score: number | null;
   score_100: number | null;
   role: string | null;
   source_name: string | null;

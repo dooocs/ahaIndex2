@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { fetchProjectHeatmapData } from './project-heatmap';
 import type {
   ProcessedItem,
   GlobalStats,
@@ -395,23 +396,7 @@ export async function getHistoryItems(): Promise<ProcessedItem[]> {
 
 // ─── Project Heatmap queries (memoized) ────────────────
 
-export const getProjectHeatmapData = memo<ProjectHeatmapRow[]>('phmData', async () => {
-  const rows: ProjectHeatmapRow[] = [];
-  const page_size = 1000;
-  let offset = 0;
-  while (true) {
-    const { data, error } = await supabase
-      .from('project_heatmap_data')
-      .select('*')
-      .range(offset, offset + page_size - 1);
-    if (error) throw error;
-    if (!data || data.length === 0) break;
-    rows.push(...(data as ProjectHeatmapRow[]));
-    if (data.length < page_size) break;
-    offset += page_size;
-  }
-  return rows;
-});
+export const getProjectHeatmapData = memo<ProjectHeatmapRow[]>('phmData', () => fetchProjectHeatmapData(supabase));
 
 export const getTracks = memo<TrackInfo[]>('tracks', async () => {
   const { data, error } = await supabase

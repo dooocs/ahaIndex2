@@ -8,7 +8,9 @@
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
     "verify:rss": "node scripts/verify-rss-build.mjs",
+    "verify:build": "node --env-file-if-exists=.env scripts/verify-build.mjs",
     "preview": "astro preview",
     "astro": "astro"
   },
@@ -20,6 +22,8 @@
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.8",
+    "parse5": "7.3.0",
+    "sax": "1.6.0",
     "typescript": "^5.9.3"
   }
 }
