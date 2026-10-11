@@ -17,6 +17,7 @@ async function init() {
   if (!view) return;
   let disposed = false;
   let signingOut = false;
+  let redirectingToLogin = false;
   const disposers: (() => void)[] = [];
   cleanup = () => { disposed = true; disposers.forEach(fn => fn()); activeRoot = null; };
   const $ = <T extends HTMLElement>(selector: string) => root.querySelector<T>(selector)!;
@@ -26,7 +27,11 @@ async function init() {
     target.textContent = text;
     target.dataset.error = String(error);
   };
-  const login = () => location.assign(`/login/?next=${encodeURIComponent(location.pathname + location.search)}`);
+  const login = () => {
+    if (disposed || redirectingToLogin) return;
+    redirectingToLogin = true;
+    location.assign(`/login/?next=${encodeURIComponent(location.pathname + location.search)}`);
+  };
   const rpc = communityRpc;
   const busy = async (button: HTMLButtonElement, action: () => Promise<void>) => {
     if (button.disabled) return;

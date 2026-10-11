@@ -20,12 +20,14 @@ let published = [{ id: 18, nickname: '周末散步的人', age: 29, gender: '女
 const browser = await chromium.launch({headless:true,channel:process.env.PLAYWRIGHT_CHANNEL || undefined});
 let testPage;
 const errors = [], apiCalls = [], requestFailures = [];
+let loginNavigations = 0;
 try {
  const context = await browser.newContext({viewport:{width:1365,height:900}});
  const page = await context.newPage();
  await page.clock.install({time:new Date()});
  testPage = page;
  page.on('pageerror', e => errors.push(e.message));
+ page.on('request', request => { if(request.isNavigationRequest() && new URL(request.url()).pathname==='/login/') loginNavigations++; });
  page.on('requestfailed', request => requestFailures.push({path:new URL(request.url()).pathname,error:request.failure()?.errorText}));
  await context.route(`${supabaseOrigin}/**`, async route => {
    const url = new URL(route.request().url());
@@ -93,6 +95,7 @@ try {
  await page.getByRole('link',{name:'想找一个一起逛书店的人'}).waitFor();
  await page.getByRole('link',{name:'发布相亲帖',exact:true}).filter({visible:true}).click();
  await page.waitForURL('**/login/**');
+ assert.equal(loginNavigations,1,'Clearing a missing session must redirect to login only once');
  await page.getByLabel('邮箱',{exact:true}).fill(user.email);
  await page.locator('[name=terms]').check();
  await page.getByRole('button',{name:'发送登录链接',exact:true}).click();
