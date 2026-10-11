@@ -14,7 +14,9 @@
   removal, and full-image viewing. Photo changes require review again.
 - No comments, chat, matching, payments, or new admin application.
 
-Routes: `/login/`, `/auth/callback/`, `/account/`, `/meet/`, `/meet/new/`, `/meet/post/?id=123`.
+Routes: `/login`, `/auth/callback`, `/account`, `/meet`, `/meet/new`, `/meet/post?id=123`.
+Community links use the existing deployment's bare URL objects, without trailing
+slashes. Return paths are normalized while preserving their query and fragment.
 All are static shells. User data is fetched at runtime, never added to the daily
 build, RSS, sitemap, or analytics payload. Community pages are `noindex`; actual
 privacy is enforced by database privileges/RLS and RPC authorization, not robots.
@@ -40,7 +42,8 @@ a separate audit/remediation task. No changes to those permissions are included.
    These limits do not establish Aliyun's SMTP behavior; verify Aliyun delivery,
    eligible recipients, and quotas independently before opening registration.
 5. Set the Site URL to the intended test origin and the email OTP/link lifetime to
-   600 seconds. Allow that origin's `/auth/callback/**` redirect path; preserve
+   600 seconds. Allow that origin's exact `/auth/callback` redirect URL (including
+   callback query parameters) and retain the legacy `/auth/callback/**` entry; preserve
    server-side resend/verification rate limits. The static callback lets the
    Supabase SDK consume the implicit-flow fragment, clears auth parameters, checks
    the verified user, then follows only a sanitized same-origin return path.

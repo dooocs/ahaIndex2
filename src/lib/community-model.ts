@@ -40,12 +40,12 @@ export function validatePost(values: Record<string, unknown>) {
 }
 
 export function safeReturnPath(value: string | null): string {
-  if (!value || /[\\\u0000-\u001f]/.test(value) || !value.startsWith('/') || value.startsWith('//')) return '/account/';
+  if (!value || /[\\\u0000-\u001f]/.test(value) || !value.startsWith('/') || value.startsWith('//')) return '/account';
   try {
     const url = new URL(value, 'https://www.amazingindex.com');
-    if (url.origin !== 'https://www.amazingindex.com' || url.pathname.startsWith('/login') || url.pathname.startsWith('/auth/')) return '/account/';
-    return `${url.pathname}${url.search}${url.hash}`;
-  } catch { return '/account/'; }
+    if (url.origin !== 'https://www.amazingindex.com' || url.pathname.startsWith('/login') || url.pathname.startsWith('/auth/')) return '/account';
+    return `${url.pathname.replace(/\/+$/, '') || '/'}${url.search}${url.hash}`;
+  } catch { return '/account'; }
 }
 
 export function communityConfig(values: Record<string, string | undefined>, allowMock = false) {

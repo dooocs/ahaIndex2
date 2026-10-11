@@ -31,7 +31,7 @@ if(pendingKey) {
 key ||= randomBytes(32).toString('hex');
 const hash = createHash('sha256').update(key).digest('hex');
 // Retain a recovery copy before remote configuration can change the active key.
-if(!pendingKey) await writeFile(pending,`${origin.origin}/meet/review/#key=${key}\n`,{mode:0o600,flag:'wx'});
+if(!pendingKey) await writeFile(pending,`${origin.origin}/meet/review#key=${key}\n`,{mode:0o600,flag:'wx'});
 await chmod(pending,0o600);
 const result = spawnSync(command.cli,command.args, {
   input: `COMMUNITY_REVIEW_KEY_HASH=${hash}\n`, env:command.env, encoding: 'utf8', timeout: 90000,
@@ -39,7 +39,7 @@ const result = spawnSync(command.cli,command.args, {
 if (result.status !== 0) throw new Error(`Could not configure review secret; existing link is unchanged and recovery is in ${pending}`);
 try { await verifyReviewDeployment(process.env,origin.origin,key); }
 catch { throw new Error(`Review endpoint is not verified; existing link is unchanged and recovery is in ${pending}`); }
-await writeFile(pending,`${origin.origin}/meet/review/#key=${key}\n`,{mode:0o600});
+await writeFile(pending,`${origin.origin}/meet/review#key=${key}\n`,{mode:0o600});
 await rename(pending,file);
 await chmod(file, 0o600);
 console.log(`Review link saved to ${file}. The key itself is not printed. Rotation invalidates existing sessions and links.`);

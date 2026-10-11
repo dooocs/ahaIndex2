@@ -42,7 +42,7 @@ async function fixture(label, next) {
   const email = `community-${run}-${label}@example.test`;
   const link = checked(await admin.auth.admin.generateLink({
     type: 'magiclink', email,
-    options: { redirectTo: `${origin}/auth/callback/?next=${encodeURIComponent(next)}`, data: { community_test_run: run } },
+    options: { redirectTo: `${origin}/auth/callback?next=${encodeURIComponent(next)}`, data: { community_test_run: run } },
   }), 'generate test login');
   users.push(link.user.id);
   secrets.push(link.properties.action_link);
@@ -65,7 +65,7 @@ try {
   browser = await chromium.launch({ headless: true, channel: process.env.PLAYWRIGHT_CHANNEL || undefined });
   baselineCount = checked(await rpc(anon,'meet_post_count'), 'baseline count');
   stage = 'real link callback and verified owner session';
-  const owner = await fixture('owner', '/meet/new/');
+  const owner = await fixture('owner', '/meet/new');
   await owner.page.locator('#post-form').waitFor({ state: 'visible' });
   await owner.page.getByLabel('昵称', { exact: true }).fill('自动化测试账号');
   await owner.page.getByLabel('年龄', { exact: true }).fill('28');
@@ -99,7 +99,7 @@ try {
   for (const field of ['city', 'age', 'gender']) assert.ok(await owner.page.locator(`[name=${field}]`).getAttribute('required') !== null);
   stage = 'real form submission';
   await owner.page.getByRole('button', { name: '提交审核' }).click();
-  await owner.page.waitForURL(`${origin}/account/?submitted=1`);
+  await owner.page.waitForURL(`${origin}/account?submitted=1`);
   await owner.page.getByText('待审核', { exact: true }).waitFor();
   const row = checked(await owner.client.from('meet_posts').select('id,status').eq('owner_id', owner.id).single(), 'owner post');
   postId = row.id;
@@ -110,7 +110,7 @@ try {
   assert.equal((await rpc(anon,'get_meet_contact', { p_id: postId })).error?.code, '42501');
   assert.equal((await owner.client.from('meet_posts').update({ status: 'published' }).eq('id', postId)).error?.code, '42501');
   stage = 'second user isolation';
-  const reader = await fixture('reader', '/account/');
+  const reader = await fixture('reader', '/account');
   assert.deepEqual(checked(await reader.client.from('meet_posts').select('*').eq('id', postId), 'reader raw posts'), []);
   assert.deepEqual(checked(await reader.client.from('meet_contacts').select('*').eq('post_id', postId), 'reader raw contacts'), []);
   assert.equal(checked(await rpc(reader.client,'get_meet_contact', { p_id: postId }), 'pending contact'), null);
@@ -124,7 +124,7 @@ try {
   assert.equal(published[0].photo_count, 2);
   assert.equal(Object.hasOwn(published[0], 'owner_id'), false);
   assert.equal(Object.hasOwn(published[0], 'contact'), false);
-  await reader.page.goto(`${origin}/meet/post/?id=${postId}`);
+  await reader.page.goto(`${origin}/meet/post?id=${postId}`);
   await reader.page.getByRole('heading', { name: '临时联调测试帖，稍后自动删除' }).waitFor();
   await reader.page.getByRole('button', { name: '查看联系方式' }).click();
   await reader.page.getByText('test-contact-not-a-real-person').waitFor();
@@ -147,12 +147,12 @@ try {
   await owner.page.locator('.photo-editor-item').nth(1).getByRole('button',{name:'移除照片',exact:true}).click();
   await owner.page.locator('[name=consent]').check();
   await owner.page.getByRole('button',{name:'提交审核',exact:true}).click();
-  await owner.page.waitForURL(`${origin}/account/?submitted=1`);
+  await owner.page.waitForURL(`${origin}/account?submitted=1`);
   await owner.page.getByText('待审核',{exact:true}).waitFor();
   assert.deepEqual(checked(await photos(reader.client,[postId]),'edited photos hidden'),[]);
   assert.equal(checked(await admin.from('meet_photos').select('id').eq('post_id',postId),'remaining photo').length,1);
   checked(await admin.from('meet_posts').update({status:'published'}).eq('id',postId).eq('owner_id',owner.id),'review changed photo');
-  await owner.page.goto(`${origin}/account/`);
+  await owner.page.goto(`${origin}/account`);
   await owner.page.getByText('已发布', { exact: true }).waitFor();
   owner.page.once('dialog', dialog => dialog.accept());
   await owner.page.getByRole('button', { name: '撤回帖子' }).click();
@@ -161,7 +161,7 @@ try {
   assert.equal(checked(await rpc(reader.client,'get_meet_contact', { p_id: postId }), 'withdrawn contact'), null);
   assert.deepEqual(checked(await photos(reader.client,[postId]),'withdrawn photos'),[]);
   await owner.page.getByRole('button', { name: '退出登录' }).click();
-  await owner.page.waitForURL(`${origin}/meet/`);
+  await owner.page.waitForURL(`${origin}/meet`);
   await owner.page.locator('#post-total').getByText(String(baselineCount),{exact:true}).waitFor();
   stage = 'real empty feed and mobile layout';
   await owner.page.screenshot({ path: join(tmpdir(), 'community-live-feed.png'), fullPage: true });
@@ -179,7 +179,7 @@ try {
   }
   for (const width of [375, 320]) {
     await owner.page.setViewportSize({ width, height: 812 });
-    for (const path of ['/meet/', '/login/']) {
+    for (const path of ['/meet', '/login']) {
       await owner.page.goto(origin + path);
       const overflow = await owner.page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
       assert.equal(overflow, false, `No horizontal overflow at ${width}`);

@@ -30,7 +30,7 @@ async function init() {
   const login = () => {
     if (disposed || redirectingToLogin) return;
     redirectingToLogin = true;
-    location.assign(`/login/?next=${encodeURIComponent(location.pathname + location.search)}`);
+    location.assign(`/login?next=${encodeURIComponent(location.pathname + location.search)}`);
   };
   const rpc = communityRpc;
   const busy = async (button: HTMLButtonElement, action: () => Promise<void>) => {
@@ -72,7 +72,7 @@ async function init() {
     const element = node('article', '', 'meet-card');
     const photo = document.createElement('a');
     photo.className = 'post-photo';
-    photo.href = `/meet/post/?id=${post.id}`;
+    photo.href = `/meet/post?id=${post.id}`;
     photo.dataset.postPhoto = String(post.id);
     photo.textContent = [...post.city][0] || [...post.nickname][0];
     if (post.photo_count) { photo.textContent = '登录后可见'; photo.dataset.locked = 'true'; }
@@ -83,7 +83,7 @@ async function init() {
     content.append(meta);
     const title = node('h2', '');
     const link = document.createElement('a');
-    link.href = `/meet/post/?id=${post.id}`;
+    link.href = `/meet/post?id=${post.id}`;
     link.dataset.astroReload = '';
     link.textContent = post.title;
     title.append(link);
@@ -177,7 +177,7 @@ async function init() {
         updateCountdown();
         message('正在发送登录链接…');
         try {
-          const redirect = new URL('/auth/callback/', location.origin);
+          const redirect = new URL('/auth/callback', location.origin);
           redirect.searchParams.set('next', next);
           const { error } = await client!.auth.signInWithOtp({ email, options: {
             shouldCreateUser: true, emailRedirectTo: redirect.href, captchaToken: captchaToken || undefined,
@@ -294,7 +294,7 @@ async function init() {
           updateSubmit();
           try {
             await rpc('submit_meet_post', { ...values, p_photo_ids: ids });
-            location.assign('/account/?submitted=1');
+            location.assign('/account?submitted=1');
           } catch (error) {
             const seconds = postRetrySeconds(error);
             if (seconds) { retryAt = Date.now() + seconds * 1000; rateLimited = true; }
@@ -314,13 +314,13 @@ async function init() {
         signingOut = true;
         const { error } = await client.auth.signOut({ scope: 'local' });
         if (error) { signingOut = false; throw error; }
-        location.assign('/meet/');
+        location.assign('/meet');
       }); });
       const { data: post, error } = await client.from('meet_posts').select('*').eq('owner_id', user.id).maybeSingle();
       if (error) throw error;
       if (!post) {
         message('你还没有发布相亲帖。');
-        const link = document.createElement('a'); link.href = '/meet/new/'; link.dataset.astroReload = ''; link.className = 'community-button'; link.textContent = '发布相亲帖';
+        const link = document.createElement('a'); link.href = '/meet/new'; link.dataset.astroReload = ''; link.className = 'community-button'; link.textContent = '发布相亲帖';
         $('#my-post').append(link);
       } else {
         const expired = post.status === 'published' && new Date(post.expires_at).getTime() <= Date.now();

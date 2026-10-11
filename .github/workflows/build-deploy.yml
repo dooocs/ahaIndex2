@@ -118,17 +118,6 @@ jobs:
               done
           wait
 
-          # Community links and Auth callbacks use trailing slashes. OSS does not
-          # resolve those keys to index.html, so copy the built HTML to exact keys.
-          for key in meet meet/new meet/post meet/review login account auth/callback; do
-            test -f "./dist/$key/index.html"
-            ossutil api copy-object \
-              --bucket amazingindex \
-              --key "$key/" \
-              --copy-source "/amazingindex/$key/index.html" \
-              $CREDS
-          done
-
           END=$(date +%s)
           echo "✅ 部署完成，总耗时 $((END-START))s"
 

@@ -3,7 +3,7 @@ import { communityClient } from '../lib/community-client';
 function render(signedIn: boolean) {
   document.querySelectorAll<HTMLAnchorElement>('[data-community-account]').forEach(link => {
     link.textContent = signedIn ? '我的账号' : '登录 / 注册';
-    link.href = signedIn ? '/account/' : `/login/?next=${encodeURIComponent(location.pathname + location.search)}`;
+    link.href = signedIn ? '/account' : `/login?next=${encodeURIComponent(location.pathname + location.search)}`;
   });
 }
 async function refresh() {
