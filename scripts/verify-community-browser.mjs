@@ -19,14 +19,14 @@ let rateLimitNextPost = false;
 let published = [{ id: 18, nickname: '周末散步的人', age: 29, gender: '女', city: '杭州', occupation: '产品设计', title: '想找一个一起逛书店的人', about: '工作日认真工作，周末喜欢散步、看展和逛书店。比起热闹的聚会，更喜欢两个人慢慢聊天。', looking_for: '真诚、独立，有自己的兴趣，也愿意分享日常。', created_at: new Date().toISOString(), expires_at: new Date(Date.now()+86400000).toISOString() }];
 const browser = await chromium.launch({headless:true,channel:process.env.PLAYWRIGHT_CHANNEL || undefined});
 let testPage;
+const errors = [], apiCalls = [], requestFailures = [];
 try {
  const context = await browser.newContext({viewport:{width:1365,height:900}});
- const errors = [];
- const apiCalls = [];
  const page = await context.newPage();
  await page.clock.install({time:new Date()});
  testPage = page;
  page.on('pageerror', e => errors.push(e.message));
+ page.on('requestfailed', request => requestFailures.push({path:new URL(request.url()).pathname,error:request.failure()?.errorText}));
  await context.route(`${supabaseOrigin}/**`, async route => {
    const url = new URL(route.request().url());
    const body = route.request().postDataJSON();
@@ -195,6 +195,7 @@ try {
  if(testPage) {
    await testPage.screenshot({path:screenshot('mock-failure'),fullPage:true});
    console.error('Page message:',await testPage.locator('#community-message').textContent().catch(()=>null));
+   console.error('Browser diagnostics:',JSON.stringify({errors,apiCalls,requestFailures}));
  }
  throw error;
 } finally { await browser.close(); }
