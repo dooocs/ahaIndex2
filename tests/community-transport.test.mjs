@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { requestCommunityRpc, communityFunctionFetch } from '../src/lib/community-transport.ts';
+import { requestCommunityRpc, requestCommunityPhoto, communityFunctionFetch } from '../src/lib/community-transport.ts';
 
 const config={url:'https://spb-example.supabase.opentrust.net',key:'public-anon-key'};
 const noRpc={rpc:()=>assert.fail('Browser roles cannot call Aliyun business RPCs directly')};
@@ -71,4 +71,45 @@ test('standard cloud requests and anonymous requests never invent credentials',a
   };
   assert.equal(communityFunctionFetch({url:'https://community.supabase.co'},fetcher),fetcher);
   await communityFunctionFetch(config,fetcher)(`${config.url}/functions/v1/meet-api`);
+});
+
+test('photo listing and removal preserve the user credential through the Aliyun gateway',async()=>{
+  const signal=AbortSignal.timeout(30000);
+  for(const body of [{action:'list',posts:[1],own:true},{action:'discard',id:'fixture-photo'}]) {
+    const result=await requestCommunityPhoto(config,'photo-user-token',body,signal,async(url,options)=>{
+      assert.equal(url,`${config.url}/functions/v1/meet-photos`);
+      assert.equal(options.headers.get('authorization'),'Bearer photo-user-token');
+      assert.equal(options.headers.get('x-community-authorization'),'Bearer photo-user-token');
+      assert.equal(options.headers.get('content-type'),'application/json');
+      assert.equal(options.redirect,'error');
+      assert.equal(options.signal,signal);
+      assert.deepEqual(JSON.parse(options.body),body);
+      return Response.json({photos:[]});
+    });
+    assert.deepEqual(result,{photos:[]});
+  }
+  await assert.rejects(requestCommunityPhoto(config,'expired',{},signal,async()=>Response.json({error:'login_required'},{status:401})),/login_required/);
+});
+
+test('multipart photo uploads retain browser boundaries and block credential-bearing redirects',async()=>{
+  const form=new FormData(); form.set('file',new Blob(['fixture'],{type:'image/jpeg'}),'photo.jpg');
+  const controller=new AbortController();
+  const signal=AbortSignal.any([controller.signal,AbortSignal.timeout(90000)]);
+  const result=await requestCommunityPhoto(config,'upload-user-token',form,signal,async(url,options)=>{
+    assert.equal(url,`${config.url}/functions/v1/meet-photos`);
+    assert.equal(options.body,form);
+    assert.equal(options.headers.get('x-community-authorization'),'Bearer upload-user-token');
+    assert.equal(options.headers.get('apikey'),config.key);
+    assert.equal(options.headers.has('content-type'),false);
+    assert.equal(options.redirect,'error');
+    assert.equal(options.signal,signal);
+    assert.equal(options.cache,'no-store');
+    return Response.json({photo:{id:'uploaded-photo'}});
+  });
+  assert.equal(result.photo.id,'uploaded-photo');
+  controller.abort(); assert.equal(signal.aborted,true);
+  await requestCommunityPhoto({url:'https://community.supabase.co',key:'public-key'},'user',form,AbortSignal.timeout(30000),async(_url,options)=>{
+    assert.equal(new Headers(options.headers).has('x-community-authorization'),false);
+    return Response.json({photo:{id:'official-photo'}});
+  });
 });

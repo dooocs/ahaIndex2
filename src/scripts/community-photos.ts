@@ -13,7 +13,7 @@ function iconButton(label: string, icon: IconNode, action: () => void) {
 export async function photoEditor(root: HTMLElement, form: HTMLFormElement) {
   const controller = new AbortController();
   let disposed = false, uploading = false;
-  type Item = { photo?: MeetPhoto; file?: File; preview: string; error?: string; progress?: number };
+  type Item = { photo?: MeetPhoto; file?: File; preview: string; error?: string; progress?: number | null };
   const items: Item[] = (await listPhotos([], true)).map(photo => ({ photo, preview: photo.url! }));
   const input = root.querySelector<HTMLInputElement>('#photo-files')!;
   const grid = root.querySelector<HTMLElement>('#photo-editor-list')!;
@@ -49,7 +49,7 @@ export async function photoEditor(root: HTMLElement, form: HTMLFormElement) {
       }); remove.disabled = uploading;
       tools.append(left, right, remove); figure.append(img, caption, tools);
       if (!item.photo) {
-        const progress = document.createElement('p'); progress.className = 'photo-progress'; progress.textContent = item.error || (item.progress === undefined ? '正在压缩…' : item.progress >= 90 ? '正在处理…' : `正在上传 ${item.progress}%`);
+        const progress = document.createElement('p'); progress.className = 'photo-progress'; progress.textContent = item.error || (item.progress === undefined ? '正在压缩…' : item.progress === null ? '正在上传与处理…' : item.progress >= 90 ? '正在处理…' : `正在上传 ${item.progress}%`);
         figure.append(progress);
         if (item.error) { const retry = iconButton('重试上传', RotateCcw, () => { void upload(item); }); retry.disabled = uploading; figure.append(retry); }
       }

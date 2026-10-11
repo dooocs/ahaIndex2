@@ -1,5 +1,6 @@
 import { communityClient } from './community-client';
 import { community } from './community-config';
+import { requestCommunityPhoto, usesCommunityEdgeApi } from './community-transport';
 
 export const MAX_PHOTOS = 3;
 export interface MeetPhoto { id: string; post_id: number | null; sort_order: number; width: number; height: number; url?: string; }
@@ -20,13 +21,7 @@ async function token() {
   return session.access_token;
 }
 export async function photoRequest(body: Record<string, unknown>) {
-  const response = await fetch(`${community!.url}/functions/v1/meet-photos`, {
-    method: 'POST', headers: { Authorization: `Bearer ${await token()}`, apikey: community!.key, 'Content-Type': 'application/json' },
-    body: JSON.stringify(body), signal: AbortSignal.timeout(30000), cache: 'no-store',
-  });
-  const result = await response.json();
-  if (!response.ok) throw new Error(result.error || 'photo_service_unavailable');
-  return result;
+  return requestCommunityPhoto(community!,await token(),body,AbortSignal.timeout(30000));
 }
 export async function listPhotos(posts: number[], own = false, full = false): Promise<MeetPhoto[]> {
   const result = await photoRequest({ action: 'list', posts, own, full });
@@ -60,8 +55,17 @@ export async function preparePhoto(file: File): Promise<Blob> {
   } finally { bitmap.close(); }
 }
 
-export async function uploadPhoto(file: Blob, progress: (value: number) => void, signal: AbortSignal): Promise<MeetPhoto> {
+export async function uploadPhoto(file: Blob, progress: (value: number | null) => void, signal: AbortSignal): Promise<MeetPhoto> {
   const accessToken = await token();
+  if (usesCommunityEdgeApi(community!.url)) {
+    // XHR follows redirects; fetch keeps the custom gateway credential scoped.
+    if (signal.aborted) throw new Error('aborted');
+    const form = new FormData(); form.set('file',file,'photo.jpg');
+    progress(null);
+    const result = await requestCommunityPhoto(community!,accessToken,form,AbortSignal.any([signal,AbortSignal.timeout(90000)]));
+    progress(100);
+    return result.photo;
+  }
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     const abort = () => xhr.abort();

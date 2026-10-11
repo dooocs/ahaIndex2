@@ -30,3 +30,16 @@ export async function requestCommunityRpc(config: {url: string;key: string},clie
   if(!Object.hasOwn(result,'data')) throw new Error('Invalid community response');
   return {data:result.data,error:null};
 }
+
+export async function requestCommunityPhoto(config: {url: string;key: string},token: string,
+  body: Record<string,unknown> | FormData,signal: AbortSignal,fetcher: typeof fetch = fetch) {
+  const multipart = body instanceof FormData;
+  const response = await communityFunctionFetch(config,fetcher)(`${config.url}/functions/v1/meet-photos`,{
+    method:'POST',cache:'no-store',signal,
+    headers:{Authorization:`Bearer ${token}`,apikey:config.key,...(!multipart?{'Content-Type':'application/json'}:{})},
+    body:multipart?body:JSON.stringify(body),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'photo_service_unavailable');
+  return result;
+}
