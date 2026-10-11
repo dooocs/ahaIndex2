@@ -1,5 +1,5 @@
 /* Adapted from the supplied design system, scoped to community pages. */
-.community-page { --c-paper: #efe9df; --c-sunk: #ece7dc; --c-desk: #e0dbd0; --c-rule: #d9d4ca; --c-control: #7f7a72; --c-ink: #1c1814; --c-body: #625d56; --c-soft: #5f5a53; --c-red: #a83226; background: var(--c-desk); color: var(--c-ink); min-height: 100vh; border-top: 6px solid #283f44; }
+.community-page { --c-paper: #efe9df; --c-sunk: #ece7dc; --c-desk: #e0dbd0; --c-rule: #d9d4ca; --c-control: #7f7a72; --c-ink: #1c1814; --c-body: #625d56; --c-soft: #5f5a53; --c-red: #a83226; background: var(--c-desk); color: var(--c-ink); min-height: 100vh; }
 .community-page *, .community-page *::before, .community-page *::after { box-sizing: border-box; letter-spacing: 0; }
 .community-page .masthead { background: var(--c-paper); border: 0; }
 .community-page .masthead-inner { max-width: 1090px; height: 72px; min-height: 0; padding: 0 32px; }

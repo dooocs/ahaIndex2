@@ -293,7 +293,7 @@ async function init() {
           submitting = true;
           updateSubmit();
           try {
-            await rpc('submit_meet_post', { ...values, p_photo_ids: ids });
+            await rpc('submit_meet_post', { ...values, p_photo_ids: ids, p_public_photos: true });
             location.assign('/account?submitted=1');
           } catch (error) {
             const seconds = postRetrySeconds(error);

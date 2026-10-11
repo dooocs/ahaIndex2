@@ -10,7 +10,7 @@
   saved timestamp; server-side throttling preserves the in-page edits for retry.
 - Contact information is optional, separately stored, and visible to verified
   signed-in users only after the author explicitly consents and the post is live.
-- Up to six optional photos, private signed-in viewing, thumbnails, reordering,
+- Up to six optional photos, consented public viewing after review, thumbnails, reordering,
   removal, and full-image viewing. Photo changes require review again.
 - No comments, chat, matching, payments, or new admin application.
 
@@ -407,7 +407,14 @@ paper colors, restrained red accents, serif headings, ruled rows, and a 333px
 sidebar within a 1090px column. Existing self-hosted fonts are reused; Google
 Fonts are not requested. Scope remains MVP: no reply counts, contact requests,
 city filters, password flow, or invented statistics. City/age/gender remain
-required. Unlike the public cover in the reference, all photos remain private.
+required. Photo objects stay in private Storage, including publicly viewable photos.
+
+The public-photo update removes the community-only top border. Consented photos
+on approved, unexpired posts are viewable without login through `meet-public-photos`.
+Storage itself remains private. Apply migration 009 and deploy that standalone
+read-only function before releasing this frontend. Existing signed-in-only photo
+consent is retained until the author resubmits with `p_public_photos: true` under
+the revised form text; contacts still require a verified signed-in session.
 
 - Browser accepts JPG/PNG/WebP up to 10 MB, re-encodes to JPEG to remove metadata,
   and writes a max-1600px main image plus a max-400px thumbnail. Both remain below

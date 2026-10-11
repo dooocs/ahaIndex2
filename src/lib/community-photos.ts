@@ -29,7 +29,12 @@ export async function photoRequest(body: Record<string, unknown>) {
   return requestCommunityPhoto(community!,await token(),body,AbortSignal.timeout(30000));
 }
 export async function listPhotos(posts: number[], own = false, full = false): Promise<MeetPhoto[]> {
-  const result = await photoRequest({ action: 'list', posts, own, full });
+  const { data: { session }, error } = await communityClient!.auth.getSession();
+  if (error || (own && !session)) throw new Error('login_required');
+  const result = session
+    ? await photoRequest({ action: 'list', posts, own, full })
+    : await requestCommunityPhoto(community!, community!.key, { action: 'list', posts, full },
+      AbortSignal.timeout(30000), fetch, 'meet-public-photos');
   return result.photos.map((photo: MeetPhoto) => {
     const url = new URL(photo.url!);
     if (url.origin !== community!.url || !url.pathname.startsWith('/storage/v1/object/sign/meet-photos/')) throw new Error('invalid_photo_url');

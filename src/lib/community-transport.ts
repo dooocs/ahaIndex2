@@ -32,9 +32,10 @@ export async function requestCommunityRpc(config: {url: string;key: string},clie
 }
 
 export async function requestCommunityPhoto(config: {url: string;key: string},token: string,
-  body: Record<string,unknown> | FormData,signal: AbortSignal,fetcher: typeof fetch = fetch) {
+  body: Record<string,unknown> | FormData,signal: AbortSignal,fetcher: typeof fetch = fetch,
+  functionSlug: 'meet-photos' | 'meet-public-photos' = 'meet-photos') {
   const multipart = body instanceof FormData;
-  const response = await communityFunctionFetch(config,fetcher)(`${config.url}/functions/v1/meet-photos`,{
+  const response = await communityFunctionFetch(config,fetcher)(`${config.url}/functions/v1/${functionSlug}`,{
     method:'POST',cache:'no-store',signal,
     headers:{Authorization:`Bearer ${token}`,apikey:config.key,...(!multipart?{'Content-Type':'application/json'}:{})},
     body:multipart?body:JSON.stringify(body),
