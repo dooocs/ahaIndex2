@@ -1,7 +1,10 @@
 ---
+import { community } from '../lib/community-config';
 const pathname = Astro.url.pathname;
 const isSubjects = pathname.startsWith('/subjects');
-const isDaily = !isSubjects;
+const isMeet = pathname.startsWith('/meet');
+const isAccount = pathname.startsWith('/account') || pathname.startsWith('/login') || pathname.startsWith('/auth/');
+const isDaily = !isSubjects && !isMeet && !isAccount;
 ---
 
 <nav class="nav-bar" aria-label="站点导航">
@@ -9,6 +12,18 @@ const isDaily = !isSubjects;
     <div class="nav-tabs">
       <a href="/" class={`nav-tab ${isDaily ? 'active' : ''}`} data-astro-reload>日报</a>
       <a href="/subjects" class={`nav-tab ${isSubjects ? 'active' : ''}`} data-astro-reload>专题-beta</a>
+      {community && <a href="/meet/" class={`nav-tab ${isMeet ? 'active' : ''}`} data-astro-reload>相亲贴</a>}
     </div>
+    {community && <a href="/login/" class="community-nav" data-community-account data-astro-reload>登录 / 注册</a>}
   </div>
 </nav>
+<script src="../scripts/community-nav.ts"></script>
+<style>
+  .community-nav { font-family: var(--fd); font-size: 12px; color: var(--ink); text-decoration: none; flex-shrink: 0; letter-spacing: 0; }
+  @media(max-width: 768px) {
+    .nav-inner:has(.community-nav) { padding: 0 16px; flex-direction: row; align-items: center; height: 44px; gap: 8px; }
+    .nav-inner:has(.community-nav) .nav-tabs { width: auto; flex: 1; min-width: 0; }
+    .nav-inner:has(.community-nav) .nav-tab { padding-left: 12px; padding-right: 12px; letter-spacing: 0; }
+    .nav-inner:has(.community-nav) .nav-tab:first-child { padding-left: 0; }
+  }
+</style>

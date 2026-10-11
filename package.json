@@ -9,6 +9,11 @@
     "dev": "astro dev",
     "build": "astro build",
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "verify:community": "node scripts/verify-community-browser.mjs",
+    "verify:community:login": "node scripts/verify-community-login.mjs",
+    "verify:community:review": "node scripts/verify-community-review.mjs",
+    "verify:community:service": "node --experimental-strip-types --env-file-if-exists=.env scripts/verify-community-service.mjs",
+    "verify:community:live": "node --experimental-strip-types --env-file-if-exists=.env scripts/verify-community-live.mjs",
     "verify:rss": "node scripts/verify-rss-build.mjs",
     "verify:build": "node --env-file-if-exists=.env scripts/verify-build.mjs",
     "preview": "astro preview",
@@ -18,12 +23,17 @@
     "@supabase/supabase-js": "^2.103.0",
     "@tailwindcss/vite": "^4.2.2",
     "astro": "^6.1.5",
+    "lucide": "^1.55.0",
     "tailwindcss": "^4.2.2"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.8",
     "parse5": "7.3.0",
+    "playwright": "^1.62.1",
     "sax": "1.6.0",
     "typescript": "^5.9.3"
+  },
+  "overrides": {
+    "vite": "^7"
   }
 }

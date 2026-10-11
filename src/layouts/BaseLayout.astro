@@ -17,6 +17,7 @@ interface Props {
   ogImage?: string;
   jsonLd?: Record<string, any>;
   noindex?: boolean;
+  analytics?: boolean;
 }
 
 const {
@@ -30,6 +31,7 @@ const {
   ogImage = 'https://www.amazingindex.com/og/amazingindex-og.jpg',
   jsonLd,
   noindex = false,
+  analytics = true,
 } = Astro.props;
 ---
 
@@ -77,18 +79,18 @@ const {
 
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
 
-    <script is:inline async src="https://www.googletagmanager.com/gtag/js?id=G-HXX784QFN0"></script>
-    <script is:inline>
+    {analytics && <script is:inline async src="https://www.googletagmanager.com/gtag/js?id=G-HXX784QFN0"></script>}
+    {analytics && <script is:inline>
       window.dataLayer = window.dataLayer || [];
       function gtag(){dataLayer.push(arguments);}
       gtag('js', new Date());
       gtag('config', 'G-HXX784QFN0');
-    </script>
+    </script>}
 
     <ClientRouter />
   </head>
   <body>
     <slot />
-    <script src="../scripts/tracking.ts"></script>
+    {analytics && <script src="../scripts/tracking.ts"></script>}
   </body>
 </html>

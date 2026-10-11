@@ -1,0 +1,13 @@
+---
+import CommunityLayout from '../layouts/CommunityLayout.astro';
+---
+<CommunityLayout title="我的账号">
+  <section data-view="account" class="account-section">
+    <div class="community-heading"><div><h1>我的账号</h1><p id="account-email" class="community-note"></p></div><button id="sign-out" class="community-button secondary" hidden>退出登录</button></div>
+    <h2>我的相亲帖</h2>
+    <p id="community-message" role="status" aria-live="polite" class="community-message">正在加载…</p>
+    <div id="my-post"></div>
+    <div class="community-actions" id="my-post-actions" hidden><a href="/meet/new/" class="community-button" data-astro-reload>编辑资料</a><button id="withdraw-post" class="community-button secondary">撤回帖子</button></div>
+    <p class="community-note">删除账号及资料请联系 <a href="mailto:hi@amazingindex.com">hi@amazingindex.com</a>。</p>
+  </section>
+</CommunityLayout>
