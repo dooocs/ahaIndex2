@@ -10,7 +10,7 @@
   saved timestamp; server-side throttling preserves the in-page edits for retry.
 - Contact information is optional, separately stored, and visible to verified
   signed-in users only after the author explicitly consents and the post is live.
-- Up to three optional photos, private signed-in viewing, thumbnails, reordering,
+- Up to six optional photos, private signed-in viewing, thumbnails, reordering,
   removal, and full-image viewing. Photo changes require review again.
 - No comments, chat, matching, payments, or new admin application.
 
@@ -406,18 +406,21 @@ Fonts are not requested. Scope remains MVP: no reply counts, contact requests,
 city filters, password flow, or invented statistics. City/age/gender remain
 required. Unlike the public cover in the reference, all photos remain private.
 
-- Browser accepts JPG/PNG/WebP up to 10 MB and compresses to JPEG, max 1600px and
-  900 KB. Edge revalidates, decodes, strips metadata, and generates a 400px thumbnail.
-- `meet-photos` is a private 1 MB/object JPEG-only bucket with no client Storage
-  policies. Upload and signing require server-validated, verified Auth sessions.
-  The Edge function uses `getUser`; gateway verification is disabled deliberately
-  for signing-key compatibility, not to permit anonymous requests.
+- Browser accepts JPG/PNG/WebP up to 10 MB, re-encodes to JPEG to remove metadata,
+  and writes a max-1600px main image plus a max-400px thumbnail. Both remain below
+  900 KB. Browser bytes go directly to the private JPEG-only 1 MB/object Storage
+  bucket. Storage INSERT policy accepts only a fresh reservation in that user's
+  immutable photo directory. The browser cannot read, replace or delete objects.
+- `meet-photos` Edge still validates Auth through `getUser` for private image
+  signing and draft removal. It is not in the browser upload path.
 - Signing is batched for up to 20 posts with a 120-second TTL. Lazy thumbnails
   refresh once on expiration. Original-size links are requested when opened.
   Sign-out clears private images. Previously issued links can outlive withdrawal
   for up to two minutes; downloaded images cannot be recalled.
-- SQL enforces three selected photos, ownership, ready state, atomic attachment,
-  re-review, six temporary/live objects per owner, and 30 upload attempts per day.
+- SQL enforces six selected photos, ownership, ready state, presence of main and
+  thumbnail objects, atomic attachment and re-review. Twelve total reservations
+  per owner allow replacement while editing a six-photo post. The old FC upload
+  path's 30-attempt daily limit does not apply to direct Storage uploads.
   Originals are not stored. Service keys never enter the frontend.
 - Failed uploads expire after 15 minutes; unattached drafts after 24 hours.
   Deleted/replaced photos and account cascades enqueue physical Storage deletion.
@@ -433,7 +436,9 @@ required. Unlike the public cover in the reference, all photos remain private.
   through the app, not direct writes in the dashboard.
 
 `photos-tests.sql` tests migration 002 permissions and ownership transactionally.
-`encode.test.ts` is a Deno test for real decoding, metadata removal, and thumbnails.
-The real browser test additionally uploads temporary images, rejects a forged
-JPEG, tests private reads/signing, opens full images, reorders/removes images,
-and checks re-review. Tests never use personal photos or send mail.
+The mock browser test covers direct main/thumbnail upload and the six-photo UI
+limit. Verify Aliyun authenticated Storage INSERT and private reads on the live
+instance before release. The current browser encoder handles normal uploads;
+the API cannot force a malicious direct caller to remove EXIF or send a valid
+JPEG. Moderators should inspect images before publication. Tests never use
+personal photos or send mail.

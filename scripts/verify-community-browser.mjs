@@ -31,7 +31,7 @@ try {
  page.on('requestfailed', request => requestFailures.push({path:new URL(request.url()).pathname,error:request.failure()?.errorText}));
  await context.route(`${supabaseOrigin}/**`, async route => {
    const url = new URL(route.request().url());
-   const body = route.request().postDataJSON();
+   const body = route.request().headers()['content-type']?.includes('application/json') ? route.request().postDataJSON() : undefined;
    apiCalls.push(url.pathname);
    const ok = data => route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});
    if (url.pathname.endsWith('/otp')) {
@@ -63,6 +63,11 @@ try {
      return ok(19);
    }
    if (url.pathname.endsWith('/rpc/withdraw_meet_post')) {ownPost.status='withdrawn';return ok(null);}
+   if (url.pathname.includes('/storage/v1/object/meet-photos/')) return ok({Key:url.pathname});
+   if (url.pathname.endsWith('/meet_photos')) {
+     if (route.request().method()==='PATCH') return ok({id:url.searchParams.get('id')?.replace('eq.',''),post_id:null,sort_order:0,width:1600,height:1600});
+     return ok([]);
+   }
    if (url.pathname.endsWith('/meet_posts')) return ok(ownPost ? [ownPost] : []);
    if (url.pathname.endsWith('/meet_contacts')) return ok(contact ? [contact] : []);
    throw new Error(`Unexpected API ${url.pathname}`);
@@ -107,6 +112,22 @@ try {
  await page.goto(origin+'/auth/callback/?next=%2Fmeet%2Fnew%2F#'+new URLSearchParams({access_token:token,refresh_token:'test-refresh-token',expires_in:'3600',token_type:'bearer',type:'magiclink'}));
  await page.waitForURL('**/meet/new/**');
  await page.locator('#post-form').waitFor({state:'visible'});
+ const fixture = await page.evaluate(() => {
+   const canvas=document.createElement('canvas'); canvas.width=16; canvas.height=16;
+   canvas.getContext('2d').fillRect(0,0,16,16);
+   return canvas.toDataURL('image/png').split(',')[1];
+ });
+ const fixtureFile={name:'fixture.png',mimeType:'image/png',buffer:Buffer.from(fixture,'base64')};
+ assert.equal(await page.locator('#photo-counter').textContent(),'0 / 6');
+ await page.locator('#photo-files').setInputFiles(fixtureFile);
+ await page.getByText('照片已上传，提交后与资料一起审核。',{exact:true}).waitFor();
+ assert.equal(await page.locator('#photo-counter').textContent(),'1 / 6');
+ assert.equal(apiCalls.filter(path=>path.includes('/storage/v1/object/meet-photos/')).length,2);
+ assert.equal(apiCalls.filter(path=>path.endsWith('/functions/v1/meet-photos')).length,1,'Only initial photo list may use FC');
+ await page.locator('#photo-files').setInputFiles(Array.from({length:6},()=>fixtureFile));
+ await page.getByText('每则启事最多 6 张照片。',{exact:true}).waitFor();
+ await page.getByRole('button',{name:'移除照片'}).click();
+ await page.waitForFunction(()=>document.querySelector('#photo-counter')?.textContent==='0 / 6');
  await page.getByLabel('昵称',{exact:true}).fill('测试发布者');
  await page.getByLabel('年龄',{exact:true}).fill('28');
  await page.getByLabel('城市',{exact:true}).fill('杭州');

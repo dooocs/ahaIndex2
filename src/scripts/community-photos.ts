@@ -69,7 +69,7 @@ export async function photoEditor(root: HTMLElement, form: HTMLFormElement) {
   }
   input.addEventListener('change', async () => {
     const files = Array.from(input.files || []); input.value = '';
-    if (items.length + files.length > MAX_PHOTOS) { status.textContent = '每则启事最多 3 张照片。'; return; }
+    if (items.length + files.length > MAX_PHOTOS) { status.textContent = `每则启事最多 ${MAX_PHOTOS} 张照片。`; return; }
     for (const file of files) {
       if (disposed) break;
       const item: Item = { file, preview: URL.createObjectURL(file) }; items.push(item); await upload(item);
