@@ -69,6 +69,11 @@ export async function verifyCommunityService(env, fetcher = fetch) {
   assert.ok(Number.isSafeInteger(total) && total >= 0, 'Invalid community count');
   const photos = await request('/functions/v1/meet-photos', { action: 'list', posts: [] });
   assert.ok(photos.response.status === 401 && photos.data?.error === 'login_required', 'Photo endpoint must be healthy and reject anonymous access');
+  const publicPhotos = await request('/functions/v1/meet-public-photos', { action: 'list', posts: data.map(post => post.id) });
+  assert.equal(publicPhotos.response.status, 200, 'Public photo signing is not ready');
+  assert.ok(Array.isArray(publicPhotos.data?.photos), 'Invalid public photo response');
+  const privatePreview = await request('/functions/v1/meet-public-photos', { action: 'list', posts: [], own: true });
+  assert.equal(privatePreview.response.status, 400, 'Public signing must not accept private preview requests');
   return { enabled: true, checked: true, publicFeed: 'ready', anonymousPrivacy: 'denied' };
 }
 

@@ -88,6 +88,7 @@ export async function photoEditor(root: HTMLElement, form: HTMLFormElement) {
 
 export function photoViewer(root: HTMLElement) {
   let disposed = false;
+  let generation = 0, lastPosts: number[] = [], lastDetail = false;
   const dialog = document.createElement('dialog'); dialog.className = 'photo-dialog'; dialog.setAttribute('aria-label', '查看照片');
   const large = document.createElement('img'); large.alt = '相亲帖照片';
   const caption = document.createElement('p');
@@ -98,6 +99,7 @@ export function photoViewer(root: HTMLElement) {
   const toolbar = document.createElement('div'); toolbar.className = 'photo-dialog-tools'; toolbar.append(previous, caption, next, close);
   dialog.append(large, toolbar); root.append(dialog);
   const show = (value: number) => {
+    if (!photos.length) return;
     index = (value + photos.length) % photos.length; large.src = photos[index].url!; caption.textContent = `${index + 1} / ${photos.length}`;
     previous.disabled = next.disabled = photos.length < 2;
   };
@@ -108,21 +110,25 @@ export function photoViewer(root: HTMLElement) {
     if (dialog.open) dialog.close();
     root.querySelectorAll<HTMLElement>('[data-private-photo]').forEach(element => { element.replaceChildren(document.createTextNode('登录后可见')); element.dataset.locked = 'true'; });
   };
-  const listener = communityClient!.auth.onAuthStateChange(event => { if (event === 'SIGNED_OUT') clear(); });
+  const listener = communityClient!.auth.onAuthStateChange(event => {
+    if (event !== 'SIGNED_OUT' && event !== 'SIGNED_IN') return;
+    generation++;
+    clear();
+    const ids = [...lastPosts];
+    void (async () => {
+      for (let start = 0; start < ids.length; start += 20) await load(ids.slice(start, start + 20), lastDetail);
+    })().catch(() => {});
+  });
 
   async function load(posts: number[], detail = false) {
+    const requestGeneration = generation;
+    lastPosts = detail ? [...posts] : [...new Set([...lastPosts, ...posts])]; lastDetail = detail;
     const { data: { session } } = await communityClient!.auth.getSession();
     const target = root.querySelector<HTMLElement>('#post-photos');
-    if (!session) {
-      if (detail && target) {
-        const login = document.createElement('a'); login.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}`; login.className = 'post-photo'; login.dataset.locked = 'true'; login.textContent = '登录后查看照片'; target.replaceChildren(login);
-      }
-      return;
-    }
-    const userId = session.user.id;
+    const userId = session?.user.id;
     const rows = await listPhotos(posts);
     const current = await communityClient!.auth.getSession();
-    if (disposed || current.data.session?.user.id !== userId) return;
+    if (disposed || generation !== requestGeneration || current.data.session?.user.id !== userId) return;
     const refreshOnExpiry = (img: HTMLImageElement, photo: MeetPhoto) => {
       img.addEventListener('error', () => {
         void (async () => {
@@ -130,7 +136,7 @@ export function photoViewer(root: HTMLElement) {
             const fresh = await listPhotos([photo.post_id!]);
             const session = await communityClient!.auth.getSession();
             const match = fresh.find(row => row.id === photo.id);
-            if (!disposed && img.isConnected && session.data.session?.user.id === userId && match) img.src = match.url!;
+            if (!disposed && generation === requestGeneration && img.isConnected && session.data.session?.user.id === userId && match) img.src = match.url!;
             else img.alt = '照片已不可见';
           } catch { img.alt = '照片暂不可用'; }
         })();
@@ -138,7 +144,13 @@ export function photoViewer(root: HTMLElement) {
     };
     if (detail && target) {
       target.replaceChildren(); target.className = 'photo-gallery';
-      if (!rows.length) { target.textContent = '暂未上传照片'; return; }
+      if (!rows.length) {
+        if (session) target.textContent = '暂未上传照片';
+        else {
+          const login = document.createElement('a'); login.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}`; login.className = 'post-photo'; login.dataset.locked = 'true'; login.textContent = '暂无公开照片，登录查看其他照片'; target.append(login);
+        }
+        return;
+      }
       for (const photo of rows) {
         const button = document.createElement('button'); button.type = 'button'; button.className = 'post-photo'; button.dataset.privatePhoto = ''; button.setAttribute('aria-label', `查看第 ${photo.sort_order + 1} 张照片`);
         const img = document.createElement('img'); img.src = photo.url!; img.alt = `相亲帖照片 ${photo.sort_order + 1}`; img.loading = 'lazy'; img.width = photo.width; img.height = photo.height;
@@ -149,7 +161,7 @@ export function photoViewer(root: HTMLElement) {
           try {
             const full = await listPhotos(posts, false, true);
             const active = await communityClient!.auth.getSession();
-            if (disposed || active.data.session?.user.id !== userId || !full.length) return;
+            if (disposed || generation !== requestGeneration || active.data.session?.user.id !== userId || !full.length) return;
             photos = full; show(Math.max(0, full.findIndex(row => row.id === photo.id))); dialog.showModal();
           } catch { button.title = '照片暂不可用，请稍后重试'; }
           finally { button.disabled = false; }
@@ -168,5 +180,5 @@ export function photoViewer(root: HTMLElement) {
       }
     }
   }
-  return { load, dispose() { disposed = true; listener.data.subscription.unsubscribe(); dialog.remove(); } };
+  return { load, dispose() { disposed = true; generation++; listener.data.subscription.unsubscribe(); dialog.remove(); } };
 }

@@ -48,11 +48,12 @@ try {
    if (url.pathname.endsWith('/rpc/meet_post_count')) return ok(published.length);
    if (url.pathname.endsWith('/rpc/list_meet_posts')) {
      assert.ok(!Object.hasOwn(body,'p_city'));
-     return ok(published.filter(p => !body.p_before || p.id<body.p_before));
+     return ok(published.filter(p => !body.p_before || p.id<body.p_before).map(p=>({...p,photo_count:1})));
    }
    if (url.pathname.endsWith('/rpc/get_meet_post')) return ok([...published,...(ownPost ? [ownPost] : [])].filter(p=>p.id===body.p_id));
    if (url.pathname.endsWith('/rpc/get_meet_contact')) return ok(body.p_id===18 ? 'wechat-test-only' : contact?.contact);
    if (url.pathname.endsWith('/rpc/submit_meet_post')) {
+     assert.equal(body.p_public_photos,true);
      if (rateLimitNextPost) {
        rateLimitNextPost=false;
        return route.fulfill({status:400,contentType:'application/json',body:JSON.stringify({code:'P0001',message:'Please wait 60 seconds'})});
@@ -63,6 +64,8 @@ try {
      return ok(19);
    }
    if (url.pathname.endsWith('/rpc/withdraw_meet_post')) {ownPost.status='withdrawn';return ok(null);}
+   if (url.pathname.endsWith('/functions/v1/meet-public-photos')) return ok({photos:body.posts.includes(18)?[{id:'public-photo',post_id:18,sort_order:0,width:16,height:16,url:`${supabaseOrigin}/storage/v1/object/sign/meet-photos/fixture/${body.full?'photo':'thumb'}.jpg?token=fixture`}]:[]});
+   if (url.pathname.includes('/storage/v1/object/sign/meet-photos/')) return route.fulfill({contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Zl1sAAAAASUVORK5CYII=','base64')});
    if (url.pathname.includes('/storage/v1/object/meet-photos/')) return ok({Key:url.pathname});
    if (url.pathname.endsWith('/meet_photos')) {
      if (route.request().method()==='PATCH') return ok({id:url.searchParams.get('id')?.replace('eq.',''),post_id:null,sort_order:0,width:1600,height:1600});
@@ -73,6 +76,14 @@ try {
    throw new Error(`Unexpected API ${url.pathname}`);
  });
  await page.goto(origin+'/meet');
+ await page.getByRole('link',{name:'想找一个一起逛书店的人'}).waitFor();
+ await page.locator('[data-post-photo="18"] img').waitFor();
+ assert.equal(await page.locator('.community-page').evaluate(el=>getComputedStyle(el).borderTopWidth),'0px');
+ await page.getByRole('link',{name:'想找一个一起逛书店的人'}).click();
+ await page.getByRole('button',{name:'查看第 1 张照片',exact:true}).click();
+ await page.getByRole('dialog',{name:'查看照片'}).waitFor({state:'visible'});
+ await page.getByRole('button',{name:'关闭照片',exact:true}).click();
+ await page.getByRole('link',{name:'返回相亲广场',exact:true}).click();
  await page.getByRole('link',{name:'想找一个一起逛书店的人'}).waitFor();
  assert.equal(await page.locator('script[src*="googletagmanager"]').count(),0);
  if (checkHomepage) {

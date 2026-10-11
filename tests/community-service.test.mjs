@@ -22,10 +22,11 @@ test('empty real feed is valid only when anonymous privacy probes fail closed', 
     assert.equal(options.headers.Authorization, undefined);
     if(url.endsWith('/meet_post_count')) return json(0);
     if(url.endsWith('/functions/v1/meet-photos')) return json({error:'login_required'},401);
+    if(url.endsWith('/functions/v1/meet-public-photos')) return JSON.parse(options.body).own ? json({error:'invalid_request'},400) : json({photos:[]});
     return url.endsWith('/list_meet_posts') ? json([]) : denied();
   });
   assert.equal(result.checked, true);
-  assert.equal(calls.length, 7);
+  assert.equal(calls.length, 9);
 });
 test('missing migration, unexpected feed fields and anonymous access block publication', async () => {
   await assert.rejects(verifyCommunityService(env, async () => json({ code: 'PGRST202' }, 404)), /not ready/);
@@ -47,6 +48,7 @@ test('legacy anon readiness includes the JWT required by self-hosted PostgREST',
       return json({data:action === 'meet_post_count' ? 0 : []});
     }
     if (url.endsWith('/functions/v1/meet-photos')) return json({ error: 'login_required' }, 401);
+    if (url.endsWith('/functions/v1/meet-public-photos')) return JSON.parse(options.body).own ? json({error:'invalid_request'},400) : json({photos:[]});
     return denied();
   });
   assert.equal(result.checked, true);
