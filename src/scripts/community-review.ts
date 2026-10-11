@@ -115,13 +115,22 @@ async function loadList(reset = true) {
 async function loadDetail(id: number) {
   const generation = ++detailGeneration;
   selected = null;
+  photosReady = false;
+  statusMessage('');
   $('#review-detail').replaceChildren(element('p', '正在加载资料与照片…', 'empty-state'));
   document.querySelectorAll<HTMLElement>('.review-row').forEach(row => row.setAttribute('aria-current', String(row.dataset.id === String(id))));
   try {
     const data: Detail = await request({ action: 'detail', id });
     if (generation !== detailGeneration) return;
     selected = data; renderDetail(data);
-  } catch (error) { statusMessage(explain(error), true); }
+  } catch (error) {
+    if (generation !== detailGeneration) return;
+    statusMessage(explain(error), true);
+    const retry = document.createElement('button'); retry.className = 'action-button';
+    retry.append(createElement(RefreshCw, { width: 18, height: 18 }), document.createTextNode('重试'));
+    retry.addEventListener('click', () => { void loadDetail(id); });
+    $('#review-detail').replaceChildren(element('p', explain(error), 'empty-state'), retry);
+  }
 }
 function renderDetail(data: Detail) {
   const { post } = data;

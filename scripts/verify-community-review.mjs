@@ -16,7 +16,7 @@ try {
   page = await context.newPage();
   page.setDefaultTimeout(15000);
   const errors = [], requests = [];
-  let exchanges = 0, decisions = 0, stale = false, revoked = false;
+  let exchanges = 0, decisions = 0, stale = false, revoked = false, detailUnavailable = true;
   let post = { id: 41, nickname: '审核测试用户', city: '杭州', age: 28, gender: '女', title: '喜欢散步，也喜欢认真生活', occupation: '设计师', about: '周末喜欢看展和阅读。希望认识真诚友善的人。<img src=x onerror=alert(1)>', looking_for: '认真沟通，尊重彼此。', status: 'pending', review_reason: '' };
   let version = '1'.repeat(32);
   const photoUrl = `${service}/storage/v1/object/sign/meet-photos/test/photo.jpg?token=fixture`;
@@ -36,7 +36,10 @@ try {
     }
     assert.equal(route.request().headers().authorization,'Bearer review-test-session');
     if (input.action === 'list') return reply({posts:post.status===input.status?[post]:[],more:false});
-    if (input.action === 'detail') return reply({post,version,contact:{contact:'test-contact',share_contact:true},photos:[{id:'photo-1',url:photoUrl,thumb:photoUrl}]});
+    if (input.action === 'detail') {
+      if (detailUnavailable) { detailUnavailable = false; return reply({error:'photos_not_ready'},409); }
+      return reply({post,version,contact:{contact:'test-contact',share_contact:true},photos:Array.from({length:6},(_,i)=>({id:`photo-${i+1}`,url:photoUrl,thumb:photoUrl}))});
+    }
     assert.equal(input.action,'review');
     if (stale) { stale=false; post={...post,about:'用户刚刚修改了内容，需要重新查看。'}; version='2'.repeat(32); return reply({error:'post_changed'},409); }
     assert.equal(input.version,version);
@@ -49,7 +52,12 @@ try {
   await page.getByText('审核授权已失效，请重新打开专属审核链接。').waitFor();
   assert.equal(await page.locator('#review-workspace').isVisible(),false);
   await page.goto(`${origin}/meet/review#key=${key}`);
+  await page.locator('#review-detail').getByText('照片尚未就绪，暂不能审核。').waitFor();
+  assert.equal(await page.getByText('正在加载资料与照片…').count(),0,'failed detail must leave the loading state');
+  assert.equal(await page.locator('[data-decision]').count(),0,'failed detail cannot be approved');
+  await page.getByRole('button',{name:'重试',exact:true}).click();
   await page.locator('#review-detail h2').waitFor();
+  assert.equal(await page.locator('#review-detail .photo-button').count(),6);
   assert.equal(new URL(page.url()).hash,'');
   assert.equal(await page.locator('#review-detail .review-text img').count(),0,'post text is not HTML');
   await page.waitForFunction(()=>!document.querySelector('[data-decision=published]')?.disabled);
