@@ -1,0 +1,76 @@
+:root { font-family: "Noto Serif SC", system-ui, sans-serif; color: #222824; background: #f7f8f7; font-synthesis: none; }
+* { box-sizing: border-box; letter-spacing: 0; }
+body { margin: 0; }
+[hidden] { display: none !important; }
+button, textarea { font: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: .5; }
+button:focus-visible, a:focus-visible, textarea:focus-visible { outline: 2px solid #246657; outline-offset: 3px; }
+button, a { -webkit-tap-highlight-color: transparent; }
+.review-header { display: flex; align-items: center; gap: 24px; padding: 16px 24px; border-bottom: 1px solid #d8deda; background: #fff; }
+.review-header a { color: #a83226; text-decoration: none; font: 700 20px system-ui; }
+h1 { font-size: 18px; margin: 0; }
+#review-session { margin-left: auto; font: 12px system-ui; color: #616963; }
+.icon-button { width: 40px; height: 40px; flex: 0 0 40px; border: 1px solid #cdd4ce; background: #fff; display: inline-flex; align-items: center; justify-content: center; border-radius: 4px; color: inherit; }
+.icon-button:hover { background: #eef3ef; }
+#review-message { padding: 12px 24px; margin: 0; min-height: 44px; font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+#review-message[data-error=true] { color: #a52e24; background: #fff1ee; }
+.review-toolbar { display: flex; gap: 16px; align-items: center; justify-content: space-between; padding: 8px 24px; border-block: 1px solid #d8deda; background: #fff; }
+[role=tablist] { display: flex; gap: 4px; min-width: 0; }
+[role=tab] { background: transparent; border: 0; border-bottom: 2px solid transparent; padding: 12px 16px; white-space: nowrap; color: #5b635d; font-size: 14px; }
+[role=tab][aria-selected=true] { color: #1b5949; border-color: #1b5949; font-weight: 700; }
+.review-columns { display: grid; grid-template-columns: 300px minmax(0,1fr); min-height: 70vh; }
+.review-columns > aside { border-right: 1px solid #d8deda; min-width: 0; background: #f1f4f1; }
+.review-row { display: block; width: 100%; padding: 20px 24px; text-align: left; color: inherit; background: transparent; border: 0; border-bottom: 1px solid #d8deda; border-left: 3px solid transparent; }
+.review-row[aria-current=true] { border-left-color: #246657; background: #fff; }
+.review-row:hover { background: #fff; }
+.review-row strong { display: block; margin: 8px 0; font-size: 15px; line-height: 1.5; overflow-wrap: anywhere; }
+.review-row small { font: 12px/1.6 system-ui; color: #626d64; }
+#review-detail { padding: 28px 32px 48px; min-width: 0; max-width: 1080px; width: 100%; background: #fff; }
+.detail-heading { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.detail-heading h2 { font-size: 24px; line-height: 1.5; margin: 0; overflow-wrap: anywhere; }
+.status { font: 12px/1.6 system-ui; background: #edf2ef; color: #3c5748; padding: 4px 8px; }
+.review-facts { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); margin: 24px 0; gap: 16px; border-block: 1px solid #d8deda; padding: 16px 0; }
+.review-facts dt { color: #69726b; font: 12px/1.5 system-ui; }
+.review-facts dd { margin: 6px 0 0; font-size: 15px; overflow-wrap: anywhere; }
+.review-section { margin-top: 28px; }
+.review-section h3 { font-size: 14px; margin: 0 0 12px; color: #59655d; }
+.review-text { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 15px; line-height: 1.85; }
+.review-photos { display: flex; gap: 16px; flex-wrap: wrap; }
+.photo-button { padding: 0; width: 144px; aspect-ratio: 4/5; background: #edf2ef; border: 1px solid #cdd4ce; cursor: zoom-in; }
+.photo-button img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.review-actions { margin-top: 32px; padding-top: 20px; border-top: 2px solid #cdd4ce; }
+.review-actions label { display: grid; gap: 8px; font-size: 14px; }
+.review-actions textarea { padding: 12px; min-height: 90px; width: 100%; resize: vertical; background: #fff; border: 1px solid #aab5ad; border-radius: 4px; font-size: 16px; line-height: 1.6; }
+.action-buttons { display: flex; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
+.action-button, .plain-button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 42px; border: 1px solid #aab5ad; background: #fff; padding: 10px 18px; border-radius: 4px; font-size: 14px; color: #35443a; }
+.action-button.approve { background: #246657; border-color: #246657; color: #fff; }
+.action-button.reject { color: #a52e24; border-color: #bd7870; }
+.empty-state { padding: 24px; color: #69726b; font-size: 14px; }
+#review-more { margin: 16px 24px; }
+#review-photo-dialog { border: 0; border-radius: 4px; padding: 12px; max-width: 94vw; max-height: 94dvh; background: #fff; }
+#review-photo-dialog::backdrop { background: #151c18d9; }
+#review-photo-close { margin-left: auto; display: flex; margin-bottom: 8px; }
+#review-photo-full { display: block; max-width: 100%; max-height: 78dvh; object-fit: contain; margin: auto; }
+#review-confirm-dialog { width: min(420px, calc(100vw - 32px)); padding: 24px; border: 1px solid #cdd4ce; border-radius: 4px; color: inherit; }
+#review-confirm-dialog::backdrop { background: #151c1880; }
+#review-confirm-title { margin: 0; font-size: 18px; }
+#review-confirm-message { font-size: 15px; line-height: 1.7; overflow-wrap: anywhere; }
+#review-confirm-dialog .action-buttons { justify-content: flex-end; }
+@media(max-width:760px) {
+  .review-header { gap: 12px; padding: 12px 16px; flex-wrap: wrap; }
+  .review-header a { font-size: 18px; }
+  h1 { font-size: 16px; }
+  #review-session { margin-left: 0; }
+  #review-exit { margin-left: auto; }
+  #review-message { padding: 12px 16px; }
+  .review-toolbar { gap: 8px; padding: 8px; }
+  [role=tab] { padding: 12px 8px; font-size: 13px; }
+  .review-columns { grid-template-columns: minmax(0,1fr); }
+  .review-columns > aside { border-right: 0; border-bottom: 1px solid #d8deda; max-height: 280px; overflow-y: auto; }
+  .review-row { padding: 12px 16px; }
+  #review-detail { padding: 24px 16px; }
+  .detail-heading h2 { font-size: 21px; }
+  .review-facts { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .photo-button { width: 128px; }
+}

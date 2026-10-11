@@ -1,0 +1,10 @@
+---
+import CommunityLayout from '../../layouts/CommunityLayout.astro';
+---
+<CommunityLayout title="验证登录">
+  <section class="auth-section" data-view="callback">
+    <h1>验证登录</h1>
+    <p role="status" aria-live="polite" class="community-message" id="community-message">正在验证登录链接…</p>
+    <a href="/login/" class="community-back" data-astro-reload>返回登录</a>
+  </section>
+</CommunityLayout>

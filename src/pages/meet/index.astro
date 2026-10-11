@@ -1,0 +1,17 @@
+---
+import CommunityLayout from '../../layouts/CommunityLayout.astro';
+---
+<CommunityLayout title="相亲贴">
+  <section data-view="list">
+    <div class="community-shell"><div class="community-main">
+    <div class="community-heading"><div><p class="community-eyebrow">分类启事 <em>PERSONALS</em></p><h1>相亲贴</h1></div><span class="community-sort">最新</span></div>
+    <p id="community-message" role="status" aria-live="polite" class="community-message">正在加载帖子…</p>
+    <div id="post-list" class="post-list"></div>
+    <button id="load-more" class="community-button secondary" hidden>加载更多</button>
+    </div><aside class="community-side list-side">
+      <section><h2>在册启事 / ACTIVE</h2><p class="community-figure" id="post-total">—</p><a class="community-button block publish-link" href="/meet/new/" data-astro-reload>发布相亲帖</a></section>
+      <section><h2>发帖须知 / NOTICE</h2><div class="community-note community-aside-note"><strong>一人一帖，认真介绍自己。</strong><p>请填写所在城市、年龄和性别，资料须经人工审核。照片与联系方式仅登录后可见。</p><p>审核通过后展示 30 天，可随时编辑或撤回。</p></div></section>
+    </aside></div>
+    <div class="mobile-publish"><a class="community-button block" href="/meet/new/" data-astro-reload>发布相亲帖</a></div>
+  </section>
+</CommunityLayout>

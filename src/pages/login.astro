@@ -1,0 +1,24 @@
+---
+import CommunityLayout from '../layouts/CommunityLayout.astro';
+import { community } from '../lib/community-config';
+---
+<CommunityLayout title="登录 / 注册">
+  <section class="auth-section" data-view="login">
+    <a href="/meet/" class="community-back" data-astro-reload>返回相亲广场</a>
+    <p class="community-eyebrow">账号 <em>ACCOUNT</em></p>
+    <h1>登录 / 注册</h1>
+    <form id="email-form" class="community-form">
+      <label>邮箱<input name="email" type="email" autocomplete="email" maxlength="254" required placeholder="you@example.com" /></label>
+      <label class="check-row"><input name="terms" type="checkbox" required /><span>我已阅读并同意 <a href="/terms/" target="_blank" rel="noopener">服务条款</a> 与 <a href="/privacy/" target="_blank" rel="noopener">隐私政策</a>。未注册的邮箱验证后将创建账号。</span></label>
+      {community?.captchaKey && <div id="community-captcha" data-sitekey={community.captchaKey}></div>}
+      <button type="submit" class="community-button" disabled>发送登录链接</button>
+    </form>
+    <div id="email-sent" class="community-form" hidden>
+      <p id="email-recipient" class="community-note"></p>
+      <button type="button" id="resend-link" class="community-button secondary">重新发送</button>
+      <button type="button" id="change-email" class="community-link">更换邮箱</button>
+    </div>
+    <p role="status" aria-live="polite" class="community-message" id="community-message"></p>
+    <p class="community-note auth-note">一个邮箱，一个账号。一封确认邮件，即可继续。</p>
+  </section>
+</CommunityLayout>

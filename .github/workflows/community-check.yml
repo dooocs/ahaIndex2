@@ -1,0 +1,43 @@
+name: Community MVP checks
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  community:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run astro -- check
+      - run: npx playwright install --with-deps chromium
+      - name: Browser flow with isolated mock APIs
+        env:
+          PUBLIC_COMMUNITY_ENABLED: 'true'
+          PUBLIC_COMMUNITY_MOCK_TEST: 'true'
+          PUBLIC_COMMUNITY_SUPABASE_URL: https://community-preview.supabase.co
+          PUBLIC_COMMUNITY_SUPABASE_KEY: sb_publishable_preview
+        run: |
+          npm run dev -- --host 127.0.0.1 --port 4328 > /tmp/community-dev.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" || true' EXIT
+          npm run verify:community
+          npm run verify:community:login
+          PLAYWRIGHT_CHANNEL=chromium npm run verify:community:review
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: community-browser-diagnostics
+          path: |
+            /tmp/community-*.png
+            /tmp/community-dev.log

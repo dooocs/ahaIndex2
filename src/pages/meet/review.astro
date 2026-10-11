@@ -1,0 +1,47 @@
+---
+import '../../styles/fonts.css';
+import '../../styles/review.css';
+---
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow, noarchive" />
+    <meta name="referrer" content="no-referrer" />
+    <meta http-equiv="Cache-Control" content="no-store" />
+    <title>相亲帖审核 | AmazingIndex</title>
+  </head>
+  <body>
+    <header class="review-header"><a href="/meet/">AmazingIndex</a><h1>相亲帖审核</h1><span id="review-session"></span><button id="review-exit" class="icon-button" title="退出审核" aria-label="退出审核" hidden></button></header>
+    <p id="review-message" role="status" aria-live="polite">正在验证审核权限…</p>
+    <main id="review-workspace" hidden>
+      <nav class="review-toolbar" aria-label="审核状态">
+        <div role="tablist" aria-label="帖子状态">
+          <button role="tab" data-status="pending" aria-selected="true">待审核</button>
+          <button role="tab" data-status="published" aria-selected="false">已发布</button>
+          <button role="tab" data-status="rejected" aria-selected="false">未通过</button>
+          <button role="tab" data-status="withdrawn" aria-selected="false">已下架</button>
+        </div>
+        <button id="review-refresh" class="icon-button" title="刷新列表" aria-label="刷新列表"></button>
+      </nav>
+      <div class="review-columns">
+        <aside aria-label="帖子列表"><div id="review-list"></div><button id="review-more" class="plain-button" hidden>加载更多</button></aside>
+        <section id="review-detail" aria-label="审核详情"><p class="empty-state">选择一条帖子</p></section>
+      </div>
+    </main>
+    <dialog id="review-photo-dialog" aria-label="查看原图"><button id="review-photo-close" class="icon-button" title="关闭原图" aria-label="关闭原图"></button><img id="review-photo-full" alt="相亲帖原图" /></dialog>
+    <dialog id="review-confirm-dialog" aria-labelledby="review-confirm-title">
+      <form method="dialog">
+        <h2 id="review-confirm-title">确认审核决定</h2>
+        <p id="review-confirm-message"></p>
+        <div class="action-buttons">
+          <button class="plain-button" value="cancel" autofocus>取消</button>
+          <button class="action-button approve" value="confirm">确认</button>
+        </div>
+      </form>
+    </dialog>
+    <noscript>请启用 JavaScript 后重新打开专属审核链接。</noscript>
+    <script src="../../scripts/community-review.ts"></script>
+  </body>
+</html>

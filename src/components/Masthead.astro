@@ -5,9 +5,10 @@ import SiteNav from './SiteNav.astro';
 interface Props {
   items?: ProcessedItem[];
   subtitle?: string;
+  showScore?: boolean;
 }
 
-const { items = [], subtitle = '每日 AI 简报' } = Astro.props;
+const { items = [], subtitle = '每日 AI 简报', showScore = true } = Astro.props;
 
 const displayDate = items.length > 0 && items[0].snapshot_date
   ? new Date(items[0].snapshot_date + 'T00:00:00')
@@ -39,9 +40,9 @@ const ahaScore = items.length > 0
     </div>
 
     <div class="masthead-meta">
-      <div class="aha-score-mobile">
+      {showScore && <div class="aha-score-mobile">
         <span class="score-trigger">{ahaScore}</span>
-      </div>
+      </div>}
       <div class="masthead-vol">
         VOL. {year}.{month}<br/>
         {year}.{month}.{day}

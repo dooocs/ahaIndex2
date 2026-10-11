@@ -38,6 +38,7 @@ let diagnosticVisibleMs = 0;
 let diagnosticVisibleTimer: number | undefined;
 
 function getGtag() {
+  if (document.querySelector('[data-community]')) return undefined;
   return (window as Window & { gtag?: (...args: unknown[]) => void }).gtag;
 }
 
@@ -196,6 +197,7 @@ function initClickTracking() {
 }
 
 document.addEventListener('astro:page-load', () => {
+  if (document.querySelector('[data-community]')) { pauseVisible15sTimer(); return; }
   initGaDiagnosticTracking();
   initImpressionTracking();
   if (!globalListenersAttached) {
