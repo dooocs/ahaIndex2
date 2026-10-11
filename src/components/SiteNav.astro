@@ -12,9 +12,9 @@ const isDaily = !isSubjects && !isMeet && !isAccount;
     <div class="nav-tabs">
       <a href="/" class={`nav-tab ${isDaily ? 'active' : ''}`} data-astro-reload>日报</a>
       <a href="/subjects" class={`nav-tab ${isSubjects ? 'active' : ''}`} data-astro-reload>专题-beta</a>
-      {community && <a href="/meet/" class={`nav-tab ${isMeet ? 'active' : ''}`} data-astro-reload>相亲贴</a>}
+      {community && <a href="/meet" class={`nav-tab ${isMeet ? 'active' : ''}`} data-astro-reload>相亲贴</a>}
     </div>
-    {community && <a href="/login/" class="community-nav" data-community-account data-astro-reload>登录 / 注册</a>}
+    {community && <a href="/login" class="community-nav" data-community-account data-astro-reload>登录 / 注册</a>}
   </div>
 </nav>
 <script src="../scripts/community-nav.ts"></script>

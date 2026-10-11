@@ -39,7 +39,7 @@ try {
     page.setDefaultTimeout(15000);
     page.on('pageerror', error => errors.push(error.message));
     await page.clock.install({ time: new Date() });
-    await page.goto(`${origin}/login/?next=%2Fmeet%2F`);
+    await page.goto(`${origin}/login?next=%2Fmeet%2F`);
     await page.waitForFunction(() => !document.querySelector('#email-form button')?.disabled);
     const fill = async () => {
       await page.getByLabel('邮箱', { exact: true }).fill('login-regression@example.test');
@@ -59,7 +59,7 @@ try {
       assert.ok(sizes.scroll <= sizes.width, 'Rate-limit text must fit on mobile');
       if (fixture === cases[0]) await page.screenshot({ path: join(tmpdir(), 'community-login-rate-limit.png'), fullPage: true });
       const secondTab = await context.newPage();
-      await secondTab.goto(`${origin}/login/`);
+      await secondTab.goto(`${origin}/login`);
       await secondTab.waitForFunction(() => document.querySelector('#email-form button')?.disabled);
       await secondTab.close();
       await page.reload();

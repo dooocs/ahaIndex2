@@ -6,7 +6,7 @@ import { communityFunctionFetch } from './community-transport';
 export const communityClient = community ? createClient(community.url, community.key, {
   auth: {
     storageKey: communityStorageKey(community.url),
-    detectSessionInUrl: typeof window !== 'undefined' && window.location.pathname === '/auth/callback/',
+    detectSessionInUrl: typeof window !== 'undefined' && window.location.pathname.replace(/\/+$/, '') === '/auth/callback',
     persistSession: true,
     autoRefreshToken: true,
   },

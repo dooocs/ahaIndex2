@@ -115,7 +115,7 @@ export function photoViewer(root: HTMLElement) {
     const target = root.querySelector<HTMLElement>('#post-photos');
     if (!session) {
       if (detail && target) {
-        const login = document.createElement('a'); login.href = `/login/?next=${encodeURIComponent(location.pathname + location.search)}`; login.className = 'post-photo'; login.dataset.locked = 'true'; login.textContent = '登录后查看照片'; target.replaceChildren(login);
+        const login = document.createElement('a'); login.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}`; login.className = 'post-photo'; login.dataset.locked = 'true'; login.textContent = '登录后查看照片'; target.replaceChildren(login);
       }
       return;
     }

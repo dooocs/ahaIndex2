@@ -7,7 +7,7 @@ const checkHomepage = process.env.COMMUNITY_TEST_HOMEPAGE === 'true';
 const supabaseOrigin = process.env.PUBLIC_COMMUNITY_SUPABASE_URL || 'https://community-preview.supabase.co';
 const screenshot = name => join(tmpdir(), `community-${name}.png`);
 for (let attempt = 0; ; attempt++) {
-  try { if ((await fetch(`${origin}/login/`)).ok) break; } catch {}
+  try { if ((await fetch(`${origin}/login`)).ok) break; } catch {}
   if (attempt >= 30) throw new Error('Start the community test dev server first (docs/community-mvp.md).');
   await new Promise(resolve => setTimeout(resolve, 1000));
 }
@@ -27,7 +27,7 @@ try {
  await page.clock.install({time:new Date()});
  testPage = page;
  page.on('pageerror', e => errors.push(e.message));
- page.on('request', request => { if(request.isNavigationRequest() && new URL(request.url()).pathname==='/login/') loginNavigations++; });
+ page.on('request', request => { if(request.isNavigationRequest() && new URL(request.url()).pathname==='/login') loginNavigations++; });
  page.on('requestfailed', request => requestFailures.push({path:new URL(request.url()).pathname,error:request.failure()?.errorText}));
  await context.route(`${supabaseOrigin}/**`, async route => {
    const url = new URL(route.request().url());
@@ -38,8 +38,8 @@ try {
      assert.equal(body.create_user,true);
      const redirect = new URL(url.searchParams.get('redirect_to'));
      assert.equal(redirect.origin, origin);
-     assert.equal(redirect.pathname, '/auth/callback/');
-     assert.equal(redirect.searchParams.get('next'), '/meet/new/');
+     assert.equal(redirect.pathname, '/auth/callback');
+     assert.equal(redirect.searchParams.get('next'), '/meet/new');
      return ok({});
    }
    if (url.pathname.endsWith('/user')) return ok(user);
@@ -72,7 +72,7 @@ try {
    if (url.pathname.endsWith('/meet_contacts')) return ok(contact ? [contact] : []);
    throw new Error(`Unexpected API ${url.pathname}`);
  });
- await page.goto(origin+'/meet/');
+ await page.goto(origin+'/meet');
  await page.getByRole('link',{name:'想找一个一起逛书店的人'}).waitFor();
  assert.equal(await page.locator('script[src*="googletagmanager"]').count(),0);
  if (checkHomepage) {
@@ -99,18 +99,18 @@ try {
  await page.reload();
  await page.getByRole('link',{name:'想找一个一起逛书店的人'}).waitFor();
  await page.getByRole('link',{name:'发布相亲帖',exact:true}).filter({visible:true}).click();
- await page.waitForURL('**/login/**');
+ await page.waitForURL('**/login**');
  assert.equal(loginNavigations,1,'Clearing a missing session must redirect to login only once');
  await page.getByLabel('邮箱',{exact:true}).fill(user.email);
  await page.locator('[name=terms]').check();
  await page.getByRole('button',{name:'发送登录链接',exact:true}).click();
  await page.getByText(`登录链接已发送至 ${user.email}`).waitFor();
  assert.equal(await page.locator('#resend-link').isDisabled(),true);
- await page.goto(origin+'/auth/callback/#error=access_denied&error_code=otp_expired&error_description=expired');
+ await page.goto(origin+'/auth/callback#error=access_denied&error_code=otp_expired&error_description=expired');
  await page.getByText('登录链接无效或已过期，请重新发送。').waitFor();
  assert.equal(new URL(page.url()).hash,'');
- await page.goto(origin+'/auth/callback/?next=%2Fmeet%2Fnew%2F#'+new URLSearchParams({access_token:token,refresh_token:'test-refresh-token',expires_in:'3600',token_type:'bearer',type:'magiclink'}));
- await page.waitForURL('**/meet/new/**');
+ await page.goto(origin+'/auth/callback?next=%2Fmeet%2Fnew%2F#'+new URLSearchParams({access_token:token,refresh_token:'test-refresh-token',expires_in:'3600',token_type:'bearer',type:'magiclink'}));
+ await page.waitForURL('**/meet/new**');
  await page.locator('#post-form').waitFor({state:'visible'});
  const fixture = await page.evaluate(() => {
    const canvas=document.createElement('canvas'); canvas.width=16; canvas.height=16;
@@ -151,7 +151,7 @@ try {
  }
  await page.screenshot({path:screenshot('editor-desktop'),fullPage:true});
  await page.getByRole('button',{name:'提交审核'}).click();
- await page.waitForURL('**/account/**');
+ await page.waitForURL('**/account**');
  await page.getByText('待审核',{exact:true}).waitFor();
  assert.equal(await page.locator('#my-post img').count(),0);
  await page.reload();
@@ -180,34 +180,34 @@ try {
  await page.clock.fastForward(61000);
  await page.waitForFunction(()=>!document.querySelector('#post-form button[type=submit]').disabled);
  await submitPost.click();
- await page.waitForURL('**/account/**');
+ await page.waitForURL('**/account**');
  assert.equal(ownPost.nickname,'等待期间修改的昵称');
- await page.goto(origin+'/meet/post/?id=18');
+ await page.goto(origin+'/meet/post?id=18');
  await page.getByRole('heading',{name:'想找一个一起逛书店的人'}).waitFor();
  assert.equal(await page.getByText('wechat-test-only').count(),0);
  await page.getByRole('button',{name:'查看联系方式'}).click();
  await page.getByText('wechat-test-only').waitFor();
- await page.goto(origin+'/account/');
+ await page.goto(origin+'/account');
  await page.getByText('待审核',{exact:true}).waitFor();
  page.once('dialog',dialog=>dialog.accept());
  await page.getByRole('button',{name:'撤回帖子'}).click();
  await page.getByText('已撤回',{exact:true}).waitFor();
  const contactTab = await context.newPage();
- await contactTab.goto(origin+'/meet/post/?id=18');
+ await contactTab.goto(origin+'/meet/post?id=18');
  await contactTab.getByRole('button',{name:'查看联系方式'}).click();
  await contactTab.getByText('wechat-test-only').waitFor();
  await page.getByRole('button',{name:'退出登录'}).click();
- await page.waitForURL('**/meet/**');
+ await page.waitForURL('**/meet**');
  await contactTab.getByText('wechat-test-only').waitFor({state:'hidden'});
  await contactTab.close();
- await page.goto(origin+'/meet/post/?id=18');
+ await page.goto(origin+'/meet/post?id=18');
  await page.getByRole('button',{name:'查看联系方式'}).click();
- await page.waitForURL('**/login/**');
+ await page.waitForURL('**/login**');
  for(const width of [375,320]) {
    await page.setViewportSize({width,height:812});
-   for(const path of ['/login/','/meet/','/meet/post/?id=18']) {
+   for(const path of ['/login','/meet','/meet/post?id=18']) {
      await page.goto(origin+path);
-     if(path==='/meet/') await page.getByRole('link',{name:'想找一个一起逛书店的人'}).waitFor();
+     if(path==='/meet') await page.getByRole('link',{name:'想找一个一起逛书店的人'}).waitFor();
      const sizes=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,width:innerWidth}));
      assert.ok(sizes.scroll<=sizes.width,`${path} overflow at ${width}: ${sizes.scroll}`);
      if(width===375) await page.screenshot({path:screenshot(`${path.startsWith('/login')?'login':path.includes('post')?'detail':'feed'}-mobile`),fullPage:true});

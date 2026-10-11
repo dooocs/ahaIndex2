@@ -42,13 +42,13 @@ try {
     assert.equal(input.version,version);
     decisions++; post={...post,status:input.status,review_reason:input.reason}; version='3'.repeat(32); return reply({ok:true});
   });
-  await page.goto(`${origin}/meet/review/`);
+  await page.goto(`${origin}/meet/review`);
   await page.getByText('请使用专属审核链接进入。').waitFor();
   assert.equal(exchanges,0);
-  await page.goto(`${origin}/meet/review/#key=${'b'.repeat(64)}`);
+  await page.goto(`${origin}/meet/review#key=${'b'.repeat(64)}`);
   await page.getByText('审核授权已失效，请重新打开专属审核链接。').waitFor();
   assert.equal(await page.locator('#review-workspace').isVisible(),false);
-  await page.goto(`${origin}/meet/review/#key=${key}`);
+  await page.goto(`${origin}/meet/review#key=${key}`);
   await page.locator('#review-detail h2').waitFor();
   assert.equal(new URL(page.url()).hash,'');
   assert.equal(await page.locator('#review-detail .review-text img').count(),0,'post text is not HTML');
@@ -103,7 +103,7 @@ try {
   assert.equal(await page.locator('#review-detail').textContent(),'');
   assert.equal(await page.evaluate(key=>sessionStorage.getItem(key),sessionKey),null);
   revoked=true;
-  await page.goto(`${origin}/meet/review/#key=${key}`);
+  await page.goto(`${origin}/meet/review#key=${key}`);
   await page.getByText('审核授权已失效，请重新打开专属审核链接。').waitFor();
   assert.ok(requests.every(url=>!url.includes(key)),'entry key never appears in request URLs');
   assert.deepEqual(errors,[]);

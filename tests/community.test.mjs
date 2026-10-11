@@ -25,8 +25,10 @@ test('city, age and an explicit gender are required for every post', () => {
   assert.equal(validatePost(valid).p_gender, '女');
 });
 test('return URLs remain same-origin and do not loop to login', () => {
-  for (const input of [null, 'https://evil.test', '//evil.test', '/\\evil.test', '/\nevil.test', '/login/?next=x', '/auth/callback/?next=x']) assert.equal(safeReturnPath(input), '/account/');
-  assert.equal(safeReturnPath('/meet/post/?id=12'), '/meet/post/?id=12');
+  for (const input of [null, 'https://evil.test', '//evil.test', '/\\evil.test', '/\nevil.test', '/login/?next=x', '/auth/callback/?next=x']) assert.equal(safeReturnPath(input), '/account');
+  assert.equal(safeReturnPath('/meet/post/?id=12#photos'), '/meet/post?id=12#photos');
+  assert.equal(safeReturnPath('/meet/post?id=12'), '/meet/post?id=12');
+  assert.equal(safeReturnPath('/'), '/');
 });
 test('community is opt-in, refuses private keys and non-HTTPS URLs', () => {
   assert.equal(communityConfig({}), null);
