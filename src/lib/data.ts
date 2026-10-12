@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { fetchProjectHeatmapData } from './project-heatmap';
+import { fetchProjectHeatmapData, pickLatestRelatedData } from './project-heatmap';
 import type {
   ProcessedItem,
   GlobalStats,
@@ -427,7 +427,7 @@ export const getProjects = memo<ProjectEntry[]>('projects', async () => {
     subjectRows.sort((a, b) => a.snapshot_date.localeCompare(b.snapshot_date));
 
     const first = subjectRows[0];
-    const related_data = first.related_data;
+    const related_data = pickLatestRelatedData(subjectRows);
 
     // 构建 timeline
     const timeline: TimelineEntry[] = subjectRows
