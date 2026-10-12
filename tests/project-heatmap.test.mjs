@@ -125,3 +125,17 @@ for (const kind of ['duplicate', 'backwards', 'missing']) {
     await assert.rejects(reader.run(), /missing, duplicate or out-of-order id/);
   });
 }
+
+test('pickLatestRelatedData prefers the newest non-null related_data', async () => {
+  const { pickLatestRelatedData } = await import('../src/lib/project-heatmap.ts');
+  const oldRel = { related: [{ slug: 'old' }], competitors: [] };
+  const newRel = { related: [{ slug: 'new' }], competitors: [] };
+  // legacy layout: every row carries a copy
+  assert.deepEqual(pickLatestRelatedData([{ related_data: oldRel }, { related_data: newRel }]), newRel);
+  // slim layout: only the newest row carries it
+  assert.deepEqual(pickLatestRelatedData([{ related_data: null }, { related_data: null }, { related_data: newRel }]), newRel);
+  // newest row not yet written: fall back to the latest earlier value
+  assert.deepEqual(pickLatestRelatedData([{ related_data: oldRel }, { related_data: null }]), oldRel);
+  assert.equal(pickLatestRelatedData([{ related_data: null }]), null);
+  assert.equal(pickLatestRelatedData([]), null);
+});

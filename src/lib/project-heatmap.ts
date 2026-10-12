@@ -11,6 +11,21 @@ const COLUMNS = [
 const MAX_ATTEMPTS = 4;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
+/**
+ * related_data is stored only on a subject's newest row. Older layouts copied
+ * it onto every daily row, so pick the latest non-null value: correct for both.
+ * Rows must be sorted by snapshot_date ascending.
+ */
+export function pickLatestRelatedData(
+  sortedRows: Pick<ProjectHeatmapRow, 'related_data'>[],
+): ProjectHeatmapRow['related_data'] {
+  for (let i = sortedRows.length - 1; i >= 0; i--) {
+    const value = sortedRows[i].related_data;
+    if (value) return value;
+  }
+  return null;
+}
+
 interface ReadOptions {
   log?: (message: string) => void;
   sleep?: (ms: number) => Promise<void>;
