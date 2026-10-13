@@ -4,7 +4,7 @@ import BriefingCard from './BriefingCard.astro';
 import Sidebar from './Sidebar.astro';
 import Footer from './Footer.astro';
 import type { ProcessedItem, DailyArchive, GlobalStats } from '../lib/types';
-import { SITE_NAME, SITE_SLOGAN, DAILY_TAGLINE } from '../lib/site';
+import { SITE_NAME, SITE_SLOGAN } from '../lib/site';
 
 interface Props {
   items: ProcessedItem[];
@@ -32,7 +32,6 @@ const {
 
 const snapshotDate = date || (items.length > 0 ? items[0].snapshot_date : undefined);
 const isHome = sidebarMode === 'intro';
-const editionLabel = snapshotDate ? snapshotDate.replaceAll('-', '.') : '';
 ---
 
 <Masthead items={items} subtitle={subtitle} />
@@ -47,10 +46,6 @@ const editionLabel = snapshotDate ? snapshotDate.replaceAll('-', '.') : '';
         <span class="home-intro-more" aria-hidden="true">关于本站 →</span>
       </a>
     )}
-    <div class="column-head">
-      <span class="column-name">{DAILY_TAGLINE}</span>
-      {editionLabel && <span class="column-meta">{isHome ? `今日 · ${editionLabel}` : editionLabel} · {items.length} 条</span>}
-    </div>
     <div class="article-list" id="article-list">
       {items.length > 0 ? (
         items.map((item, index) => (
@@ -67,31 +62,6 @@ const editionLabel = snapshotDate ? snapshotDate.replaceAll('-', '.') : '';
 <Footer showArchiveBanner={showArchiveBanner} date={snapshotDate} />
 
 <style>
-  .column-head {
-    display: flex;
-    align-items: baseline;
-    flex-wrap: wrap;
-    gap: 6px 12px;
-    padding-bottom: 12px;
-    margin-bottom: 20px;
-    border-bottom: 1px solid var(--border);
-  }
-
-  .column-name {
-    font-family: var(--fs);
-    font-size: 15px;
-    font-weight: 700;
-    color: var(--ink);
-  }
-
-  .column-meta {
-    margin-left: auto;
-    font-family: var(--fm);
-    font-size: 10px;
-    letter-spacing: 0.12em;
-    color: var(--muted);
-  }
-
   .home-intro-mobile {
     display: none;
   }
@@ -126,11 +96,6 @@ const editionLabel = snapshotDate ? snapshotDate.replaceAll('-', '.') : '';
       font-family: var(--fm);
       font-size: 10px;
       color: var(--accent);
-    }
-
-    .column-meta {
-      margin-left: 0;
-      flex-basis: 100%;
     }
   }
 </style>
