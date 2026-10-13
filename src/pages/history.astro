@@ -1,15 +1,9 @@
 ---
+// Static shell: the stories are rendered in the browser from /data/history.json.
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Masthead from '../components/Masthead.astro';
-import BriefingCard from '../components/BriefingCard.astro';
 import Sidebar from '../components/Sidebar.astro';
 import Footer from '../components/Footer.astro';
-import { getHistoryItems, getGlobalStats, getDailyArchives } from '../lib/data';
-
-const items = await getHistoryItems();
-const stats = await getGlobalStats();
-const now = new Date();
-const days = await getDailyArchives(now.getFullYear(), now.getMonth() + 1);
 ---
 
 <BaseLayout
@@ -20,24 +14,20 @@ const days = await getDailyArchives(now.getFullYear(), now.getMonth() + 1);
   ogDescription="AmazingIndex 历史精选：回顾过往最具价值的 AI 行业动态与创新洞察。"
   ogUrl="https://www.amazingindex.com/history"
 >
-  <Masthead items={items} />
+  <Masthead />
 
   <div class="layout">
     <main class="main-col">
       <h1 class="sr-only">历史精选</h1>
       <div class="section-label">历史精选 · History</div>
-      <div class="article-list" id="article-list">
-        {items.length > 0 ? (
-          items.map((item, index) => (
-            <BriefingCard item={item} index={index} showDate={true} />
-          ))
-        ) : (
-          <div class="loading-state">暂无历史数据</div>
-        )}
+      <div class="article-list" id="article-list" data-history-list>
+        <div class="loading-state" data-loading>正在加载历史精选…</div>
       </div>
     </main>
-    <Sidebar items={items} stats={stats} days={days} />
+    <Sidebar />
   </div>
 
   <Footer />
 </BaseLayout>
+
+<script src="../scripts/archive-pages.ts"></script>

@@ -4,8 +4,11 @@ import Masthead from '../../components/Masthead.astro';
 import Footer from '../../components/Footer.astro';
 import ProjectDetailComponent from '../../components/projects/ProjectDetail.astro';
 import { getProjects, getProjectDates } from '../../lib/data';
+import { isDailyBuild } from '../../lib/build-scope';
 
+// Project pages are rebuilt by full builds only (push, manual, weekly).
 export async function getStaticPaths() {
+  if (isDailyBuild()) return [];
   const projects = await getProjects();
   return projects.map(p => ({
     params: { id: p.slug },

@@ -1,72 +1,9 @@
 ---
+// Static shell: sections and signal statistics are rendered in the browser
+// from /data/subjects/index.json, which the export script refreshes daily.
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import Masthead from '../../components/Masthead.astro';
 import Footer from '../../components/Footer.astro';
-import { getSubjectDirectorySections, getSubjectSignalStatsBySubject } from '../../lib/data';
-import type { SubjectCatalogEntry, SubjectSignalStats } from '../../lib/types';
-
-const sections = await getSubjectDirectorySections();
-const subjects = sections.flatMap(section => section.subjects);
-const statsBySubject = await getSubjectSignalStatsBySubject(subjects.map(subject => subject.id));
-
-function fallbackStats(subject: SubjectCatalogEntry): SubjectSignalStats {
-  return {
-    subject_id: subject.id,
-    signal_count_30d: subject.mention_count || 0,
-    previous_signal_count_30d: 0,
-    trend_pct_30d: subject.mention_count > 0 ? 100 : 0,
-    latest_signal_at: subject.last_seen_at,
-    sparkline: [0, 0, 0, 0, 0, 0, subject.mention_count || 0],
-  };
-}
-
-function subjectStats(subject: SubjectCatalogEntry): SubjectSignalStats {
-  return statsBySubject.get(subject.id) || fallbackStats(subject);
-}
-
-function sortBySignal(a: SubjectCatalogEntry, b: SubjectCatalogEntry): number {
-  const as = subjectStats(a);
-  const bs = subjectStats(b);
-  if (as.signal_count_30d !== bs.signal_count_30d) {
-    return bs.signal_count_30d - as.signal_count_30d;
-  }
-  if (as.trend_pct_30d !== bs.trend_pct_30d) {
-    return bs.trend_pct_30d - as.trend_pct_30d;
-  }
-  return (b.curation_priority || 0) - (a.curation_priority || 0);
-}
-
-const rankedSections = sections.map(section => ({
-  ...section,
-  subjects: [...section.subjects].sort(sortBySignal),
-}));
-
-function trendLabel(value: number) {
-  if (value > 0) return `▲ +${value}%`;
-  if (value < 0) return `▼ ${value}%`;
-  return '→ 0%';
-}
-
-function freshness(value: string | null) {
-  if (!value) return '更新 · 等待信号';
-  const date = value.slice(0, 10);
-  if (date === '2026-06-20') return '更新 · 今天';
-  return `更新 · ${date}`;
-}
-
-function sparklinePoints(values: number[]) {
-  const width = 84;
-  const height = 28;
-  const max = Math.max(...values, 1);
-  const step = values.length > 1 ? width / (values.length - 1) : width;
-  return values
-    .map((value, index) => {
-      const x = index * step;
-      const y = height - (value / max) * (height - 4) - 2;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(' ');
-}
 
 const pageTitle = 'AI 专题索引 | 蜗牛杂货站';
 const pageDesc = '蜗牛杂货站 AI 专题索引：跟踪 AI 相关人物、公司、产品、技术方向和近期信号。';
@@ -82,67 +19,19 @@ const pageDesc = '蜗牛杂货站 AI 专题索引：跟踪 AI 相关人物、公
 >
   <Masthead />
 
-  <main class="subjects-page">
+  <main class="subjects-page" data-subject-index>
     <header class="subject-dir-head">
       <div class="subject-kicker">Subject Index</div>
       <h1>AI 专题索引</h1>
-      <div class="subject-dir-meta">
-        <span>{subjects.length} 个专题</span>
-        <span>{sections.length} 个分区</span>
-      </div>
+      <div class="subject-dir-meta" data-subject-meta></div>
     </header>
 
-    {rankedSections.length > 0 ? (
-      <div class="subject-directory">
-        {rankedSections.map(section => (
-          <section class="subject-section" id={section.slug}>
-            <div class="subject-section-head">
-              <h2>{section.label}</h2>
-              <span>{section.subjects.length}</span>
-            </div>
-            <div class="subject-link-grid">
-              {section.subjects.map(subject => {
-                const summary = subject.definition || subject.description || '';
-                const tags = [subject.type, ...(subject.aliases || []).slice(0, 2)].filter(Boolean);
-                const stats = subjectStats(subject);
-                return (
-                  <a class="subject-link-item" href={`/subjects/${subject.slug}`}>
-                    <div class="subject-card-top">
-                      <div>
-                        <div class="subject-link-name">{subject.display_name}</div>
-                        {summary && <p>{summary}</p>}
-                      </div>
-                      <svg class="subject-sparkline" viewBox="0 0 84 28" aria-hidden="true">
-                        <polyline points={sparklinePoints(stats.sparkline)} />
-                      </svg>
-                    </div>
-                    <div class="subject-signal-row">
-                      <span>近30天</span>
-                      <strong>{stats.signal_count_30d}</strong>
-                      <span>条信号</span>
-                      <b class:list={[stats.trend_pct_30d >= 0 ? 'is-up' : 'is-down']}>{trendLabel(stats.trend_pct_30d)}</b>
-                    </div>
-                    <div class="subject-link-meta">
-                      {tags.map(tag => <span>{tag}</span>)}
-                    </div>
-                    <div class="subject-card-foot">
-                      <span>{freshness(stats.latest_signal_at)}</span>
-                      <strong>查看 {stats.signal_count_30d} 条信号 →</strong>
-                    </div>
-                  </a>
-                );
-              })}
-            </div>
-          </section>
-        ))}
-      </div>
-    ) : (
-      <section class="subject-empty">
-        <div class="subject-empty-title">暂无已发布 Subject</div>
-        <div class="subject-empty-text">等待 Admin 审核通过后显示。</div>
-      </section>
-    )}
+    <div data-subject-directory>
+      <div class="loading-state" data-loading>正在加载专题…</div>
+    </div>
   </main>
 
   <Footer />
 </BaseLayout>
+
+<script src="../../scripts/subject-pages.ts"></script>

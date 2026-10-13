@@ -1,6 +1,7 @@
 // Build-time data access for Astro pages: memoized wrappers around the shared
 // queries (queries.ts) and pure computations (archive.ts, subject-data.ts).
 import { getSupabase } from './supabase';
+import { isDailyBuild, scopeDatesFromEnv } from './build-scope';
 import * as q from './queries.ts';
 import { pickLatestRelatedData } from './project-heatmap';
 import {
@@ -57,11 +58,33 @@ const db = () => getSupabase();
 export const getLatestDate = () => memo('latestDate', () => q.getLatestDate(db()));
 export const getAllDates = () => memo('allDates', () => q.getAllDates(db()));
 export const getItemsByDate = (date: string) => memo(`itemsByDate:${date}`, () => q.getItemsByDate(db(), date));
-export const getNeighborDates = (date: string) => memo(`neighbors:${date}`, () => q.getNeighborDates(db(), date));
+export const getNeighborDates = (date: string) => memo(`neighbors:${date}`, async () => {
+  if (!isDailyBuild()) {
+    // A full build has every date in hand (newest first); no extra queries.
+    const all = await getAllDates();
+    const i = all.indexOf(date);
+    if (i >= 0) return { prev: all[i + 1] ?? null, next: i > 0 ? all[i - 1] : null };
+  }
+  return q.getNeighborDates(db(), date);
+});
 export const getAllArticleRouteItems = () => memo('allArticleRouteItems', () => q.getAllArticleRouteItems(db()));
 export const getArticleRouteItemsFor = (pids: string[]) => q.getArticleRouteItemsFor(db(), pids);
 export const getLatestDailyArchive = () => memo('latestDailyArchive', () => q.getLatestDailyArchive(db()));
 export const getDailyArchiveByDate = (date: string): Promise<DailyArchive | null> => q.getDailyArchiveByDate(db(), date);
+
+/**
+ * Edition dates this build renders pages for, newest first: every edition in
+ * a full build; BUILD_DATES (or the newest two editions) in a daily build.
+ */
+export const getBuildDates = () => memo('buildDates', async (): Promise<string[]> => {
+  if (!isDailyBuild()) return getAllDates();
+  const explicit = scopeDatesFromEnv();
+  if (explicit.length > 0) return explicit;
+  const latest = await getLatestDate();
+  if (!latest) return [];
+  const { prev } = await getNeighborDates(latest);
+  return prev ? [latest, prev] : [latest];
+});
 
 const getScoreIndex = () => memo('scoreIndex', async () => indexScoreRows(await q.getScoreRows(db())));
 

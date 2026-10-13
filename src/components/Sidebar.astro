@@ -1,22 +1,21 @@
 ---
-import type { ProcessedItem, DailyArchive, GlobalStats } from '../lib/types';
+import type { ProcessedItem, DailyArchive } from '../lib/types';
 import { SHELVES, SITE_INTRO } from '../lib/site';
 import { community } from '../lib/community-config';
 
 interface Props {
   items?: ProcessedItem[];
-  stats?: GlobalStats | null;
-  days?: DailyArchive[];
   dailyArchive?: DailyArchive | null;
   mode?: 'score' | 'intro';
+  /** The edition this page shows; the calendar and chart end there. Empty = the newest edition. */
+  date?: string;
 }
 
 const {
   items = [],
-  stats = null,
-  days = [],
   dailyArchive = null,
   mode = 'score',
+  date = '',
 } = Astro.props;
 
 const ahaScore = items.length > 0
@@ -25,47 +24,9 @@ const ahaScore = items.length > 0
 
 // Shelves listed in the homepage intro; the personals board only appears once community is enabled.
 const shelves = SHELVES.filter((shelf) => shelf.href !== '/meet' || community);
-
-// Build 7-day bar chart from real days data (sorted desc, take first 7, reverse to chronological)
-const recentDays = days.slice(0, 7).reverse();
-const maxScore = Math.max(...recentDays.map(d => d.aha_score), 1);
-
-const now = new Date();
-const year = now.getFullYear();
-const month = now.getMonth();
-const firstDay = new Date(year, month, 1).getDay();
-const daysInMonth = new Date(year, month + 1, 0).getDate();
-const today = now.getDate();
-
-const weeks: (number | null)[][] = [];
-let currentWeek: (number | null)[] = Array(7).fill(null);
-for (let i = 0; i < firstDay; i++) {
-  currentWeek[i] = null;
-}
-let currentDay = 1;
-for (let i = firstDay; i < 7; i++) {
-  currentWeek[i] = currentDay++;
-}
-weeks.push([...currentWeek]);
-while (currentDay <= daysInMonth) {
-  currentWeek = Array(7).fill(null);
-  for (let i = 0; i < 7 && currentDay <= daysInMonth; i++) {
-    currentWeek[i] = currentDay++;
-  }
-  weeks.push([...currentWeek]);
-}
-
-function hasEdition(d: number) {
-  const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-  return days.some(day => day.snapshot_date === dateStr && day.item_count > 0);
-}
-
-function dateStr(d: number) {
-  return `${year}-${String(month + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-}
 ---
 
-<aside class="side-col">
+<aside class="side-col" data-sidebar data-date={date}>
   <div class={mode === 'intro' ? 'sidebar-panel sidebar-panel-intro' : 'aha-score-card'}>
     {mode === 'intro' ? (
       <div class="sidebar-intro-card">
@@ -100,7 +61,7 @@ function dateStr(d: number) {
       <>
       <div class="score-header">推荐指数 / WORTH READING</div>
       <div class="score-display">
-        <span class="score-number">{ahaScore}</span>
+        <span class="score-number" data-score-number>{ahaScore}</span>
         <div class="score-unit">综合评分 · 满分 100</div>
         {dailyArchive?.percentile_tier === 'p90_plus' && (
           <div class="percentile-line percentile-p90">今日罕见高分 · 近 90 天前 10%</div>
@@ -109,14 +70,7 @@ function dateStr(d: number) {
           <div class="percentile-line percentile-p70">高于近期均值</div>
         )}
       </div>
-      <div class="score-chart">
-        {recentDays.map((d, i) => {
-          const pct = Math.round((d.aha_score / maxScore) * 100);
-          const isLast = i === recentDays.length - 1;
-          const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][new Date(d.snapshot_date + 'T00:00:00').getDay()];
-          return <div class={`bar${isLast ? ' today' : ''}`} style={`height: ${pct}%`} title={`${weekday} ${d.aha_score.toFixed(0)}`}></div>;
-        })}
-      </div>
+      <div class="score-chart" data-score-chart></div>
       </>
     )}
 
@@ -128,27 +82,10 @@ function dateStr(d: number) {
           <thead>
             <tr><th>S</th><th>M</th><th>T</th><th>W</th><th>T</th><th>F</th><th>S</th></tr>
           </thead>
-          <tbody>
-            {weeks.map((week) => (
-              <tr>
-                {week.map((d) => {
-                  if (!d) return <td></td>;
-                  const has = hasEdition(d);
-                  const isToday = d === today;
-                  let className = '';
-                  if (has) className += ' has-ed';
-                  if (isToday) className += ' today-cell';
-                  if (!has && d < today) className += ' empty';
-                  return has
-                    ? <td class={className.trim()}><a href={`/daily/${dateStr(d)}`} style="color: inherit; text-decoration: none;">{d}</a></td>
-                    : <td class={className.trim()}>{d}</td>;
-                })}
-              </tr>
-            ))}
-          </tbody>
+          <tbody data-mini-cal></tbody>
         </table>
         <a href="/daily" style="display: block; text-align: center; font-size: 10px; letter-spacing: 1px; color: var(--accent); margin-top: 16px; text-decoration: none;">
-          全部 {stats?.total_editions || 0} 期日报 →
+          全部 <span data-total-editions>—</span> 期日报 →
         </a>
       </div>
     </div>
@@ -163,6 +100,8 @@ function dateStr(d: number) {
     )}
   </div>
 </aside>
+
+<script src="../scripts/sidebar.ts"></script>
 
 <style>
   .sidebar-panel {
