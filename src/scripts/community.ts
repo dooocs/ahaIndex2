@@ -293,7 +293,15 @@ async function init() {
           submitting = true;
           updateSubmit();
           try {
-            await rpc('submit_meet_post', { ...values, p_photo_ids: ids, p_public_photos: true });
+            const params = { ...values, p_photo_ids: ids, p_public_photos: true };
+            try { await rpc('submit_meet_post', params); }
+            catch (error) {
+              // Until the public-contact migration (010) is applied, the backend may not know
+              // p_public_contact. Retry without it: the contact then stays signed-in-only.
+              if (!isUnknownSignature(error)) throw error;
+              const { p_public_contact: _unused, ...legacy } = params;
+              await rpc('submit_meet_post', legacy);
+            }
             location.assign('/account?submitted=1');
           } catch (error) {
             const seconds = postRetrySeconds(error);
@@ -387,6 +395,10 @@ async function init() {
       disposers.push(() => document.removeEventListener('visibilitychange', visibility));
     }
   } catch (error) { message(friendlyError(error), true); }
+}
+function isUnknownSignature(error: unknown): boolean {
+  const e = error as { code?: string; message?: string } | null;
+  return Boolean(e && (e.code === 'PGRST202' || e.code === '42883' || e.message?.includes('Could not find the function')));
 }
 document.addEventListener('astro:page-load', () => { void init(); });
 document.addEventListener('astro:before-swap', () => cleanup());

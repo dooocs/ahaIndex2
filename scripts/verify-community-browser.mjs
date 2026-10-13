@@ -17,6 +17,8 @@ let ownPost = null;
 let contact = null;
 let rateLimitNextPost = false;
 let publicContactFor18 = false;
+let legacyBackendOnce = true; // first submit hits a backend without migration 010
+let legacyRetrySeen = false;
 let published = [{ id: 18, nickname: '周末散步的人', age: 29, gender: '女', city: '杭州', occupation: '产品设计', title: '想找一个一起逛书店的人', about: '工作日认真工作，周末喜欢散步、看展和逛书店。比起热闹的聚会，更喜欢两个人慢慢聊天。', looking_for: '真诚、独立，有自己的兴趣，也愿意分享日常。', created_at: new Date().toISOString(), expires_at: new Date(Date.now()+86400000).toISOString() }];
 const browser = await chromium.launch({headless:true,channel:process.env.PLAYWRIGHT_CHANNEL || undefined});
 let testPage;
@@ -56,7 +58,12 @@ try {
    if (url.pathname.endsWith('/rpc/get_meet_contact')) return ok(body.p_id===18 ? 'wechat-test-only' : contact?.contact);
    if (url.pathname.endsWith('/rpc/submit_meet_post')) {
      assert.equal(body.p_public_photos,true);
-     assert.equal(body.p_public_contact,body.p_share_contact);
+     if (legacyBackendOnce && Object.hasOwn(body,'p_public_contact')) {
+       legacyBackendOnce=false;
+       return route.fulfill({status:404,contentType:'application/json',body:JSON.stringify({code:'PGRST202',message:'Could not find the function public.submit_meet_post'})});
+     }
+     if (!Object.hasOwn(body,'p_public_contact')) legacyRetrySeen=true;
+     else assert.equal(body.p_public_contact,body.p_share_contact);
      if (rateLimitNextPost) {
        rateLimitNextPost=false;
        return route.fulfill({status:400,contentType:'application/json',body:JSON.stringify({code:'P0001',message:'Please wait 60 seconds'})});
@@ -182,7 +189,7 @@ try {
  await page.getByLabel('昵称',{exact:true}).fill('等待期间修改的昵称');
  await page.locator('[name=consent]').check();
  await page.locator('#post-form').evaluate(form=>form.requestSubmit());
- assert.equal(apiCalls.filter(path=>path.endsWith('/rpc/submit_meet_post')).length,1);
+ assert.equal(apiCalls.filter(path=>path.endsWith('/rpc/submit_meet_post')).length,2); // first submit + its retry without p_public_contact
  await page.clock.fastForward(61000);
  await page.waitForFunction(()=>!document.querySelector('#post-form button[type=submit]').disabled);
  rateLimitNextPost=true;
@@ -223,6 +230,7 @@ try {
  await page.getByText('wechat-public-test').waitFor();
  assert.equal(await page.getByRole('button',{name:'查看联系方式'}).isVisible(),false);
  publicContactFor18 = false;
+ assert.ok(legacyRetrySeen,'Submission did not retry without p_public_contact');
  for(const width of [375,320]) {
    await page.setViewportSize({width,height:812});
    for(const path of ['/login','/meet','/meet/post?id=18']) {
@@ -234,7 +242,7 @@ try {
    }
  }
  assert.deepEqual(errors,[]);
- console.log(JSON.stringify({result:'PASS',checks:[...(checkHomepage ? ['homepage navigation via daily tab and logo'] : []),'email link error/success','callback fragment cleanup','return path','no city filter/empty state','required city/age/gender','submit consent','post persistence','edit prefill','post cooldown on load and reload','server cooldown and form preservation','XSS rendering','legacy contact login','public contact without login','withdraw','sign out across tabs','no analytics','320px/375px/1365px layout'],apiCalls:apiCalls.length}));
+ console.log(JSON.stringify({result:'PASS',checks:[...(checkHomepage ? ['homepage navigation via daily tab and logo'] : []),'email link error/success','callback fragment cleanup','return path','no city filter/empty state','required city/age/gender','submit consent','post persistence','edit prefill','post cooldown on load and reload','server cooldown and form preservation','XSS rendering','legacy contact login','public contact without login','submit retry on pre-010 backend','withdraw','sign out across tabs','no analytics','320px/375px/1365px layout'],apiCalls:apiCalls.length}));
 } catch(error) {
  if(testPage) {
    await testPage.screenshot({path:screenshot('mock-failure'),fullPage:true});
