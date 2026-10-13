@@ -1,5 +1,7 @@
 ---
 import type { ProcessedItem, DailyArchive, GlobalStats } from '../lib/types';
+import { SHELVES } from '../lib/site';
+import { community } from '../lib/community-config';
 
 interface Props {
   items?: ProcessedItem[];
@@ -20,6 +22,9 @@ const {
 const ahaScore = items.length > 0
   ? (items.reduce((sum, item) => sum + (item.aha_index || 0), 0) / items.length * 100).toFixed(1)
   : '0.0';
+
+// Shelves listed in the homepage intro; the personals board only appears once community is enabled.
+const shelves = SHELVES.filter((shelf) => shelf.href !== '/meet' || community);
 
 // Build 7-day bar chart from real days data (sorted desc, take first 7, reverse to chronological)
 const recentDays = days.slice(0, 7).reverse();
@@ -64,16 +69,32 @@ function dateStr(d: number) {
   <div class={mode === 'intro' ? 'sidebar-panel sidebar-panel-intro' : 'aha-score-card'}>
     {mode === 'intro' ? (
       <div class="sidebar-intro-card">
-        <div class="sidebar-intro-kicker">关于本站 / WHAT THIS IS</div>
+        <div class="sidebar-intro-kicker">关于本站 / About</div>
         <h2 class="sidebar-intro-title">
-          在信息过载的时代<br />
-          找到值得关注的信号
+          让生活多一点<br />
+          <em>Amazing</em>
         </h2>
         <p class="sidebar-intro-text">
-          世界正在加速变化，AI、算力、机器人、航天？信息越来越多，也越来越杂。
-          AmazingIndex 用大数据与 AI，每天从噪声里筛出真正关键、代表未来的信号，
-          帮助你把注意力留给少数真正重要的事；认知的领先，终会兑现！
+          蜗牛杂货站是一个独立开发者开的小站。我们用大规模计算替你看遍全网，把值得知道的技术、值得用的工具、值得认识的人带到你面前。好东西，不该只有少数人知道。
         </p>
+        <div class="sidebar-shelves">
+          <div class="sidebar-shelves-title">店里有什么 / On the shelves</div>
+          <ol class="shelf-list">
+            {shelves.map((shelf, i) => (
+              <li>
+                <a href={shelf.href} class="shelf" data-astro-reload>
+                  <span class="shelf-no">{String(i + 1).padStart(2, '0')}</span>
+                  <span class="shelf-body">
+                    <span class="shelf-name">{shelf.name}</span>
+                    <span class="shelf-desc">{shelf.desc}</span>
+                  </span>
+                  <span class="shelf-arrow" aria-hidden="true">→</span>
+                </a>
+              </li>
+            ))}
+          </ol>
+          <p class="shelf-more">更多新东西，正在慢慢上架。<a href="/about" data-astro-reload>关于本站 →</a></p>
+        </div>
       </div>
     ) : (
       <>
@@ -127,7 +148,7 @@ function dateStr(d: number) {
           </tbody>
         </table>
         <a href="/daily" style="display: block; text-align: center; font-size: 10px; letter-spacing: 1px; color: var(--accent); margin-top: 16px; text-decoration: none;">
-          View All {stats?.total_editions || 0} Editions →
+          全部 {stats?.total_editions || 0} 期日报 →
         </a>
       </div>
     </div>
@@ -136,7 +157,7 @@ function dateStr(d: number) {
       <>
       <div class="divider"></div>
       <p class="about-text">
-        "AmazingIndex" 是一套基于多维度量化算法的评估系统，旨在发掘当下最具颠覆性与美学价值的创新成果。
+        AmazingIndex 是<a href="/about" class="about-text-link">蜗牛杂货站</a>的每日 AI 精选栏目，用一套多维度量化算法，从全网筛出当下最值得关注的创新成果。
       </p>
       </>
     )}
@@ -207,11 +228,110 @@ function dateStr(d: number) {
     margin: 0 0 16px;
   }
 
+  .sidebar-intro-title em {
+    font-family: var(--fd);
+    font-style: italic;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: -0.01em;
+  }
+
   .sidebar-intro-text {
     font-family: var(--fs);
     font-size: 13px;
     line-height: 1.9;
     color: rgba(26, 22, 18, 0.72);
+  }
+
+  .sidebar-shelves {
+    margin-top: 22px;
+  }
+
+  .sidebar-shelves-title {
+    font-size: 9px;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+
+  .shelf-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .shelf {
+    display: grid;
+    grid-template-columns: 24px 1fr auto;
+    align-items: baseline;
+    gap: 8px;
+    padding: 11px 0;
+    border-bottom: 1px solid var(--border);
+    color: var(--ink);
+    text-decoration: none;
+  }
+
+  .shelf-no {
+    font-family: var(--fm);
+    font-size: 10px;
+    color: var(--muted);
+  }
+
+  .shelf-body {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .shelf-name {
+    font-family: var(--fs);
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1.3;
+  }
+
+  .shelf-desc {
+    font-family: var(--fs);
+    font-size: 11.5px;
+    line-height: 1.6;
+    color: rgba(26, 22, 18, 0.58);
+  }
+
+  .shelf-arrow {
+    font-family: var(--fm);
+    font-size: 11px;
+    color: var(--muted);
+    transition: transform 0.2s, color 0.2s;
+  }
+
+  .shelf:hover .shelf-name,
+  .shelf:hover .shelf-arrow {
+    color: var(--accent);
+  }
+
+  .shelf:hover .shelf-arrow {
+    transform: translateX(3px);
+  }
+
+  .shelf-more {
+    margin: 12px 0 0;
+    font-family: var(--fs);
+    font-size: 11.5px;
+    color: rgba(26, 22, 18, 0.5);
+  }
+
+  .shelf-more a {
+    color: var(--accent);
+    text-decoration: none;
+    margin-left: 4px;
+  }
+
+  .about-text-link {
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
   }
 
 </style>

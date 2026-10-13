@@ -1,4 +1,6 @@
 ---
+import { SITE_NAME, SITE_SLOGAN, DAILY_NAME } from '../lib/site';
+
 interface Props {
   showArchiveBanner?: boolean;
   date?: string;
@@ -17,25 +19,25 @@ const dateStr = today.getFullYear() + '.' +
     <div style="max-width: 1088px; margin: 0 auto; padding: 32px 32px 16px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border-bottom: 1px solid var(--border);">
       <div style="text-align: left;">
         <div style="font-family: var(--fs); font-size: 14px; font-weight: 700; color: var(--ink); margin-bottom: 4px;">
-          Explore the Archive
+          翻翻往期 · Archive
         </div>
         <div style="font-size: 11px; color: var(--ink2); line-height: 1.4;">
-          Dive into our comprehensive database of past AI industry shifts.
+          {DAILY_NAME} 的每一期日报都留在这里，随时回看。
         </div>
       </div>
       <a href="/daily" style="flex-shrink: 0; display: inline-block; padding: 8px 16px; background: var(--ink); color: var(--paper); font-size: 10px; letter-spacing: 1px; text-transform: uppercase; text-decoration: none; transition: opacity 0.2s;">
-        Browse History
+        查看往期
       </a>
     </div>
   )}
   <div style="display: flex; justify-content: flex-start; flex-wrap: wrap; gap: 24px; padding: 32px 32px 0; max-width: 1088px; margin: 0 auto; font-size: 12px; color: var(--ink2);">
-    <a href="/about" class="footer-link">关于我们</a>
+    <a href="/about" class="footer-link">关于本站</a>
     <a href="/contact" class="footer-link">联系方式</a>
     <a href="/privacy" class="footer-link">隐私政策 (Privacy Policy)</a>
     <a href="/terms" class="footer-link">服务条款 (Terms)</a>
   </div>
   <div class="footer-inner">
-    <span>© {today.getFullYear()} AmazingIndex · The Absolute Threshold</span>
+    <span>© {today.getFullYear()} {SITE_NAME} · {SITE_SLOGAN}</span>
     <span>Vol. {today.getFullYear()}.{String(today.getMonth() + 1).padStart(2, '0')} · Issue {dateStr}</span>
     <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer" style="color: inherit; text-decoration: none;">浙ICP备2022023772号</a>
     <span>版权所有 · All rights reserved</span>

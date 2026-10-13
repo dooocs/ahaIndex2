@@ -171,7 +171,7 @@ try {
       const response = owner.page.waitForResponse(r => r.request().isNavigationRequest() && r.url() === `${origin}/`, { timeout: 180000 });
       await owner.page.locator(selector).click({ noWaitAfter: true });
       assert.equal((await response).status(), 200);
-      await owner.page.getByRole('heading', { name: '每日 AI 行业精选简报', exact: true }).waitFor();
+      await owner.page.getByRole('heading', { name: '蜗牛杂货站 · 让生活多一点 Amazing', exact: true }).waitFor();
       assert.ok(await owner.page.locator('#article-list a.article').count());
       await owner.page.getByRole('link', { name: '相亲贴', exact: true }).click();
       await owner.page.locator('#post-total').getByText(String(baselineCount),{exact:true}).waitFor();

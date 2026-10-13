@@ -87,11 +87,11 @@ try {
  await page.getByRole('link',{name:'想找一个一起逛书店的人'}).waitFor();
  assert.equal(await page.locator('script[src*="googletagmanager"]').count(),0);
  if (checkHomepage) {
-   for (const link of [page.getByRole('link',{name:'日报',exact:true}),page.locator('.masthead .logo')]) {
+   for (const link of [page.getByRole('link',{name:'AI 日报',exact:true}),page.locator('.masthead .logo')]) {
      const response = page.waitForResponse(r => r.request().isNavigationRequest() && r.url() === `${origin}/`,{timeout:180000});
      await link.click({noWaitAfter:true});
      assert.equal((await response).status(),200,'Homepage must load with the news Supabase configuration');
-     await page.getByRole('heading',{name:'每日 AI 行业精选简报',exact:true}).waitFor();
+     await page.getByRole('heading',{name:'蜗牛杂货站 · 让生活多一点 Amazing',exact:true}).waitFor();
      assert.ok(await page.locator('#article-list a.article').count(),'Homepage must contain real news articles');
      await page.getByRole('link',{name:'相亲贴',exact:true}).click();
      await page.getByRole('link',{name:'想找一个一起逛书店的人'}).waitFor();

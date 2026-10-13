@@ -1,6 +1,7 @@
 ---
 import type { ProcessedItem } from '../lib/types';
 import SiteNav from './SiteNav.astro';
+import { SITE_SLOGAN } from '../lib/site';
 
 interface Props {
   items?: ProcessedItem[];
@@ -8,7 +9,7 @@ interface Props {
   showScore?: boolean;
 }
 
-const { items = [], subtitle = '每日 AI 简报', showScore = true } = Astro.props;
+const { items = [], subtitle = SITE_SLOGAN, showScore = true } = Astro.props;
 
 const displayDate = items.length > 0 && items[0].snapshot_date
   ? new Date(items[0].snapshot_date + 'T00:00:00')
@@ -27,10 +28,15 @@ const ahaScore = items.length > 0
   <div class="masthead-inner">
     <div class="masthead-logo">
       <a href="/" class="logo" style="text-decoration: none;" data-astro-reload>
-        <svg class="logo-icon" viewBox="0 0 26 20" fill="none" xmlns="http://www.w3.org/2000/svg" style="stroke: rgba(28,26,23,0.5);">
-          <polyline points="1,17 8,7 14,12 20,3 25,6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+        <svg class="logo-icon" viewBox="0 0 26 20" fill="none" stroke="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <path d="M24.5 17.6 H9 C6 17.6 4.3 16.2 4.3 13.4" stroke-width="1.9" stroke-linecap="round"/>
+          <path d="M4.3 13.4 L2.6 9.4 M5 13 L6.4 9.2" stroke-width="1.4" stroke-linecap="round"/>
+          <circle cx="2.6" cy="9.4" r="0.9" fill="currentColor" stroke="none"/>
+          <circle cx="6.4" cy="9.2" r="0.9" fill="currentColor" stroke="none"/>
+          <circle cx="15.6" cy="10.6" r="6.4" stroke-width="1.9"/>
+          <path d="M15.6 10.6 A1 1 0 0 1 17.6 10.6 A2 2 0 0 1 13.6 10.6 A3 3 0 0 1 19.6 10.6" stroke-width="1.4" stroke-linecap="round"/>
         </svg>
-        <span class="logo-text">Amazing<span>Index</span></span>
+        <span class="logo-text">蜗牛<span>杂货站</span></span>
       </a>
     </div>
 

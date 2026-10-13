@@ -91,20 +91,21 @@ body::before {
 
 .logo-icon {
   flex-shrink: 0;
-  margin-right: 7px;
+  margin-right: 8px;
   position: relative;
-  top: 0px;
-  width: 19px;
-  height: 15px;
+  top: -1px;
+  width: 23px;
+  height: 18px;
+  color: #7b7871;
 }
 
 .logo-text {
-  font-family: var(--fd);
-  font-size: 20px;
+  font-family: var(--fs);
+  font-size: 21px;
   font-weight: 700;
-  font-style: italic;
+  font-style: normal;
   color: #1c1a17;
-  letter-spacing: -0.3px;
+  letter-spacing: 1px;
 }
 
 .logo-text span {
@@ -1464,12 +1465,13 @@ body::before {
     display: none;
   }
   .logo-text {
-    font-size: 16px;
+    font-size: 17px;
+    letter-spacing: 0.5px;
   }
   .logo-icon {
-    width: 14px;
-    height: 11px;
-    margin-right: 5px;
+    width: 18px;
+    height: 14px;
+    margin-right: 6px;
   }
   .masthead-meta {
     display: flex;

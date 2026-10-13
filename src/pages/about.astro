@@ -2,37 +2,50 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Masthead from '../components/Masthead.astro';
 import Footer from '../components/Footer.astro';
+import { SITE_NAME, SITE_SLOGAN, SITE_DESCRIPTION, SHELVES, siteTitle } from '../lib/site';
+import { community } from '../lib/community-config';
+
+const shelves = SHELVES.filter((shelf) => shelf.href !== '/meet' || community);
 ---
 
 <BaseLayout
-  title="关于我们 | AmazingIndex"
-  description="AmazingIndex 是一套基于多维度量化算法的 AI 内容评估系统，旨在发掘当下最具颠覆性与美学价值的创新成果。"
+  title={siteTitle('关于本站')}
+  description={SITE_DESCRIPTION}
   canonicalUrl="https://www.amazingindex.com/about"
-  ogTitle="关于我们 | AmazingIndex"
-  ogDescription="了解 AmazingIndex 的产品理念与内容筛选方法论。"
-  ogUrl="https://www.amazingindex.com/about"
 >
   <Masthead />
   <div class="page-hero">
     <div style="margin-bottom: 24px;">
       <a href="/" class="back-link" data-astro-reload>← 返回首页</a>
     </div>
-    <div class="vol">About · AmazingIndex</div>
-    <h1>我们在做什么</h1>
-    <p class="subtitle">每日精选 AI 行业最值得关注的信号，过滤噪音，直达洞察。</p>
+    <div class="vol">About · {SITE_NAME}</div>
+    <h1>{SITE_SLOGAN}</h1>
+    <p class="subtitle">一个独立开发者开的小站：用大规模计算替你看遍全网，把好东西带到你面前。</p>
   </div>
 
   <main class="page-content">
     <div class="static-section">
       <div class="static-section-label">Origin · 起源</div>
-      <h2>为什么有 AmazingIndex</h2>
-      <p>AI 行业每天产出的信息量已经超过任何人的消化能力。论文、开源项目、产品发布、社区讨论……大量内容混杂在一起，真正重要的信号反而淹没在噪音之中。</p>
-      <p>AmazingIndex 从这个问题出发：<strong>如果每天只读一份简报，应该读什么？</strong>我们不追求数量，只追求每条内容对你真正有价值。</p>
+      <h2>为什么开这家杂货站</h2>
+      <p>世界每天都在发生很多了不起的事，但大多数人没有时间去找。信息越来越多，真正的好东西反而越难被看见。</p>
+      <p>{SITE_NAME}想做的事很简单：<strong>让机器多看一点，让你少找一点。</strong>值得知道的技术、值得用的工具、值得认识的人，我们替你筛出来，摆上货架。好东西，不该只有少数人知道。</p>
     </div>
+
     <div class="static-section">
-      <div class="static-section-label">How · 方法论</div>
-      <h2>多维量化评估体系</h2>
-      <p>我们构建了一套基于多维度量化算法的评估系统，从数十个来源中筛选内容，并从以下维度对每条信息进行评分：</p>
+      <div class="static-section-label">Shelves · 货架</div>
+      <h2>店里有什么</h2>
+      <ul class="about-shelves">
+        {shelves.map((shelf) => (
+          <li><a href={shelf.href} data-astro-reload><strong>{shelf.name}</strong></a> — {shelf.desc}</li>
+        ))}
+      </ul>
+      <p>这家店会一直长出新东西。新货架上线时，会出现在导航和首页里。</p>
+    </div>
+
+    <div class="static-section">
+      <div class="static-section-label">How · AmazingIndex 方法论</div>
+      <h2>如果每天只读一份 AI 简报，应该读什么？</h2>
+      <p>AmazingIndex 是本站的第一个栏目。它每天从数十个来源收集内容，用一套多维度量化算法给每条信息打分：</p>
       <ul>
         <li><strong>可操作性</strong> — 对从业者的直接价值</li>
         <li><strong>技术深度</strong> — 内容的专业程度</li>
@@ -40,18 +53,20 @@ import Footer from '../components/Footer.astro';
         <li><strong>事件稀缺性</strong> — 是否具有独特性</li>
         <li><strong>受众契合度</strong> — 是否符合 AI 从业者的核心关注</li>
       </ul>
-      <div class="highlight-box">"The Absolute Threshold" — 只有真正越过阈值的内容，才会出现在每日简报里。</div>
+      <div class="highlight-box">"The Absolute Threshold" — 只有真正越过阈值的内容，才会出现在每日精选里。</div>
     </div>
+
     <div class="static-section">
       <div class="static-section-label">Identity · 定位</div>
-      <h2>我们是谁</h2>
-      <p>AmazingIndex 由独立开发者创立，专注于 AI 行业内容的聚合与深度筛选。我们不代表任何机构或投资方，保持完全独立的评估立场。</p>
-      <p>所有内容基于算法与人工双重审核，来源涵盖 arXiv、HuggingFace、Hacker News、Reddit 等主流平台。</p>
+      <h2>谁在开这家店</h2>
+      <p>{SITE_NAME}由独立开发者「蜗牛快跑」运营，站名里的“蜗牛”就来自这里：跑得不快，但一直在跑。我们不代表任何机构或投资方，保持独立的判断。</p>
+      <p>AmazingIndex 的内容基于算法与人工双重审核，来源涵盖 arXiv、HuggingFace、Hacker News、Reddit 等主流平台。</p>
     </div>
+
     <div class="static-section">
       <div class="static-section-label">Contact · 联系</div>
-      <h2>与我们交流</h2>
-      <p>有内容建议、合作想法或任何反馈，欢迎发邮件至 <a href="mailto:hi@amazingindex.com" style="color: var(--accent); text-decoration: underline;">hi@amazingindex.com</a>。我们认真阅读每一封来信。</p>
+      <h2>来店里聊聊</h2>
+      <p>有内容建议、合作想法、想上架的新点子，或任何反馈，欢迎发邮件至 <a href="mailto:hi@amazingindex.com" style="color: var(--accent); text-decoration: underline;">hi@amazingindex.com</a>。每一封来信我们都会认真读。</p>
     </div>
   </main>
   <Footer />
@@ -65,4 +80,6 @@ import Footer from '../components/Footer.astro';
     transition: color 0.2s;
   }
   .back-link:hover { color: var(--ink); }
+  .about-shelves a { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+  .about-shelves a:hover { color: var(--accent); }
 </style>
