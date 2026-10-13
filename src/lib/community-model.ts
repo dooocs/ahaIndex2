@@ -13,6 +13,8 @@ export interface MeetPost {
   expires_at: string;
   status?: PostStatus;
   photo_count?: number;
+  /** Present only when the author chose to show it (get_meet_post). */
+  contact?: string | null;
 }
 
 export const STATUS_LABELS: Record<PostStatus, string> = {
@@ -36,9 +38,7 @@ export function validatePost(values: Record<string, unknown>) {
   if (!['女', '男', '其他'].includes(gender)) throw new Error('请选择性别。');
   if (values.consent !== true) throw new Error('请确认资料为本人发布，并同意展示规则。');
   if (result.p_contact && values.share_contact !== true) throw new Error('填写联系方式时，需要同意公开展示。');
-  // The current form's consent covers public display; p_public_contact records that explicitly per submission.
-  const share = values.share_contact === true;
-  return { ...result, p_age: age, p_gender: gender, p_consent: true, p_share_contact: share, p_public_contact: share };
+  return { ...result, p_age: age, p_gender: gender, p_consent: true, p_share_contact: values.share_contact === true };
 }
 
 export function safeReturnPath(value: string | null): string {

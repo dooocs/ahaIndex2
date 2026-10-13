@@ -53,10 +53,6 @@ async function init() {
   const { data: listener } = client.auth.onAuthStateChange(event => {
     if (event !== 'SIGNED_OUT') return;
     if (!signingOut && (view === 'editor' || view === 'account')) login();
-    const contact = root.querySelector('#post-contact');
-    if (contact) contact.textContent = '';
-    const button = root.querySelector<HTMLButtonElement>('#show-contact');
-    if (button) button.hidden = false;
   });
   disposers.push(() => listener.subscription.unsubscribe());
   const photos = photoViewer(root);
@@ -293,15 +289,7 @@ async function init() {
           submitting = true;
           updateSubmit();
           try {
-            const params = { ...values, p_photo_ids: ids, p_public_photos: true };
-            try { await rpc('submit_meet_post', params); }
-            catch (error) {
-              // Until the public-contact migration (010) is applied, the backend may not know
-              // p_public_contact. Retry without it: the contact then stays signed-in-only.
-              if (!isUnknownSignature(error)) throw error;
-              const { p_public_contact: _unused, ...legacy } = params;
-              await rpc('submit_meet_post', legacy);
-            }
+            await rpc('submit_meet_post', { ...values, p_photo_ids: ids, p_public_photos: true });
             location.assign('/account?submitted=1');
           } catch (error) {
             const seconds = postRetrySeconds(error);
@@ -364,41 +352,19 @@ async function init() {
       $('#post-author').textContent = post.nickname;
       void photos.load([post.id], true).catch(() => { if (!disposed) $('#post-photos').textContent = '照片暂不可用，请刷新重试。'; });
       if (post.looking_for) detail.append(node('h2', '希望认识的你'), node('p', post.looking_for, 'post-body'));
-      $('#contact-section').hidden = false;
+      if (post.contact) {
+        $('#post-contact').textContent = post.contact;
+        $('#contact-section').hidden = false;
+      }
       const report = $('#report-post');
       report.hidden = false;
       report.querySelector('a')!.href = `mailto:hi@amazingindex.com?subject=${encodeURIComponent(`相亲帖举报 #${post.id}`)}`;
-      const contactButton = $<HTMLButtonElement>('#show-contact');
-      // Posts submitted under the public-contact terms show their contact to everyone.
-      // Older posts (consented to signed-in viewers only) keep the login-gated button below.
-      // If the public endpoint is unavailable, fall back to the login flow silently.
-      try {
-        const publicContact = await rpc('get_public_meet_contact', { p_id: post.id });
-        if (disposed) return;
-        if (typeof publicContact === 'string' && publicContact) {
-          $('#post-contact').textContent = publicContact;
-          contactButton.hidden = true;
-        }
-      } catch { /* keep login-gated fallback */ }
-      contactButton.addEventListener('click', () => { void busy(contactButton, async () => {
-        const user = await requireUser();
-        if (!user || disposed) return;
-        const contact = await rpc('get_meet_contact', { p_id: post.id });
-        const { data: { session } } = await client.auth.getSession();
-        if (disposed || session?.user.id !== user.id) return;
-        $('#post-contact').textContent = contact || '发布者未提供联系方式，或帖子已不可见。';
-        contactButton.hidden = true;
-      }); });
       // Published data is never saved locally; recheck after returning to a backgrounded tab.
       const visibility = () => { if (document.visibilityState === 'visible') location.reload(); };
       document.addEventListener('visibilitychange', visibility);
       disposers.push(() => document.removeEventListener('visibilitychange', visibility));
     }
   } catch (error) { message(friendlyError(error), true); }
-}
-function isUnknownSignature(error: unknown): boolean {
-  const e = error as { code?: string; message?: string } | null;
-  return Boolean(e && (e.code === 'PGRST202' || e.code === '42883' || e.message?.includes('Could not find the function')));
 }
 document.addEventListener('astro:page-load', () => { void init(); });
 document.addEventListener('astro:before-swap', () => cleanup());

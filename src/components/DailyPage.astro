@@ -14,7 +14,6 @@ interface Props {
   date?: string;
   showArchiveBanner?: boolean;
   heading?: string;
-  subtitle?: string;
   sidebarMode?: 'score' | 'intro';
 }
 
@@ -26,7 +25,6 @@ const {
   date,
   showArchiveBanner = true,
   heading,
-  subtitle = 'AmazingIndex · 每日 AI 精选',
   sidebarMode = 'score',
 } = Astro.props;
 
@@ -34,7 +32,7 @@ const snapshotDate = date || (items.length > 0 ? items[0].snapshot_date : undefi
 const isHome = sidebarMode === 'intro';
 ---
 
-<Masthead items={items} subtitle={subtitle} />
+<Masthead items={items} />
 
 <div class="layout">
   <main class="main-col">
