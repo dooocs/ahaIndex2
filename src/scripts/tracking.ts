@@ -137,32 +137,80 @@ function trackEvent(
   }).catch(() => {});
 }
 
+// An impression is recorded only after a card has stayed >= 50% in the
+// viewport, with the tab visible, for IMPRESSION_DWELL_MS without interruption.
+// Leaving the viewport or hiding the tab cancels the pending timer; the dwell
+// restarts from zero when the card becomes visible again.
+const IMPRESSION_DWELL_MS = 5000;
+const IMPRESSION_THRESHOLD = 0.5;
+
+let impressionObserver: IntersectionObserver | undefined;
+const pendingImpressions = new Map<HTMLElement, number>();
+const visibleCards = new Set<HTMLElement>();
+
+function impressionKey(el: HTMLElement) {
+  return `${el.dataset.itemId}-${el.dataset.snapshotDate}`;
+}
+
+function cancelPendingImpression(el: HTMLElement) {
+  const timer = pendingImpressions.get(el);
+  if (timer !== undefined) {
+    window.clearTimeout(timer);
+    pendingImpressions.delete(el);
+  }
+}
+
+function schedulePendingImpression(el: HTMLElement) {
+  if (pendingImpressions.has(el) || document.visibilityState !== 'visible') return;
+  const key = impressionKey(el);
+  if (trackedImpressions.has(key)) return;
+
+  const timer = window.setTimeout(() => {
+    pendingImpressions.delete(el);
+    if (!visibleCards.has(el) || document.visibilityState !== 'visible') return;
+    if (trackedImpressions.has(key)) return;
+    trackedImpressions.add(key);
+    trackEvent(el.dataset.itemId!, el.dataset.snapshotDate!, 'impression');
+    visibleCards.delete(el);
+    impressionObserver?.unobserve(el);
+  }, IMPRESSION_DWELL_MS);
+  pendingImpressions.set(el, timer);
+}
+
+function handleImpressionVisibilityChange() {
+  if (document.visibilityState === 'visible') {
+    visibleCards.forEach((el) => schedulePendingImpression(el));
+  } else {
+    pendingImpressions.forEach((_, el) => cancelPendingImpression(el));
+  }
+}
+
 function initImpressionTracking() {
+  impressionObserver?.disconnect();
+  pendingImpressions.forEach((_, el) => cancelPendingImpression(el));
+  visibleCards.clear();
+
   const cards = document.querySelectorAll<HTMLElement>('[data-track-impression="true"][data-item-id][data-snapshot-date]');
 
-  const observer = new IntersectionObserver(
+  impressionObserver = new IntersectionObserver(
     (entries) => {
       entries.forEach((entry) => {
-        if (!entry.isIntersecting) return;
         const el = entry.target as HTMLElement;
-        const itemId = el.dataset.itemId!;
-        const snapshotDate = el.dataset.snapshotDate!;
-        const key = `${itemId}-${snapshotDate}`;
-        if (trackedImpressions.has(key)) return;
-
-        setTimeout(() => {
-          if (!trackedImpressions.has(key)) {
-            trackedImpressions.add(key);
-            trackEvent(itemId, snapshotDate, 'impression');
-          }
-          observer.unobserve(el);
-        }, 5000);
+        if (entry.isIntersecting && entry.intersectionRatio >= IMPRESSION_THRESHOLD) {
+          visibleCards.add(el);
+          schedulePendingImpression(el);
+        } else {
+          visibleCards.delete(el);
+          cancelPendingImpression(el);
+        }
       });
     },
-    { threshold: 0.5 },
+    { threshold: IMPRESSION_THRESHOLD },
   );
 
-  cards.forEach((card) => observer.observe(card));
+  cards.forEach((card) => {
+    if (!trackedImpressions.has(impressionKey(card))) impressionObserver!.observe(card);
+  });
 }
 
 function initClickOriginalTracking() {
@@ -207,6 +255,7 @@ document.addEventListener('astro:page-load', () => {
     document.addEventListener('wheel', handleDiagnosticInteraction, { passive: true });
     document.addEventListener('keydown', handleDiagnosticInteraction);
     document.addEventListener('visibilitychange', handleDiagnosticVisibilityChange);
+    document.addEventListener('visibilitychange', handleImpressionVisibilityChange);
     initClickOriginalTracking();
     initClickTracking();
   }
