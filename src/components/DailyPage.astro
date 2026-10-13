@@ -48,7 +48,6 @@ const editionLabel = snapshotDate ? snapshotDate.replaceAll('-', '.') : '';
       </a>
     )}
     <div class="column-head">
-      <a href="/daily" class="column-mark" data-astro-reload>Amazing<span>Index</span></a>
       <span class="column-name">{DAILY_TAGLINE}</span>
       {editionLabel && <span class="column-meta">{isHome ? `今日 · ${editionLabel}` : editionLabel} · {items.length} 条</span>}
     </div>
@@ -78,24 +77,11 @@ const editionLabel = snapshotDate ? snapshotDate.replaceAll('-', '.') : '';
     border-bottom: 1px solid var(--border);
   }
 
-  .column-mark {
-    font-family: var(--fd);
-    font-size: 17px;
-    font-weight: 700;
-    font-style: italic;
-    letter-spacing: -0.3px;
-    color: var(--ink);
-    text-decoration: none;
-  }
-
-  .column-mark span {
-    color: var(--accent);
-  }
-
   .column-name {
     font-family: var(--fs);
-    font-size: 13px;
-    color: rgba(26, 22, 18, 0.72);
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--ink);
   }
 
   .column-meta {
