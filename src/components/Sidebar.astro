@@ -1,6 +1,6 @@
 ---
 import type { ProcessedItem, DailyArchive, GlobalStats } from '../lib/types';
-import { SHELVES } from '../lib/site';
+import { SHELVES, SITE_INTRO } from '../lib/site';
 import { community } from '../lib/community-config';
 
 interface Props {
@@ -75,7 +75,7 @@ function dateStr(d: number) {
           <em>Amazing</em>
         </h2>
         <p class="sidebar-intro-text">
-          蜗牛杂货站是一个独立开发者开的小站。我们用大规模计算替你看遍全网，把值得知道的技术、值得用的工具、值得认识的人带到你面前。好东西，不该只有少数人知道。
+          {SITE_INTRO}
         </p>
         <div class="sidebar-shelves">
           <div class="sidebar-shelves-title">店里有什么 / On the shelves</div>
