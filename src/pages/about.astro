@@ -2,7 +2,7 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Masthead from '../components/Masthead.astro';
 import Footer from '../components/Footer.astro';
-import { SITE_NAME, SITE_SLOGAN, SITE_DESCRIPTION, SHELVES, siteTitle } from '../lib/site';
+import { SITE_NAME, SITE_SLOGAN, SITE_INTRO, SITE_DESCRIPTION, SHELVES, siteTitle } from '../lib/site';
 import { community } from '../lib/community-config';
 
 const shelves = SHELVES.filter((shelf) => shelf.href !== '/meet' || community);
@@ -20,15 +20,15 @@ const shelves = SHELVES.filter((shelf) => shelf.href !== '/meet' || community);
     </div>
     <div class="vol">About · {SITE_NAME}</div>
     <h1>{SITE_SLOGAN}</h1>
-    <p class="subtitle">一个独立开发者开的小站：用大规模计算替你看遍全网，把好东西带到你面前。</p>
+    <p class="subtitle">{SITE_INTRO}</p>
   </div>
 
   <main class="page-content">
     <div class="static-section">
       <div class="static-section-label">Origin · 起源</div>
       <h2>为什么开这家杂货站</h2>
-      <p>世界每天都在发生很多了不起的事，但大多数人没有时间去找。信息越来越多，真正的好东西反而越难被看见。</p>
-      <p>{SITE_NAME}想做的事很简单：<strong>让机器多看一点，让你少找一点。</strong>值得知道的技术、值得用的工具、值得认识的人，我们替你筛出来，摆上货架。好东西，不该只有少数人知道。</p>
+      <p>这里会陆续上架各种<strong>前沿、好玩、有用的小东西</strong>：有的帮你跟上技术的变化，有的帮你省点时间，有的只是让你会心一笑。</p>
+      <p>店不大，上新也不快，但每一样都认真做。</p>
     </div>
 
     <div class="static-section">

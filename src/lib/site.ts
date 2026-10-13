@@ -2,8 +2,8 @@
 export const SITE_NAME = '蜗牛杂货站';
 export const SITE_SLOGAN = '让生活多一点 Amazing';
 export const SITE_SLOGAN_EN = 'A little more amazing, every day.';
-export const SITE_DESCRIPTION =
-  '蜗牛杂货站是独立开发者的小站：用大规模计算替你看遍全网，把值得知道的技术、值得用的工具、值得认识的人带到你面前。让生活多一点 Amazing。';
+export const SITE_INTRO = '蜗牛杂货站是一个独立开发者小站，专门做前沿、好玩、有用的小东西。';
+export const SITE_DESCRIPTION = `${SITE_INTRO}让生活多一点 Amazing。`;
 
 // The daily AI briefing keeps its original name as a column of the site.
 export const DAILY_NAME = 'AmazingIndex';
