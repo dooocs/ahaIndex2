@@ -16,6 +16,7 @@ const token = `${Buffer.from(JSON.stringify({alg:'HS256',typ:'JWT'})).toString('
 let ownPost = null;
 let contact = null;
 let rateLimitNextPost = false;
+let publicContactFor18 = false;
 let published = [{ id: 18, nickname: '周末散步的人', age: 29, gender: '女', city: '杭州', occupation: '产品设计', title: '想找一个一起逛书店的人', about: '工作日认真工作，周末喜欢散步、看展和逛书店。比起热闹的聚会，更喜欢两个人慢慢聊天。', looking_for: '真诚、独立，有自己的兴趣，也愿意分享日常。', created_at: new Date().toISOString(), expires_at: new Date(Date.now()+86400000).toISOString() }];
 const browser = await chromium.launch({headless:true,channel:process.env.PLAYWRIGHT_CHANNEL || undefined});
 let testPage;
@@ -51,9 +52,11 @@ try {
      return ok(published.filter(p => !body.p_before || p.id<body.p_before).map(p=>({...p,photo_count:1})));
    }
    if (url.pathname.endsWith('/rpc/get_meet_post')) return ok([...published,...(ownPost ? [ownPost] : [])].filter(p=>p.id===body.p_id));
+   if (url.pathname.endsWith('/rpc/get_public_meet_contact')) return ok(publicContactFor18 && body.p_id===18 ? 'wechat-public-test' : null);
    if (url.pathname.endsWith('/rpc/get_meet_contact')) return ok(body.p_id===18 ? 'wechat-test-only' : contact?.contact);
    if (url.pathname.endsWith('/rpc/submit_meet_post')) {
      assert.equal(body.p_public_photos,true);
+     assert.equal(body.p_public_contact,body.p_share_contact);
      if (rateLimitNextPost) {
        rateLimitNextPost=false;
        return route.fulfill({status:400,contentType:'application/json',body:JSON.stringify({code:'P0001',message:'Please wait 60 seconds'})});
@@ -149,7 +152,7 @@ try {
  await page.getByLabel('联系方式（选填）',{exact:true}).fill('test-contact');
  await page.locator('[name=consent]').check();
  await page.getByRole('button',{name:'提交审核'}).click();
- await page.getByText('填写联系方式时，需要同意向已登录用户展示。').waitFor();
+ await page.getByText('填写联系方式时，需要同意公开展示。').waitFor();
  await page.locator('[name=share_contact]').check();
  for (const name of ['city','age','gender']) {
    const input = page.locator(`[name=${name}]`);
@@ -214,6 +217,12 @@ try {
  await page.goto(origin+'/meet/post?id=18');
  await page.getByRole('button',{name:'查看联系方式'}).click();
  await page.waitForURL('**/login**');
+ // A post submitted under the public-contact terms shows its contact to signed-out visitors.
+ publicContactFor18 = true;
+ await page.goto(origin+'/meet/post?id=18');
+ await page.getByText('wechat-public-test').waitFor();
+ assert.equal(await page.getByRole('button',{name:'查看联系方式'}).isVisible(),false);
+ publicContactFor18 = false;
  for(const width of [375,320]) {
    await page.setViewportSize({width,height:812});
    for(const path of ['/login','/meet','/meet/post?id=18']) {
@@ -225,7 +234,7 @@ try {
    }
  }
  assert.deepEqual(errors,[]);
- console.log(JSON.stringify({result:'PASS',checks:[...(checkHomepage ? ['homepage navigation via daily tab and logo'] : []),'email link error/success','callback fragment cleanup','return path','no city filter/empty state','required city/age/gender','submit consent','post persistence','edit prefill','post cooldown on load and reload','server cooldown and form preservation','XSS rendering','private contact login','withdraw','sign out across tabs','no analytics','320px/375px/1365px layout'],apiCalls:apiCalls.length}));
+ console.log(JSON.stringify({result:'PASS',checks:[...(checkHomepage ? ['homepage navigation via daily tab and logo'] : []),'email link error/success','callback fragment cleanup','return path','no city filter/empty state','required city/age/gender','submit consent','post persistence','edit prefill','post cooldown on load and reload','server cooldown and form preservation','XSS rendering','legacy contact login','public contact without login','withdraw','sign out across tabs','no analytics','320px/375px/1365px layout'],apiCalls:apiCalls.length}));
 } catch(error) {
  if(testPage) {
    await testPage.screenshot({path:screenshot('mock-failure'),fullPage:true});
