@@ -31,6 +31,17 @@ STAGE="$WORK/stage"
 if [[ "$TARGET" == oss ]]; then
   CREDS=(--endpoint https://oss-cn-hangzhou.aliyuncs.com --access-key-id "$OSS_ACCESS_KEY_ID" --access-key-secret "$OSS_ACCESS_KEY_SECRET" --region cn-hangzhou)
   DEST="oss://$BUCKET/$PREFIX"
+  # For the parallel workers below (xargs runs them in fresh shells).
+  export DEST OSS_ACCESS_KEY_ID OSS_ACCESS_KEY_SECRET
+  copy_bare() {
+    ossutil cp "$DEST$1" "$DEST$2" --force --metadata "Cache-Control=no-cache" --metadata "Content-Type=text/html; charset=utf-8" \
+      --endpoint https://oss-cn-hangzhou.aliyuncs.com --access-key-id "$OSS_ACCESS_KEY_ID" --access-key-secret "$OSS_ACCESS_KEY_SECRET" --region cn-hangzhou > /dev/null
+  }
+  remove_key() {
+    ossutil rm "$DEST$1" --force \
+      --endpoint https://oss-cn-hangzhou.aliyuncs.com --access-key-id "$OSS_ACCESS_KEY_ID" --access-key-secret "$OSS_ACCESS_KEY_SECRET" --region cn-hangzhou > /dev/null
+  }
+  export -f copy_bare remove_key
 elif [[ "$TARGET" == local:* ]]; then
   LOCAL_ROOT="${TARGET#local:}/$PREFIX"
   LOCAL_ROOT="${LOCAL_ROOT%/}/"
@@ -60,7 +71,8 @@ put "$DIST/_astro" "_astro/" "max-age=31536000,immutable" "" 20 &
 PID_ASTRO=$!
 put "$STAGE/other" "" "" "" 10 &
 PID_OTHER=$!
-wait "$PID_ASTRO" "$PID_OTHER"
+wait "$PID_ASTRO"
+wait "$PID_OTHER"
 echo "✅ assets uploaded"
 
 # 2. Pages, data and feeds.
@@ -70,18 +82,15 @@ put "$STAGE/json" "" "max-age=300" "application/json; charset=utf-8" 10 &
 PID_JSON=$!
 put "$STAGE/xml" "" "max-age=300" "application/xml; charset=utf-8" 5 &
 PID_XML=$!
-wait "$PID_HTML" "$PID_JSON" "$PID_XML"
+wait "$PID_HTML"
+wait "$PID_JSON"
+wait "$PID_XML"
 echo "✅ pages, data and feeds uploaded"
 
 # 3. Bare URLs: /daily/2026-10-13 serves the same page as /daily/2026-10-13/.
 if [[ "$TARGET" == oss ]]; then
-  while IFS=$'\t' read -r rel key; do
-    [[ -n "$rel" ]] || continue
-    ossutil cp "$DEST$rel" "$DEST$key" --force \
-      --metadata "Cache-Control=no-cache" --metadata "Content-Type=text/html; charset=utf-8" "${CREDS[@]}" &
-    if [[ $(jobs -r | wc -l) -ge 20 ]]; then wait -n; fi
-  done < "$WORK/bare.txt"
-  wait
+  # xargs exits non-zero if any copy fails.
+  tr '\t\n' '\0\0' < "$WORK/bare.txt" | xargs -0 -r -P 20 -n 2 bash -c 'copy_bare "$1" "$2"' _
   echo "✅ bare URLs copied: $(grep -c . "$WORK/bare.txt" || true)"
 else
   echo "ℹ️  local target: bare URL copies skipped ($(grep -c . "$WORK/bare.txt" || true))"
@@ -127,16 +136,11 @@ if [[ "$MODE" == full && "$CLEANUP" != none ]]; then
       echo "❌ refusing to delete $ORPHANS objects (more than 30% of $REMOTE)" >&2
       exit 1
     fi
-    while read -r key; do
-      [[ -n "$key" ]] || continue
-      if [[ "$TARGET" == oss ]]; then
-        ossutil rm "$DEST$key" --force "${CREDS[@]}" &
-        if [[ $(jobs -r | wc -l) -ge 20 ]]; then wait -n; fi
-      else
-        rm -f "$LOCAL_ROOT/$key"
-      fi
-    done < "$WORK/orphans.txt"
-    wait
+    if [[ "$TARGET" == oss ]]; then
+      tr '\n' '\0' < "$WORK/orphans.txt" | xargs -0 -r -P 20 -n 1 bash -c 'remove_key "$1"' _
+    else
+      while read -r key; do [[ -n "$key" ]] && rm -f "$LOCAL_ROOT$key"; done < "$WORK/orphans.txt"
+    fi
     echo "🧹 deleted $ORPHANS objects"
   fi
 fi
