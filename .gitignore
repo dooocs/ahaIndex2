@@ -26,3 +26,7 @@ supabase/.temp/
 
 # jetbrains setting folder
 .idea/
+
+# deploy working files (scripts/deploy-oss.sh, scripts/export-site-data.ts)
+.deploy/
+export/

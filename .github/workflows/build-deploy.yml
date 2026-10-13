@@ -1,15 +1,39 @@
 name: Build & Deploy
 
+# daily: the pipeline finished — build the homepage, the newest two editions,
+#        any edition the deploy manifest does not list yet, and their articles.
+# full:  code changed, a person asked, or the weekly rebuild — build everything.
+# Both then export data/sitemaps/RSS, verify, and upload. See docs/build-data.md.
+
 on:
   repository_dispatch:
-    # build-deploy: manual / legacy dispatch
-    # external-workflow-complete: other repos call POST .../dispatches after their workflow finishes
-    # pipeline-done: ahaIndexSync sends this after its pipeline completes
+    # pipeline-done: ahaIndexSync sends this after its pipeline completes (daily)
+    # external-workflow-complete: other repos call POST .../dispatches when their workflow finishes (daily)
+    # build-deploy: manual / legacy dispatch (full)
     types:
       - build-deploy
       - external-workflow-complete
       - pipeline-done
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+  schedule:
+    # Sundays 03:17 Beijing time: refreshes project pages and anything the pipeline revised.
+    - cron: '17 19 * * 6'
   workflow_dispatch:
+    inputs:
+      mode:
+        description: 'full rebuilds every page; daily builds only what a new edition changes'
+        type: choice
+        options: [full, daily]
+        default: full
+      cleanup:
+        description: 'Full builds only: list or delete OSS objects that no deploy writes any more'
+        type: choice
+        options: [dry-run, none, delete]
+        default: dry-run
 
 concurrency:
   group: production-build-deploy
@@ -19,6 +43,10 @@ jobs:
   build-deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_BUILD_KEY: ${{ secrets.SUPABASE_BUILD_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      REQUESTED_MODE: ${{ (github.event_name == 'repository_dispatch' && github.event.action != 'build-deploy') && 'daily' || (github.event_name == 'workflow_dispatch' && inputs.mode) || 'full' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -31,6 +59,27 @@ jobs:
 
       - run: npm test
 
+      - name: Install ossutil
+        run: |
+          curl -Lo ossutil.zip https://gosspublic.alicdn.com/ossutil/v2/2.2.1/ossutil-2.2.1-linux-amd64.zip
+          unzip ossutil.zip
+          chmod +x ossutil-2.2.1-linux-amd64/ossutil
+          sudo mv ossutil-2.2.1-linux-amd64/ossutil /usr/local/bin/ossutil
+
+      - name: Fetch the deploy manifest
+        env:
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+        run: |
+          mkdir -p .deploy
+          ossutil cp oss://amazingindex/_deploy/manifest.json .deploy/manifest.prev.json --force \
+            --endpoint https://oss-cn-hangzhou.aliyuncs.com --access-key-id "$OSS_ACCESS_KEY_ID" \
+            --access-key-secret "$OSS_ACCESS_KEY_SECRET" --region cn-hangzhou \
+            || echo "No deploy manifest yet: this run builds the full site"
+
+      - name: Plan the build
+        run: npm run plan:build -- --mode "$REQUESTED_MODE" --manifest .deploy/manifest.prev.json --out .deploy/plan.json
+
       - name: Verify community service and build
         run: |
           npm run verify:community:service
@@ -40,110 +89,22 @@ jobs:
           PUBLIC_COMMUNITY_SUPABASE_URL: ${{ vars.PUBLIC_COMMUNITY_SUPABASE_URL }}
           PUBLIC_COMMUNITY_SUPABASE_KEY: ${{ vars.PUBLIC_COMMUNITY_SUPABASE_KEY }}
           PUBLIC_COMMUNITY_TURNSTILE_KEY: ${{ vars.PUBLIC_COMMUNITY_TURNSTILE_KEY }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_BUILD_KEY: ${{ secrets.SUPABASE_BUILD_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
 
-      - run: npm run verify:rss
+      - name: Export data, sitemaps and RSS
+        run: npm run export:data -- --dist dist --out export --mode "$BUILD_MODE" --prev-manifest .deploy/manifest.prev.json
 
-      - run: npm run verify:build
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_BUILD_KEY: ${{ secrets.SUPABASE_BUILD_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      - name: Verify pages and export
+        run: npm run verify:site -- --dist dist --export export
 
-      - name: Install ossutil
-        run: |
-          curl -Lo ossutil.zip https://gosspublic.alicdn.com/ossutil/v2/2.2.1/ossutil-2.2.1-linux-amd64.zip
-          unzip ossutil.zip
-          chmod +x ossutil-2.2.1-linux-amd64/ossutil
-          sudo mv ossutil-2.2.1-linux-amd64/ossutil /usr/local/bin/ossutil
-
-      - name: Deploy to OSS
+      - name: Deploy to OSS and refresh the CDN
         env:
           OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
           OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          CLEANUP: ${{ github.event_name == 'workflow_dispatch' && inputs.cleanup || (github.event_name == 'schedule' && 'dry-run') || 'none' }}
         run: |
           set -euo pipefail
-          CREDS="--endpoint https://oss-cn-hangzhou.aliyuncs.com --access-key-id $OSS_ACCESS_KEY_ID --access-key-secret $OSS_ACCESS_KEY_SECRET --region cn-hangzhou"
-
-          # 清理 staging 残留
-          echo "🧹 清理 __test__/ 目录..."
-          ossutil rm oss://amazingindex/__test__/ --recursive --force $CREDS || true
-          echo "✅ staging 清理完成"
-
-          START=$(date +%s)
-
-          # 1. _astro 长缓存（后台）
-          ossutil sync ./dist/_astro/ oss://amazingindex/_astro/ \
-            --force -j 20 \
-            --metadata "Cache-Control=max-age=31536000,immutable" \
-            $CREDS &
-          PID_ASTRO=$!
-
-          # 2. HTML 文件（后台）
-          mkdir -p /tmp/html-stage
-          rsync -a --include='*/' --include='*.html' --exclude='*' \
-            --exclude='_astro/***' \
-            ./dist/ /tmp/html-stage/
-
-          ossutil sync /tmp/html-stage/ oss://amazingindex/ \
-            --force -j 20 \
-            --metadata "Cache-Control=no-cache" \
-            --metadata "Content-Type=text/html; charset=utf-8" \
-            $CREDS &
-          PID_HTML=$!
-
-          # 3. 其他静态文件 robots/favicon/sitemap/rss（后台）
-          ossutil sync ./dist/ oss://amazingindex/ \
-            --force -j 10 \
-            --exclude "*.html" \
-            --exclude "_astro/*" \
-            $CREDS &
-          PID_REST=$!
-
-          wait $PID_ASTRO $PID_HTML $PID_REST
-          echo "✅ 三路并行上传完成"
-
-          # 4. bare URL：基于本地 dist 生成 OSS 内部复制
-          find ./dist -name 'index.html' \
-            | grep -v '^\./dist/index.html$' \
-            | sed 's|^\./dist/||' \
-            | while read rel; do
-                key="${rel%/index.html}"
-                ossutil cp "oss://amazingindex/$rel" "oss://amazingindex/$key" \
-                  --force \
-                  --metadata "Cache-Control=no-cache" \
-                  --metadata "Content-Type=text/html; charset=utf-8" \
-                  $CREDS &
-                if [ $(jobs -r | wc -l) -ge 20 ]; then wait -n; fi
-              done
-          wait
-
-          END=$(date +%s)
-          echo "✅ 部署完成，总耗时 $((END-START))s"
-
-      - name: Refresh CDN
-        env:
-          ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
-          ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
-        run: |
+          ossutil rm oss://amazingindex/__test__/ --recursive --force \
+            --endpoint https://oss-cn-hangzhou.aliyuncs.com --access-key-id "$OSS_ACCESS_KEY_ID" \
+            --access-key-secret "$OSS_ACCESS_KEY_SECRET" --region cn-hangzhou || true
           pip install alibabacloud_cdn20180510 --quiet
-          python3 - <<'EOF'
-          import os
-          from alibabacloud_cdn20180510.client import Client
-          from alibabacloud_cdn20180510 import models as cdn_models
-          from alibabacloud_tea_openapi import models as open_api_models
-
-          config = open_api_models.Config(
-              access_key_id=os.environ['ALIBABA_CLOUD_ACCESS_KEY_ID'],
-              access_key_secret=os.environ['ALIBABA_CLOUD_ACCESS_KEY_SECRET'],
-              endpoint='cdn.aliyuncs.com'
-          )
-          client = Client(config)
-
-          req = cdn_models.RefreshObjectCachesRequest(
-              object_path='https://www.amazingindex.com/',
-              object_type='Directory'
-          )
-          client.refresh_object_caches(req)
-          print("Refreshed entire site directory")
-          EOF
+          bash scripts/deploy-oss.sh

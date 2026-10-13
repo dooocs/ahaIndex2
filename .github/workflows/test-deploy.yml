@@ -1,11 +1,18 @@
 name: Test Deploy (Staging)
 
+# A full build uploaded under oss://amazingindex/__test__/, without touching
+# the production manifest or the CDN. The next production deploy removes it.
+
 on:
   workflow_dispatch:  # 只能手动触发
 
 jobs:
   test-deploy:
     runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_BUILD_KEY: ${{ secrets.SUPABASE_BUILD_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      BUILD_MODE: full
     steps:
       - uses: actions/checkout@v4
 
@@ -27,15 +34,12 @@ jobs:
           PUBLIC_COMMUNITY_SUPABASE_URL: ${{ vars.PUBLIC_COMMUNITY_SUPABASE_URL }}
           PUBLIC_COMMUNITY_SUPABASE_KEY: ${{ vars.PUBLIC_COMMUNITY_SUPABASE_KEY }}
           PUBLIC_COMMUNITY_TURNSTILE_KEY: ${{ vars.PUBLIC_COMMUNITY_TURNSTILE_KEY }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_BUILD_KEY: ${{ secrets.SUPABASE_BUILD_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
 
-      - run: npm run verify:rss
+      - name: Export data, sitemaps and RSS
+        run: npm run export:data -- --dist dist --out export --mode full
 
-      - run: npm run verify:build
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_BUILD_KEY: ${{ secrets.SUPABASE_BUILD_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      - name: Verify pages and export
+        run: npm run verify:site -- --dist dist --export export
 
       - name: Install ossutil
         run: |
@@ -44,100 +48,15 @@ jobs:
           chmod +x ossutil-2.2.1-linux-amd64/ossutil
           sudo mv ossutil-2.2.1-linux-amd64/ossutil /usr/local/bin/ossutil
 
-      - name: Clean previous staging
-        env:
-          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
-          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
-        run: |
-          set -euo pipefail
-          ossutil rm oss://amazingindex/__test__/ --recursive --force \
-            --endpoint https://oss-cn-hangzhou.aliyuncs.com \
-            --access-key-id $OSS_ACCESS_KEY_ID \
-            --access-key-secret $OSS_ACCESS_KEY_SECRET \
-            --region cn-hangzhou || true
-          echo "✅ 清理完成"
-
       - name: Deploy to OSS (staging)
         env:
           OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
           OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          DEPLOY_PREFIX: __test__/
+          SKIP_CDN: '1'
         run: |
           set -euo pipefail
-          CREDS="--endpoint https://oss-cn-hangzhou.aliyuncs.com --access-key-id $OSS_ACCESS_KEY_ID --access-key-secret $OSS_ACCESS_KEY_SECRET --region cn-hangzhou"
-
-          START=$(date +%s)
-
-          # 1. _astro 长缓存（后台）
-          ossutil sync ./dist/_astro/ oss://amazingindex/__test__/_astro/ \
-            --force -j 20 \
-            --metadata "Cache-Control=max-age=31536000,immutable" \
-            $CREDS &
-          PID_ASTRO=$!
-
-          # 2. HTML 文件（后台）
-          mkdir -p /tmp/html-stage
-          rsync -a --include='*/' --include='*.html' --exclude='*' \
-            --exclude='_astro/***' \
-            ./dist/ /tmp/html-stage/
-
-          ossutil sync /tmp/html-stage/ oss://amazingindex/__test__/ \
-            --force -j 20 \
-            --metadata "Cache-Control=no-cache" \
-            --metadata "Content-Type=text/html; charset=utf-8" \
-            $CREDS &
-          PID_HTML=$!
-
-          # 3. 其他静态文件 robots/favicon/sitemap/rss（后台）
-          ossutil sync ./dist/ oss://amazingindex/__test__/ \
-            --force -j 10 \
-            --exclude "*.html" \
-            --exclude "_astro/*" \
-            $CREDS &
-          PID_REST=$!
-
-          wait $PID_ASTRO $PID_HTML $PID_REST
-          echo "✅ 三路并行上传完成"
-
-          # 4. bare URL：用 OSS 内部复制实现
-          ossutil ls oss://amazingindex/__test__/ --recursive $CREDS \
-            | awk '{print $NF}' \
-            | grep '^oss://amazingindex/__test__/.*/index\.html$' \
-            | grep -v '^oss://amazingindex/__test__/index\.html$' \
-            | sed 's|^oss://amazingindex/||' \
-            | while read key; do
-                dst="${key%/index.html}"
-                ossutil cp "oss://amazingindex/$key" "oss://amazingindex/$dst" \
-                  --force \
-                  --metadata "Cache-Control=no-cache" \
-                  --metadata "Content-Type=text/html; charset=utf-8" \
-                  $CREDS &
-                if [ $(jobs -r | wc -l) -ge 20 ]; then wait -n; fi
-              done
-          wait
-
-          END=$(date +%s)
-          echo "✅ 上传完成，总耗时 $((END-START))s"
-
-      - name: Verify staging upload
-        env:
-          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
-          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
-        run: |
-          set -euo pipefail
-          CREDS="--endpoint https://oss-cn-hangzhou.aliyuncs.com --access-key-id $OSS_ACCESS_KEY_ID --access-key-secret $OSS_ACCESS_KEY_SECRET --region cn-hangzhou"
-
-          LOCAL_HTML=$(find ./dist -name "*.html" | wc -l)
-          REMOTE_HTML=$(ossutil ls oss://amazingindex/__test__/ -s --recursive $CREDS | grep -c '\.html$' || echo 0)
-          BARE_COUNT=$(find ./dist -name "index.html" -not -path "./dist/index.html" | wc -l)
-          EXPECTED=$((LOCAL_HTML + BARE_COUNT))
-
-          echo "本地 HTML: $LOCAL_HTML"
-          echo "远端 HTML: $REMOTE_HTML"
-          echo "预期 bare 副本: $BARE_COUNT"
-          echo "预期总数: $EXPECTED"
-
-          if [ "$REMOTE_HTML" -lt "$EXPECTED" ]; then
-            echo "❌ 远端 HTML 数量少于预期，可能有漏传"
-            exit 1
-          fi
-          echo "✅ HTML 数量校验通过"
+          ossutil rm oss://amazingindex/__test__/ --recursive --force \
+            --endpoint https://oss-cn-hangzhou.aliyuncs.com --access-key-id "$OSS_ACCESS_KEY_ID" \
+            --access-key-secret "$OSS_ACCESS_KEY_SECRET" --region cn-hangzhou || true
+          bash scripts/deploy-oss.sh
