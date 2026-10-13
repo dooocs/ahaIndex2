@@ -2,7 +2,12 @@
 .community-page { --c-paper: #efe9df; --c-sunk: #ece7dc; --c-desk: #e0dbd0; --c-rule: #d9d4ca; --c-control: #7f7a72; --c-ink: #1c1814; --c-body: #625d56; --c-soft: #5f5a53; --c-red: #a83226; background: var(--c-desk); color: var(--c-ink); }
 /* Shared masthead/nav keep the site-wide styles; only the community body is reset. */
 .community-page > :not(.masthead), .community-page > :not(.masthead) *, .community-page > :not(.masthead) *::before, .community-page > :not(.masthead) *::after { box-sizing: border-box; letter-spacing: 0; }
-.community { max-width: 1090px; margin: 0 auto; min-height: 65vh; background: var(--c-paper); font-family: var(--fs); }
+/* Fill the viewport: the paper column stretches down to the footer, so short pages leave no gap below it. */
+.community-root { min-height: 100vh; min-height: 100dvh; display: flex; flex-direction: column; }
+.community-page { flex: 1 0 auto; display: flex; flex-direction: column; }
+.community { flex: 1 0 auto; width: 100%; max-width: 1090px; margin: 0 auto; display: flex; flex-direction: column; background: var(--c-paper); font-family: var(--fs); }
+.community > section, .community > article { flex: 1 0 auto; display: flex; flex-direction: column; }
+.community > .community-shell, .community > * > .community-shell, .community > .community-empty { flex: 1 0 auto; }
 .community [hidden] { display: none !important; }
 .community h1 { font: 700 30px/1.4 var(--fs); margin: 12px 0 24px; overflow-wrap: anywhere; }
 .community h2 { font: 700 22px/1.4 var(--fs); margin: 0 0 24px; overflow-wrap: anywhere; }
