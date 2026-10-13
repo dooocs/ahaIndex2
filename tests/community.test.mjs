@@ -17,6 +17,8 @@ test('adults and explicit consent required, contact sharing is opt-in', () => {
     assert.throws(() => validatePost({ ...valid, ...change }));
   }
   assert.equal(validatePost({ ...valid, contact: 'private@example.com', share_contact: true }).p_contact, 'private@example.com');
+  assert.equal(validatePost({ ...valid, contact: 'wx-test', share_contact: true }).p_public_contact, true);
+  assert.equal(validatePost(valid).p_public_contact, false);
 });
 test('city, age and an explicit gender are required for every post', () => {
   for (const change of [{ city: '' }, { city: '   ' }, { city: undefined }, { age: '' }, { age: undefined }, { gender: '' }, { gender: undefined }, { gender: '不公开' }]) {

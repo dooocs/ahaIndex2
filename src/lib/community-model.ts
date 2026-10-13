@@ -35,8 +35,10 @@ export function validatePost(values: Record<string, unknown>) {
   const gender = String(values.gender ?? '');
   if (!['女', '男', '其他'].includes(gender)) throw new Error('请选择性别。');
   if (values.consent !== true) throw new Error('请确认资料为本人发布，并同意展示规则。');
-  if (result.p_contact && values.share_contact !== true) throw new Error('填写联系方式时，需要同意向已登录用户展示。');
-  return { ...result, p_age: age, p_gender: gender, p_consent: true, p_share_contact: values.share_contact === true };
+  if (result.p_contact && values.share_contact !== true) throw new Error('填写联系方式时，需要同意公开展示。');
+  // The current form's consent covers public display; p_public_contact records that explicitly per submission.
+  const share = values.share_contact === true;
+  return { ...result, p_age: age, p_gender: gender, p_consent: true, p_share_contact: share, p_public_contact: share };
 }
 
 export function safeReturnPath(value: string | null): string {

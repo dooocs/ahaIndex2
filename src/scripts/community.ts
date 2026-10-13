@@ -293,7 +293,15 @@ async function init() {
           submitting = true;
           updateSubmit();
           try {
-            await rpc('submit_meet_post', { ...values, p_photo_ids: ids, p_public_photos: true });
+            const params = { ...values, p_photo_ids: ids, p_public_photos: true };
+            try { await rpc('submit_meet_post', params); }
+            catch (error) {
+              // Until the public-contact migration (010) is applied, the backend may not know
+              // p_public_contact. Retry without it: the contact then stays signed-in-only.
+              if (!isUnknownSignature(error)) throw error;
+              const { p_public_contact: _unused, ...legacy } = params;
+              await rpc('submit_meet_post', legacy);
+            }
             location.assign('/account?submitted=1');
           } catch (error) {
             const seconds = postRetrySeconds(error);
@@ -361,6 +369,17 @@ async function init() {
       report.hidden = false;
       report.querySelector('a')!.href = `mailto:hi@amazingindex.com?subject=${encodeURIComponent(`相亲帖举报 #${post.id}`)}`;
       const contactButton = $<HTMLButtonElement>('#show-contact');
+      // Posts submitted under the public-contact terms show their contact to everyone.
+      // Older posts (consented to signed-in viewers only) keep the login-gated button below.
+      // If the public endpoint is unavailable, fall back to the login flow silently.
+      try {
+        const publicContact = await rpc('get_public_meet_contact', { p_id: post.id });
+        if (disposed) return;
+        if (typeof publicContact === 'string' && publicContact) {
+          $('#post-contact').textContent = publicContact;
+          contactButton.hidden = true;
+        }
+      } catch { /* keep login-gated fallback */ }
       contactButton.addEventListener('click', () => { void busy(contactButton, async () => {
         const user = await requireUser();
         if (!user || disposed) return;
@@ -376,6 +395,10 @@ async function init() {
       disposers.push(() => document.removeEventListener('visibilitychange', visibility));
     }
   } catch (error) { message(friendlyError(error), true); }
+}
+function isUnknownSignature(error: unknown): boolean {
+  const e = error as { code?: string; message?: string } | null;
+  return Boolean(e && (e.code === 'PGRST202' || e.code === '42883' || e.message?.includes('Could not find the function')));
 }
 document.addEventListener('astro:page-load', () => { void init(); });
 document.addEventListener('astro:before-swap', () => cleanup());

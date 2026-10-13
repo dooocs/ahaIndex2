@@ -8,8 +8,13 @@
 - One post per verified adult user, submit/edit, manual review, withdrawal.
 - Post saves are at least 60 seconds apart. The editor shows a countdown from the
   saved timestamp; server-side throttling preserves the in-page edits for retry.
-- Contact information is optional, separately stored, and visible to verified
-  signed-in users only after the author explicitly consents and the post is live.
+- Contact information is optional and separately stored. Since 2026-10-13 the form
+  asks for consent to **public** display: a live post submitted with that consent
+  (`p_public_contact`) shows its contact to every visitor via
+  `get_public_meet_contact`. Posts submitted earlier keep the old audience
+  (verified signed-in users only, via `get_meet_contact`) until the author resubmits.
+  Requires `ahaIndexSync/sql/community/010_public_contact.sql` (Aliyun:
+  `010_public_contact_aliyun.sql`) and a redeployed `meet-api`.
 - Up to six optional photos, consented public viewing after review, thumbnails, reordering,
   removal, and full-image viewing. Photo changes require review again.
 - No comments, chat, matching, payments, or new admin application.
