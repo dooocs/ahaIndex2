@@ -3,15 +3,15 @@ import { community } from '../lib/community-config';
 const pathname = Astro.url.pathname;
 const isSubjects = pathname.startsWith('/subjects');
 const isMeet = pathname.startsWith('/meet');
-const isAccount = pathname.startsWith('/account') || pathname.startsWith('/login') || pathname.startsWith('/auth/');
-const isDaily = !isSubjects && !isMeet && !isAccount;
+// Only the daily briefing's own pages light up the first tab; about/legal pages have no active tab.
+const isDaily = pathname === '/' || ['/daily', '/article', '/history', '/projects'].some((p) => pathname.startsWith(p));
 ---
 
 <nav class="nav-bar" aria-label="站点导航">
   <div class="nav-inner">
     <div class="nav-tabs">
-      <a href="/" class={`nav-tab ${isDaily ? 'active' : ''}`} data-astro-reload>日报</a>
-      <a href="/subjects" class={`nav-tab ${isSubjects ? 'active' : ''}`} data-astro-reload>专题-beta</a>
+      <a href="/" class={`nav-tab ${isDaily ? 'active' : ''}`} data-astro-reload>AI 日报</a>
+      <a href="/subjects" class={`nav-tab ${isSubjects ? 'active' : ''}`} data-astro-reload>专题<sup class="nav-beta">beta</sup></a>
       {community && <a href="/meet" class={`nav-tab ${isMeet ? 'active' : ''}`} data-astro-reload>相亲贴</a>}
     </div>
     {community && <a href="/login" class="community-nav" data-community-account data-astro-reload>登录 / 注册</a>}
@@ -19,6 +19,7 @@ const isDaily = !isSubjects && !isMeet && !isAccount;
 </nav>
 <script src="../scripts/community-nav.ts"></script>
 <style>
+  .nav-beta { font-size: 8px; letter-spacing: 0.08em; margin-left: 3px; color: var(--muted); text-transform: lowercase; vertical-align: super; }
   .community-nav { font-family: var(--fd); font-size: 12px; color: var(--ink); text-decoration: none; flex-shrink: 0; letter-spacing: 0; }
   @media(max-width: 768px) {
     .nav-inner:has(.community-nav) { padding: 0 16px; flex-direction: row; align-items: center; height: 44px; gap: 8px; }

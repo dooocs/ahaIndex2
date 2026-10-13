@@ -5,6 +5,7 @@ import '../styles/global.css';
 import '../styles/archive.css';
 import '../styles/projects.css';
 import '../styles/subjects.css';
+import { SITE_NAME, SITE_SLOGAN, SITE_DESCRIPTION, DAILY_NAME, DAILY_TAGLINE, SITE_URL } from '../lib/site';
 
 interface Props {
   title?: string;
@@ -21,18 +22,23 @@ interface Props {
 }
 
 const {
-  title = 'AmazingIndex - 每日 AI 行业精选简报',
-  description = 'AmazingIndex 基于多维度量化算法，每日从数十个来源精选最值得关注的 AI 行业动态，过滤噪音，直达洞察。',
-  canonicalUrl = 'https://www.amazingindex.com/',
+  title = `${SITE_NAME} · ${SITE_SLOGAN}`,
+  description = SITE_DESCRIPTION,
+  canonicalUrl = `${SITE_URL}/`,
   ogType = 'website',
-  ogTitle = 'AmazingIndex - 每日 AI 行业精选简报',
-  ogDescription = '基于多维度量化算法，每日精选最值得关注的 AI 行业动态，过滤噪音，直达洞察。',
-  ogUrl = 'https://www.amazingindex.com/',
-  ogImage = 'https://www.amazingindex.com/og/amazingindex-og.jpg',
+  ogTitle: ogTitleProp,
+  ogDescription: ogDescriptionProp,
+  ogUrl: ogUrlProp,
+  ogImage = `${SITE_URL}/og/amazingindex-og.jpg`,
   jsonLd,
   noindex = false,
   analytics = true,
 } = Astro.props;
+
+// Social cards follow the page's own title/description unless a page overrides them.
+const ogTitle = ogTitleProp ?? title;
+const ogDescription = ogDescriptionProp ?? description;
+const ogUrl = ogUrlProp ?? canonicalUrl;
 ---
 
 <!doctype html>
@@ -43,9 +49,9 @@ const {
     <title>{title}</title>
     <meta name="description" content={description} />
     {noindex && <meta name="robots" content="noindex, nofollow" />}
-    <meta name="keywords" content="AI简报, 人工智能, AI行业动态, AI日报, AmazingIndex" />
+    <meta name="keywords" content={`${SITE_NAME}, ${DAILY_NAME}, AI日报, AI简报, 人工智能, AI行业动态`} />
     <link rel="canonical" href={canonicalUrl} />
-    <link rel="alternate" type="application/rss+xml" title="AmazingIndex RSS" href="/rss.xml" />
+    <link rel="alternate" type="application/rss+xml" title={`${DAILY_NAME} ${DAILY_TAGLINE} RSS`} href="/rss.xml" />
 
     <meta property="og:type" content={ogType} />
     <meta property="og:title" content={ogTitle} />
@@ -53,7 +59,7 @@ const {
     <meta property="og:url" content={ogUrl} />
     <meta property="og:image" content={ogImage} />
     <meta property="og:locale" content="zh_CN" />
-    <meta property="og:site_name" content="AmazingIndex" />
+    <meta property="og:site_name" content={SITE_NAME} />
 
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:image" content={ogImage} />
@@ -67,9 +73,10 @@ const {
     <script is:inline type="application/ld+json" set:html={JSON.stringify({
       "@context": "https://schema.org",
       "@type": "WebSite",
-      "name": "AmazingIndex",
-      "url": "https://www.amazingindex.com",
-      "description": "每日 AI 行业精选简报，基于多维度量化算法筛选最值得关注的内容。",
+      "name": SITE_NAME,
+      "alternateName": DAILY_NAME,
+      "url": SITE_URL,
+      "description": SITE_DESCRIPTION,
       "potentialAction": {
         "@type": "SearchAction",
         "target": "https://www.amazingindex.com/?q={search_term_string}",

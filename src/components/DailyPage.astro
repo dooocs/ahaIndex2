@@ -4,6 +4,7 @@ import BriefingCard from './BriefingCard.astro';
 import Sidebar from './Sidebar.astro';
 import Footer from './Footer.astro';
 import type { ProcessedItem, DailyArchive, GlobalStats } from '../lib/types';
+import { SITE_NAME, SITE_SLOGAN, DAILY_TAGLINE } from '../lib/site';
 
 interface Props {
   items: ProcessedItem[];
@@ -13,6 +14,7 @@ interface Props {
   date?: string;
   showArchiveBanner?: boolean;
   heading?: string;
+  subtitle?: string;
   sidebarMode?: 'score' | 'intro';
 }
 
@@ -24,18 +26,32 @@ const {
   date,
   showArchiveBanner = true,
   heading,
+  subtitle = 'AmazingIndex · 每日 AI 精选',
   sidebarMode = 'score',
 } = Astro.props;
 
 const snapshotDate = date || (items.length > 0 ? items[0].snapshot_date : undefined);
+const isHome = sidebarMode === 'intro';
+const editionLabel = snapshotDate ? snapshotDate.replaceAll('-', '.') : '';
 ---
 
-<Masthead items={items} />
+<Masthead items={items} subtitle={subtitle} />
 
 <div class="layout">
   <main class="main-col">
     {heading && <h1 class="sr-only">{heading}</h1>}
-    <div class="section-label">今日精选 · Today's Picks</div>
+    {isHome && (
+      <a href="/about" class="home-intro-mobile" data-astro-reload>
+        <span class="home-intro-name">{SITE_NAME}</span>
+        <span class="home-intro-slogan">{SITE_SLOGAN}</span>
+        <span class="home-intro-more" aria-hidden="true">关于本站 →</span>
+      </a>
+    )}
+    <div class="column-head">
+      <a href="/daily" class="column-mark" data-astro-reload>Amazing<span>Index</span></a>
+      <span class="column-name">{DAILY_TAGLINE}</span>
+      {editionLabel && <span class="column-meta">{isHome ? `今日 · ${editionLabel}` : editionLabel} · {items.length} 条</span>}
+    </div>
     <div class="article-list" id="article-list">
       {items.length > 0 ? (
         items.map((item, index) => (
@@ -50,3 +66,85 @@ const snapshotDate = date || (items.length > 0 ? items[0].snapshot_date : undefi
 </div>
 
 <Footer showArchiveBanner={showArchiveBanner} date={snapshotDate} />
+
+<style>
+  .column-head {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    padding-bottom: 12px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .column-mark {
+    font-family: var(--fd);
+    font-size: 17px;
+    font-weight: 700;
+    font-style: italic;
+    letter-spacing: -0.3px;
+    color: var(--ink);
+    text-decoration: none;
+  }
+
+  .column-mark span {
+    color: var(--accent);
+  }
+
+  .column-name {
+    font-family: var(--fs);
+    font-size: 13px;
+    color: rgba(26, 22, 18, 0.72);
+  }
+
+  .column-meta {
+    margin-left: auto;
+    font-family: var(--fm);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+  }
+
+  .home-intro-mobile {
+    display: none;
+  }
+
+  @media (max-width: 768px) {
+    .home-intro-mobile {
+      display: flex;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: 4px 10px;
+      margin: 0 0 22px;
+      padding: 12px 14px;
+      background: var(--paper-dark);
+      color: var(--ink);
+      text-decoration: none;
+    }
+
+    .home-intro-name {
+      font-family: var(--fs);
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .home-intro-slogan {
+      font-family: var(--fs);
+      font-size: 12px;
+      color: rgba(26, 22, 18, 0.62);
+    }
+
+    .home-intro-more {
+      margin-left: auto;
+      font-family: var(--fm);
+      font-size: 10px;
+      color: var(--accent);
+    }
+
+    .column-meta {
+      margin-left: 0;
+      flex-basis: 100%;
+    }
+  }
+</style>
