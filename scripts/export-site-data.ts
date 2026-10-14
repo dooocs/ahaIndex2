@@ -1,55 +1,72 @@
 // Generates everything the site serves besides the Astro-built pages:
 //   data/*.json        archive, history, subject and sidebar data for client-rendered pages
-//   sitemap*.xml       limited to editions that are deployed
+//   sitemap*.xml       database data, limited to pages that are deployed
 //   rss.xml            the homepage's edition
 //   daily/<YYYY-MM>/, subjects/<slug>/   per-URL copies of the built shell pages
-//   _deploy/manifest.json                 the deployed editions, for the next daily build
 //
-// node --experimental-strip-types scripts/export-site-data.ts \
-//   --dist dist --out export --mode daily|full [--prev-manifest .deploy/manifest.prev.json]
+// node --experimental-strip-types scripts/export-site-data.ts --dist dist --out export \
+//   --mode daily|full --inventory .deploy/remote.json [--previous .deploy/previous]
 //
-// Reads the news database with SUPABASE_URL / SUPABASE_BUILD_KEY. Writes only to --out.
+// "Deployed" means on the bucket (--inventory, listed at the start of the run)
+// or built by this run (--dist): nothing published here points at a page that
+// is not there.
+//
+// A daily export is incremental. The archive data is a ledger of one record
+// per edition (src/lib/edition-ledger.ts): it recomputes the records of the
+// editions this run built and merges them into the published summary.json,
+// archive/index.json and the affected month files (--previous holds copies
+// of those, fetched from OSS). Only when there is no previous summary does it
+// read every edition once (bootstrap). Subject statistics read the 60-day
+// window they cover; article sitemaps are regenerated for the years of the
+// built editions only. A full export recomputes everything from the database.
+// Writes only to --out.
 import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { createBuildClient } from '../src/lib/supabase.ts';
 import * as q from '../src/lib/queries.ts';
 import { indexScoreRows } from '../src/lib/archive.ts';
+import { editionRecord, mergeRecords, monthlyArchive, type EditionRecord } from '../src/lib/edition-ledger.ts';
 import {
   buildDirectorySections,
   buildSignals,
   computeSignalStats,
   mergeSubjectStats,
   relatedSubjects,
+  signalWindowStart,
   sortSignalMentions,
 } from '../src/lib/subject-data.ts';
 import {
   getArticleSitemapEntriesForYear,
   getArticleSitemapPath,
-  getArticleSitemapYears,
   getPagesSitemapEntries,
   getSitemapIndexEntries,
+  parseUrlset,
   renderRss,
+  SITE_URL,
   renderSitemapIndex,
   renderUrlset,
   uniqueArticleItems,
 } from '../src/lib/sitemap.ts';
 import {
-  DATA_VERSION,
   archiveIndexJson,
   archiveMonthJson,
+  articleKey,
+  editionKey,
   fillShell,
   historyJson,
-  mergeDeployedDates,
   monthShellMeta,
-  parseManifest,
-  restrictIndex,
+  parseDataFile,
   subjectIndexJson,
   subjectJson,
   subjectShellMeta,
   summaryJson,
-  type DeployManifest,
+  type ArchiveIndexJson,
+  type ArchiveMonthJson,
+  type SummaryJson,
 } from '../src/lib/site-export.ts';
+import type { MonthlyArchive } from '../src/lib/types.ts';
+import { readInventory } from './lib/inventory.mjs';
 
 const SIGNAL_LIMIT = 12;
 const RELATED_LIMIT = 8;
@@ -61,73 +78,126 @@ const { values: args } = parseArgs({
     dist: { type: 'string', default: 'dist' },
     out: { type: 'string', default: 'export' },
     mode: { type: 'string', default: 'full' },
-    'prev-manifest': { type: 'string' },
+    inventory: { type: 'string' },
+    previous: { type: 'string' },
   },
 });
 const mode = args.mode === 'daily' ? 'daily' : 'full';
 const dist = path.resolve(args.dist!);
 const out = path.resolve(args.out!);
-
 const log = (message: string) => console.info(`[export] ${message}`);
 const started = performance.now();
 
-async function readIfExists(file: string | undefined): Promise<string | null> {
-  if (!file) return null;
-  return readFile(file, 'utf8').catch((error) => {
-    if (error.code === 'ENOENT') return null;
-    throw error;
-  });
+async function readIfExists(file: string): Promise<string | null> {
+  return readFile(file, 'utf8').catch((error) => (error.code === 'ENOENT' ? null : Promise.reject(error)));
 }
-
+async function isFile(file: string) {
+  return Boolean((await stat(file).catch(() => null))?.isFile());
+}
 async function write(rel: string, content: string) {
   const file = path.join(out, rel);
   await mkdir(path.dirname(file), { recursive: true });
   await writeFile(file, content);
 }
-
 const json = (value: unknown) => JSON.stringify(value);
+const byNewest = (a: string, b: string) => b.localeCompare(a);
 
-/** Edition dates whose pages this run built. */
+/** Edition dates whose pages this run built, newest first. */
 async function builtDates(): Promise<string[]> {
   const entries = await readdir(path.join(dist, 'daily'), { withFileTypes: true }).catch(() => []);
   const dates: string[] = [];
   for (const entry of entries) {
-    if (!entry.isDirectory() || !DATE.test(entry.name)) continue;
-    if ((await stat(path.join(dist, 'daily', entry.name, 'index.html')).catch(() => null))?.isFile()) dates.push(entry.name);
+    if (entry.isDirectory() && DATE.test(entry.name) && await isFile(path.join(dist, 'daily', entry.name, 'index.html'))) dates.push(entry.name);
   }
-  return dates;
+  return dates.sort(byNewest);
 }
 
 const db = createBuildClient(process.env.SUPABASE_URL, process.env.SUPABASE_BUILD_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY);
-const previous = parseManifest(await readIfExists(args['prev-manifest']));
-if (mode === 'daily' && !previous) throw new Error('A daily export needs the previous deploy manifest');
+if (mode === 'daily' && !args.inventory) throw new Error('A daily export needs --inventory to know which pages are deployed');
+const inventory = args.inventory ? await readInventory(args.inventory) : new Map<string, string | null>();
+const isDeployed = async (key: string) => inventory.has(key) || isFile(path.join(dist, key));
 
 const built = await builtDates();
 if (built.length === 0) throw new Error(`No edition pages found in ${dist}/daily`);
+const homeDate = built[0];
 
-// ─── Editions ───────────────────────────────────────
-const fullIndex = indexScoreRows(await q.getScoreRows(db));
-const deployed = mergeDeployedDates(previous?.dates ?? [], built, [...fullIndex.keys()]);
-const index = restrictIndex(fullIndex, deployed);
-// The homepage shows the newest edition this run built; RSS must match it.
-const homeDate = [...built].sort().at(-1)!;
-log(`mode=${mode} built=${built.length} deployed=${deployed.length} home=${homeDate}`);
+const itemsCache = new Map<string, ReturnType<typeof q.getItemsByDate>>();
+const itemsOf = (date: string) => {
+  if (!itemsCache.has(date)) itemsCache.set(date, q.getItemsByDate(db, date));
+  return itemsCache.get(date)!;
+};
+
+// ─── Archive ledger ─────────────────────────────────
+const previous = (rel: string) => (args.previous ? readIfExists(path.join(args.previous, rel)) : Promise.resolve(null));
+const previousSummary = mode === 'daily' ? parseDataFile<SummaryJson>(await previous('data/summary.json'), 'summary.json') : null;
+
+let records: EditionRecord[];       // records of the months this export writes
+let monthsToWrite: string[];
+let summary: SummaryJson;
+let monthSummaries: MonthlyArchive[];
+
+async function recordsFromRows(rows: q.ScoreRow[]): Promise<EditionRecord[]> {
+  const result: EditionRecord[] = [];
+  for (const [date, dayRows] of indexScoreRows(rows)) if (await isDeployed(editionKey(date))) result.push(editionRecord(date, dayRows));
+  return result;
+}
+
+if (previousSummary) {
+  // Incremental: the built editions, merged into what is published.
+  const notListed = previousSummary.editions.filter((e) => !inventory.has(editionKey(e.date)));
+  if (notListed.length > Math.max(3, previousSummary.editions.length / 10)) {
+    throw new Error(`${notListed.length} of ${previousSummary.editions.length} published editions are missing from the bucket inventory; the listing looks incomplete, refusing to publish`);
+  }
+  const updates = await recordsFromRows(await q.getScoreRowsForDates(db, built));
+  monthsToWrite = [...new Set(updates.map((r) => r.date.slice(0, 7)))].sort(byNewest);
+  records = [];
+  for (const month of monthsToWrite) {
+    const previousMonth = parseDataFile<ArchiveMonthJson>(await previous(`data/archive/${month}.json`), `archive/${month}.json`);
+    let base = previousMonth?.records ?? [];
+    if (!previousMonth) {
+      // No published month file yet: read that month's other editions once.
+      const others = previousSummary.editions.filter((e) => e.date.startsWith(month) && !built.includes(e.date)).map((e) => e.date);
+      base = await recordsFromRows(await q.getScoreRowsForDates(db, others));
+    }
+    const kept = [];
+    for (const r of base) if (r.date.startsWith(month) && await isDeployed(editionKey(r.date))) kept.push(r);
+    records.push(...mergeRecords(kept, updates.filter((r) => r.date.startsWith(month))));
+  }
+  const editions = new Map(previousSummary.editions.filter((e) => inventory.has(editionKey(e.date))).map((e) => [e.date, e]));
+  for (const r of updates) editions.set(r.date, { date: r.date, score: r.score, count: r.count });
+  summary = summaryJson([...editions.values()]);
+  const previousIndex = parseDataFile<ArchiveIndexJson>(await previous('data/archive/index.json'), 'archive/index.json');
+  const months = new Map((previousIndex?.years ?? []).flatMap((y) => y.months).map((m) => [m.month.slice(0, 7), m]));
+  for (const month of monthsToWrite) months.set(month, monthlyArchive(month, records.filter((r) => r.date.startsWith(month))));
+  // Months with no deployed edition left drop out.
+  const liveMonths = new Set(summary.editions.map((e) => e.date.slice(0, 7)));
+  monthSummaries = [...months.entries()].filter(([m]) => liveMonths.has(m)).map(([, s]) => s);
+  log(`incremental: ${updates.length} edition record(s) into ${monthsToWrite.join(', ')}; ${summary.editions.length} editions published`);
+} else {
+  // Full export, or the first daily export: every edition, read once.
+  const allRows = await q.getScoreRows(db);
+  const databaseDates = [...indexScoreRows(allRows).keys()];
+  records = await recordsFromRows(allRows);
+  if (mode === 'daily' && records.length < databaseDates.length / 2) {
+    throw new Error(`Only ${records.length} of ${databaseDates.length} editions are on the bucket inventory; the listing looks incomplete, refusing to publish`);
+  }
+  monthsToWrite = [...new Set(records.map((r) => r.date.slice(0, 7)))].sort(byNewest);
+  summary = summaryJson(records);
+  monthSummaries = monthsToWrite.map((month) => monthlyArchive(month, records.filter((r) => r.date.startsWith(month))));
+  log(`${mode === 'daily' ? 'bootstrap' : 'full'}: ${records.length} editions from the database`);
+}
+if (summary.latest_date !== homeDate) throw new Error(`Newest published edition ${summary.latest_date} is not the newest built one ${homeDate}`);
 
 await rm(out, { recursive: true, force: true });
 await mkdir(out, { recursive: true });
-
-await write('data/summary.json', json(summaryJson(index)));
-const archiveIndex = archiveIndexJson(index);
-await write('data/archive/index.json', json(archiveIndex));
-const months = [...new Set(deployed.map((d) => d.slice(0, 7)))];
-for (const month of months) await write(`data/archive/${month}.json`, json(archiveMonthJson(index, month)));
+await write('data/summary.json', json(summary));
+await write('data/archive/index.json', json(archiveIndexJson(monthSummaries, summary)));
+for (const month of monthsToWrite) await write(`data/archive/${month}.json`, json(archiveMonthJson(month, records.filter((r) => r.date.startsWith(month)))));
 
 const historyItems = [];
-for (const date of deployed.slice(0, 5)) historyItems.push(...await q.getItemsByDate(db, date));
+for (const { date } of summary.editions.slice(0, 5)) historyItems.push(...await itemsOf(date));
 await write('data/history.json', json(historyJson(historyItems)));
-
-const homeItems = await q.getItemsByDate(db, homeDate);
-await write('rss.xml', renderRss(homeItems, homeDate));
+await write('rss.xml', renderRss(await itemsOf(homeDate), homeDate));
 
 // ─── Subjects ───────────────────────────────────────
 const [subjectRows, subjectStats] = await Promise.all([q.getDirectorySubjectRows(db), q.getSubjectStats(db)]);
@@ -143,8 +213,14 @@ const sections = buildDirectorySections(mergeSubjectStats(subjectRows, subjectSt
   }))
   .filter((section) => section.subjects.length > 0);
 const publicSubjects = sections.flatMap((s) => s.subjects);
-const mentions = await q.fetchSubjectMentions(db, publicSubjects.map((s) => s.id));
-await write('data/subjects/index.json', json(subjectIndexJson(sections, computeSignalStats(publicSubjects.map((s) => s.id), mentions, homeDate), homeDate)));
+const subjectIds = publicSubjects.map((s) => s.id);
+// Every subject's 30-day window ends at the newest published edition.
+const anchor = summary.latest_date!;
+const since = signalWindowStart(anchor);
+const mentions = await q.fetchSubjectMentions(db, subjectIds, since);
+const lastSeen = new Map(publicSubjects.map((s) => [s.id, s.last_seen_at]));
+const stats = computeSignalStats(subjectIds, mentions, anchor, lastSeen);
+await write('data/subjects/index.json', json(subjectIndexJson(sections, stats, anchor)));
 
 const mentionsBySubject = new Map<string, typeof mentions>();
 for (const m of mentions) {
@@ -152,44 +228,86 @@ for (const m of mentions) {
   if (list) list.push(m);
   else mentionsBySubject.set(m.subject_id, [m]);
 }
-const sortedBySubject = new Map(publicSubjects.map((s) => [s.id, sortSignalMentions(mentionsBySubject.get(s.id) || [])]));
-const signalItemIds = [...sortedBySubject.values()].flatMap((rows) => rows.slice(0, SIGNAL_LIMIT).map((r) => r.item_id)).filter(Boolean);
-const [displayItems, rawItems] = await Promise.all([
+const signalMentions = new Map<string, typeof mentions>();
+for (const subject of publicSubjects) {
+  let sorted = sortSignalMentions(mentionsBySubject.get(subject.id) || []);
+  // Quiet subjects: the newest signals may predate the window.
+  if (sorted.length < SIGNAL_LIMIT) sorted = [...sorted, ...sortSignalMentions(await q.fetchMentionsBefore(db, subject.id, since, SIGNAL_LIMIT - sorted.length))];
+  signalMentions.set(subject.id, sorted);
+}
+const signalItemIds = [...signalMentions.values()].flatMap((rows) => rows.slice(0, SIGNAL_LIMIT).map((r) => r.item_id)).filter(Boolean);
+const [displayItems, rawItems, insights] = await Promise.all([
   q.loadDisplaySignalItems(db, signalItemIds),
   q.loadRawSnapshotSignalItems(db, signalItemIds),
+  q.getSubjectInsightsFor(db, subjectIds),
 ]);
 const subjectShell = await readFile(path.join(dist, 'shell/subject/index.html'), 'utf8');
 for (const subject of publicSubjects) {
-  const own = mentionsBySubject.get(subject.id) || [];
-  const stats = computeSignalStats([subject.id], own, homeDate).get(subject.id);
-  const signals = buildSignals(sortedBySubject.get(subject.id) || [], displayItems, rawItems, SIGNAL_LIMIT);
-  const insights = await q.getSubjectInsights(db, subject.id);
+  const signals = buildSignals(signalMentions.get(subject.id) || [], displayItems, rawItems, SIGNAL_LIMIT);
   const related = relatedSubjects(publicSubjects, subject, RELATED_LIMIT);
-  await write(`data/subjects/${subject.slug}.json`, json(subjectJson(subject, stats, signals, insights, related)));
+  await write(`data/subjects/${subject.slug}.json`, json(subjectJson(subject, stats.get(subject.id), signals, insights.get(subject.id) || [], related)));
   await write(`subjects/${subject.slug}/index.html`, fillShell(subjectShell, subjectShellMeta(subject)));
 }
 
-// ─── Archive month pages ────────────────────────────
+// ─── Archive month pages (unchanged copies are not uploaded again) ──
 const monthShell = await readFile(path.join(dist, 'shell/daily-month/index.html'), 'utf8');
-for (const month of months) await write(`daily/${month}/index.html`, fillShell(monthShell, monthShellMeta(month)));
+const publishedMonths = [...new Set(summary.editions.map((e) => e.date.slice(0, 7)))];
+for (const month of publishedMonths) await write(`daily/${month}/index.html`, fillShell(monthShell, monthShellMeta(month)));
 
 // ─── Sitemaps ───────────────────────────────────────
-const deployedSet = new Set(deployed);
-const articles = uniqueArticleItems((await q.getAllArticleRouteItems(db)).filter((item) => deployedSet.has(item.snapshot_date)));
-const years = getArticleSitemapYears(articles);
-await write('sitemap.xml', renderSitemapIndex(getSitemapIndexEntries(deployed, years)));
-await write('sitemap-pages.xml', renderUrlset(getPagesSitemapEntries(deployed, publicSubjects)));
-for (const year of years) await write(getArticleSitemapPath(year), renderUrlset(getArticleSitemapEntriesForYear(articles, year)));
+const publishedDates = summary.editions.map((e) => e.date);
+const allYears = [...new Set(publishedDates.map((d) => d.slice(0, 4)))].sort(byNewest);
+const pidOf = (url: string) => url.slice(`${SITE_URL}/article/`.length);
 
-// ─── Manifest (uploaded last by the deploy script) ──
-const manifest: DeployManifest = {
-  v: DATA_VERSION,
-  dates: deployed,
-  latest_date: deployed[0] ?? null,
-  mode,
-  commit: process.env.GITHUB_SHA || null,
-  generated_at: new Date().toISOString(),
+// pid → the date it is listed under, per year file this export writes.
+const articleYears = new Map<string, Map<string, string>>();
+const yearOf = (year: string) => {
+  if (!articleYears.has(year)) articleYears.set(year, new Map());
+  return articleYears.get(year)!;
 };
-await write('_deploy/manifest.json', json(manifest));
+async function addFromDatabase(year: string) {
+  for (const item of uniqueArticleItems(await q.getArticleRouteItemsBetween(db, `${year}-01-01`, `${year}-12-31`))) {
+    if (await isDeployed(articleKey(item.processed_item_id))) yearOf(year).set(item.processed_item_id, item.snapshot_date);
+  }
+}
 
-log(`wrote months=${months.length} subjects=${publicSubjects.length} articles=${articles.length} in ${Math.round(performance.now() - started)}ms`);
+if (mode === 'full') {
+  for (const item of uniqueArticleItems(await q.getAllArticleRouteItems(db))) {
+    if (await isDeployed(articleKey(item.processed_item_id))) yearOf(item.snapshot_date.slice(0, 4)).set(item.processed_item_id, item.snapshot_date);
+  }
+} else {
+  // The articles this run built, each dated by the newest edition it appears in.
+  const builtPids = (await Promise.all(built.map(itemsOf))).flat().map((item) => item.processed_item_id);
+  const builtSet = new Set(built);
+  const routes = uniqueArticleItems(await q.getArticleRouteItemsFor(db, builtPids)).filter((r) => builtSet.has(r.snapshot_date));
+  for (const year of [...new Set(routes.map((r) => r.snapshot_date.slice(0, 4)))]) {
+    const published = await previous(getArticleSitemapPath(year).slice(1));
+    if (published === null) {
+      await addFromDatabase(year);
+      log(`article sitemap ${year}: no published file, read from the database`);
+      continue;
+    }
+    for (const { url, lastmod } of parseUrlset(published)) {
+      const pid = pidOf(url);
+      if (lastmod && await isDeployed(articleKey(pid))) yearOf(year).set(pid, lastmod);
+    }
+  }
+  for (const route of routes) {
+    for (const [year, entries] of articleYears) if (year !== route.snapshot_date.slice(0, 4)) entries.delete(route.processed_item_id);
+    yearOf(route.snapshot_date.slice(0, 4)).set(route.processed_item_id, route.snapshot_date);
+  }
+}
+// A year whose file is on neither the bucket nor this export: read it once.
+for (const year of allYears) {
+  if (!articleYears.has(year) && !inventory.has(getArticleSitemapPath(year).slice(1))) await addFromDatabase(year);
+}
+let articleCount = 0;
+for (const [year, entries] of articleYears) {
+  const items = [...entries].map(([pid, date]) => ({ id: pid, processed_item_id: pid, snapshot_date: date }));
+  articleCount += items.length;
+  await write(getArticleSitemapPath(year), renderUrlset(getArticleSitemapEntriesForYear(items, year)));
+}
+await write('sitemap.xml', renderSitemapIndex(getSitemapIndexEntries(publishedDates, [...allYears].sort())));
+await write('sitemap-pages.xml', renderUrlset(getPagesSitemapEntries(publishedDates, publicSubjects)));
+
+log(`mode=${mode} built=${built.length} published_editions=${publishedDates.length} months_written=${monthsToWrite.length} subjects=${publicSubjects.length} mentions=${mentions.length} article_years=${[...articleYears.keys()].join(',')} articles=${articleCount} in ${Math.round(performance.now() - started)}ms`);

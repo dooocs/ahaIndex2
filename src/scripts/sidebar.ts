@@ -50,4 +50,15 @@ onPage('[data-sidebar]', async (sidebar) => {
   if (calendar) calendar.innerHTML = renderCalendar(summary.editions, date);
   const total = sidebar.querySelector<HTMLElement>('[data-total-editions]');
   if (total) total.textContent = String(summary.stats.total_editions);
+
+  // 下一期: the oldest deployed edition newer than this page's.
+  const nav = document.querySelector<HTMLElement>('[data-edition-nav]');
+  const next = nav?.querySelector<HTMLAnchorElement>('[data-next-edition]');
+  const newer = summary.editions.filter((e) => e.date > date).at(-1);
+  if (nav && next && newer && sidebar.dataset.date) {
+    next.href = `/daily/${newer.date}`;
+    next.textContent = `下一期 · ${newer.date} →`;
+    next.hidden = false;
+    nav.hidden = false;
+  }
 });

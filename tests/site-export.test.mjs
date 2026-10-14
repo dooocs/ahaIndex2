@@ -1,71 +1,75 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
-  MAX_DAILY_BACKFILL,
+  MAX_DAILY_EDITIONS,
+  archiveIndexJson,
+  archiveMonthJson,
   fillShell,
-  mergeDeployedDates,
+  missingEditions,
   monthShellMeta,
-  parseManifest,
-  planBuild,
+  parseDataFile,
+  planDaily,
   subjectShellMeta,
+  summaryJson,
 } from '../src/lib/site-export.ts';
-import {
-  computeDailyArchives,
-  computeGlobalStats,
-  computeMonthlyArchives,
-  indexScoreRows,
-} from '../src/lib/archive.ts';
+import { editionRecord, monthlyArchive } from '../src/lib/edition-ledger.ts';
+import { parseUrlset, renderUrlset } from '../src/lib/sitemap.ts';
 
-const manifest = (dates) => ({ v: 1, dates, latest_date: dates[0] ?? null, mode: 'full', commit: null, generated_at: '' });
-
-test('a full request always plans a full build', () => {
-  assert.deepEqual(planBuild('full', ['2026-10-13'], manifest(['2026-10-13'])).mode, 'full');
+test('a daily plan is the newest edition and the one before it', () => {
+  assert.deepEqual(planDaily('2026-10-13', '2026-10-12'), { mode: 'daily', dates: ['2026-10-13', '2026-10-12'], reason: 'newest two' });
+  assert.deepEqual(planDaily('2026-10-13', null).dates, ['2026-10-13']);
 });
 
-test('daily without a manifest falls back to a full build', () => {
-  const plan = planBuild('daily', ['2026-10-13', '2026-10-12'], null);
-  assert.equal(plan.mode, 'full');
-  assert.match(plan.reason, /manifest/);
+test('backfill dates are added, deduplicated and sorted newest first', () => {
+  const plan = planDaily('2026-10-13', '2026-10-12', ['2026-10-09', '2026-10-12', '2026-10-10']);
+  assert.deepEqual(plan.dates, ['2026-10-13', '2026-10-12', '2026-10-10', '2026-10-09']);
+  assert.equal(plan.reason, 'newest two + 2 backfilled');
 });
 
-test('daily builds the newest two editions', () => {
-  const plan = planBuild('daily', ['2026-10-11', '2026-10-13', '2026-10-12'], manifest(['2026-10-12', '2026-10-11']));
-  assert.deepEqual(plan, { mode: 'daily', dates: ['2026-10-13', '2026-10-12'], reason: '1 new edition(s)' });
+test('a daily plan never becomes a full build: too many dates is an error', () => {
+  const many = Array.from({ length: MAX_DAILY_EDITIONS }, (_, i) => `2026-09-${String(i + 1).padStart(2, '0')}`);
+  assert.throws(() => planDaily('2026-10-13', '2026-10-12', many), /at most 16 editions.*full build/);
+  assert.throws(() => planDaily('2026-10-13', '2026-10-12', ['13/10/2026']), /Invalid backfill/);
+  assert.throws(() => planDaily(null, null), /no editions/);
 });
 
-test('daily backfills missing editions and the edition before each of them', () => {
-  // 10-09 was never deployed: 10-08 must be rebuilt for its 下一期 link.
-  const plan = planBuild('daily', ['2026-10-13', '2026-10-12', '2026-10-09', '2026-10-08', '2026-10-07'], manifest(['2026-10-12', '2026-10-08', '2026-10-07']));
-  assert.deepEqual(plan.dates, ['2026-10-13', '2026-10-12', '2026-10-09', '2026-10-08']);
+test('missing editions are database dates whose page is not on the bucket', () => {
+  const keys = new Set(['daily/2026-10-13/index.html', 'daily/2026-10-11/index.html']);
+  assert.deepEqual(missingEditions(['2026-10-11', '2026-10-13', '2026-10-12', '2026-10-10'], keys), ['2026-10-12', '2026-10-10']);
 });
 
-test('daily after a failed deploy also rebuilds the last deployed edition', () => {
-  const plan = planBuild('daily', ['2026-10-13', '2026-10-12', '2026-10-11'], manifest(['2026-10-11']));
-  assert.deepEqual(plan.dates, ['2026-10-13', '2026-10-12', '2026-10-11']);
+const row = (date, rank, aha) => ({
+  snapshot_date: date, processed_item_id: `p${date}${rank}`, rank, aha_index: aha,
+  processed_title: `${date}-${rank}`, title: null, source_name: 'S', tags: ['a', 'b', 'c'], original_url: `https://x/${rank}`, url: null,
 });
 
-test('a daily run with nothing new still rebuilds the newest two editions', () => {
-  const plan = planBuild('daily', ['2026-10-13', '2026-10-12', '2026-10-11'], manifest(['2026-10-13', '2026-10-12', '2026-10-11']));
-  assert.deepEqual(plan, { mode: 'daily', dates: ['2026-10-13', '2026-10-12'], reason: '0 new edition(s)' });
+test('summary statistics come from the published editions, newest first', () => {
+  const summary = summaryJson([{ date: '2026-01-01', score: 90, count: 1 }, { date: '2026-01-02', score: 70, count: 2 }]);
+  assert.equal(summary.latest_date, '2026-01-02');
+  assert.deepEqual(summary.editions.map((e) => e.date), ['2026-01-02', '2026-01-01']);
+  assert.deepEqual(summary.stats, { total_editions: 2, total_items: 3, avg_aha_score: 80, peak_aha_score: 90 });
 });
 
-test('too many missing editions turn a daily build into a full one', () => {
-  const dates = Array.from({ length: MAX_DAILY_BACKFILL + 2 }, (_, i) => `2026-10-${String(i + 1).padStart(2, '0')}`);
-  assert.equal(planBuild('daily', dates, manifest([dates[0]])).mode, 'full');
+test('a month file carries its ledger and the views derived from it', () => {
+  const records = [editionRecord('2026-01-01', [row('2026-01-01', 1, 0.9)]), editionRecord('2026-01-02', [row('2026-01-02', 1, 0.5), row('2026-01-02', 2, 0.7)])];
+  const month = archiveMonthJson('2026-01', records);
+  assert.deepEqual(month.records.map((r) => r.date), ['2026-01-02', '2026-01-01']);
+  assert.equal(month.summary.top_story_title, '2026-01-01-1');
+  assert.deepEqual(month.days.map((d) => d.aha_delta), ['-30.0', '']);
+  assert.deepEqual(month.top_items['2026-01-02'].map((i) => i.title), ['2026-01-02-1', '2026-01-02-2']);
+  const index = archiveIndexJson([monthlyArchive('2025-12', []), month.summary], summaryJson(records));
+  assert.deepEqual(index.years.map((y) => y.year), [2026, 2025]);
 });
 
-test('deployed dates are previous plus built, limited to the database, newest first', () => {
-  assert.deepEqual(
-    mergeDeployedDates(['2026-10-10', '2026-09-01'], ['2026-10-12', '2026-10-10'], ['2026-10-12', '2026-10-10', '2026-10-01']),
-    ['2026-10-12', '2026-10-10'],
-  );
+test('published data files must carry the current data version', () => {
+  assert.equal(parseDataFile(null, 'x'), null);
+  assert.deepEqual(parseDataFile('{"v":1,"a":2}', 'x'), { v: 1, a: 2 });
+  assert.throws(() => parseDataFile('{"v":2}', 'summary.json'), /summary.json has data version 2/);
 });
 
-test('parseManifest accepts nothing yet and rejects a malformed manifest', () => {
-  assert.equal(parseManifest(null), null);
-  assert.deepEqual(parseManifest(JSON.stringify(manifest(['2026-10-13']))).dates, ['2026-10-13']);
-  assert.throws(() => parseManifest(JSON.stringify({ v: 1, dates: ['13/10/2026'] })), /unexpected shape/);
-  assert.throws(() => parseManifest(JSON.stringify({ v: 2, dates: [] })), /unexpected shape/);
+test('a published urlset parses back to the entries it was rendered from', () => {
+  const entries = [{ url: 'https://www.amazingindex.com/article/a&b', lastmod: '2026-01-02' }, { url: 'https://www.amazingindex.com/about' }];
+  assert.deepEqual(parseUrlset(renderUrlset(entries)), entries);
 });
 
 test('fillShell escapes per-URL values and requires every token', () => {
@@ -82,32 +86,4 @@ test('shell metadata matches the former page titles', () => {
     description: '在 AmazingIndex 探索 2026年一月 的 AI 行业动态与突破。',
   });
   assert.equal(subjectShellMeta({ slug: 'x', display_name: 'X', definition: null, description: null }).description, 'X 的关键事件、突出点和横向对比。');
-});
-
-const row = (date, rank, aha, title = `${date}-${rank}`) => ({
-  snapshot_date: date, processed_item_id: `p${date}${rank}`, rank, aha_index: aha,
-  processed_title: title, title: null, source_name: 'S', tags: ['a', 'b', 'c', 'd'], original_url: null, url: null,
-});
-
-test('archive statistics use the mean score of each edition', () => {
-  const index = indexScoreRows([row('2026-01-02', 1, 0.8), row('2026-01-02', 2, 0.6), row('2026-01-01', 1, 0.9)]);
-  assert.deepEqual([...index.keys()], ['2026-01-02', '2026-01-01']);
-  const stats = computeGlobalStats(index);
-  assert.equal(stats.total_editions, 2);
-  assert.equal(stats.total_items, 3);
-  assert.ok(Math.abs(stats.avg_aha_score - 80) < 1e-9);
-  assert.ok(Math.abs(stats.peak_aha_score - 90) < 1e-9);
-});
-
-test('daily archives carry the top story and the day-over-day delta', () => {
-  const index = indexScoreRows([row('2026-01-02', 1, 0.5), row('2026-01-02', 2, 0.7, 'top'), row('2026-01-01', 1, 0.9)]);
-  const [jan2, jan1] = computeDailyArchives(index, 2026, 1);
-  assert.equal(jan2.top_story_title, 'top');
-  assert.deepEqual(jan2.top_tags, ['a', 'b', 'c']);
-  assert.equal(jan2.aha_delta, '-30.0');
-  assert.equal(jan1.aha_delta, '');
-  const [month] = computeMonthlyArchives(index, 2026);
-  assert.equal(month.month, '2026-01-01');
-  assert.equal(month.top_story_title, '2026-01-01-1');
-  assert.equal(month.edition_count, 2);
 });

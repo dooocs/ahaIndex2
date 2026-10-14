@@ -32,6 +32,13 @@ function renderUrl(entry: SitemapEntry): string {
   return `<url><loc>${escapeXml(entry.url)}</loc>${lastmod}</url>`;
 }
 
+/** Entries of a urlset this module rendered (the inverse of renderUrlset). */
+export function parseUrlset(xml: string): SitemapEntry[] {
+  const unescape = (v: string) => v.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, '&');
+  return [...xml.matchAll(/<url><loc>([^<]*)<\/loc>(?:<lastmod>([^<]*)<\/lastmod>)?<\/url>/g)]
+    .map(([, loc, lastmod]) => (lastmod ? { url: unescape(loc), lastmod: unescape(lastmod) } : { url: unescape(loc) }));
+}
+
 export function renderUrlset(entries: SitemapEntry[]): string {
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',

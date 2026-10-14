@@ -1,7 +1,7 @@
 name: Test Deploy (Staging)
 
 # A full build uploaded under oss://amazingindex/__test__/, without touching
-# the production manifest or the CDN. The next production deploy removes it.
+# the production bucket or the CDN. The next production deploy removes it.
 # It checks that a build, export and upload succeed. It is not a visual
 # preview: pages under __test__/ load /_astro/ and /data/ from the site root.
 # To look at a build, run `npm run preview:site` locally (docs/build-data.md).

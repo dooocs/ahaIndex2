@@ -1,7 +1,8 @@
 // Release checks, run before anything is uploaded.
 //   verifyDist: the pages this run built (daily or full) are complete and current.
 //   verifyExport: feeds, sitemaps, data and shell copies agree with the built
-//   pages and only point at editions that are deployed.
+//   pages and only point at pages that are deployed: on the bucket inventory
+//   taken at the start of the run, built by this run, or exported by it.
 import assert from 'node:assert/strict';
 import { readFile, readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
@@ -84,14 +85,22 @@ async function readJson(file) {
   return value;
 }
 
-export async function verifyExport(exportDir, dist, { latestDate }) {
-  const manifest = await readJson(path.join(exportDir, '_deploy/manifest.json'));
-  const deployed = new Set(manifest.dates);
-  assert.ok(deployed.has(latestDate), 'Deploy manifest omits the latest edition');
-  assert.deepEqual(manifest.dates, [...manifest.dates].sort().reverse(), 'Deploy manifest dates are not newest first');
+/** `inventory`: key → ETag of what is on the bucket (empty for a full run without one). */
+export async function verifyExport(exportDir, dist, { latestDate, inventory = new Map() }) {
+  const deployed = async (key) => inventory.has(key) || await isFile(path.join(dist, key)) || await isFile(path.join(exportDir, key));
+
+  const summary = await readJson(path.join(exportDir, 'data/summary.json'));
+  const dates = summary.editions.map((e) => e.date);
+  assert.equal(summary.latest_date, latestDate, 'summary.json is not using the latest database edition');
+  assert.deepEqual(dates, [...dates].sort().reverse(), 'summary.json editions are not newest first');
+  assert.equal(new Set(dates).size, dates.length, 'summary.json lists an edition twice');
+  for (const date of dates) assert.ok(await deployed(`daily/${date}/index.html`), `summary.json lists an edition that is not deployed: ${date}`);
   for (const date of (await listDirs(path.join(dist, 'daily'))).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))) {
-    assert.ok(deployed.has(date), `Built edition ${date} is missing from the deploy manifest`);
+    assert.ok(dates.includes(date), `Built edition ${date} is missing from summary.json`);
   }
+  const index = await readJson(path.join(exportDir, 'data/archive/index.json'));
+  const indexMonths = index.years.flatMap((y) => y.months.map((m) => m.month.slice(0, 7)));
+  assert.deepEqual([...new Set(dates.map((d) => d.slice(0, 7)))].sort(), [...indexMonths].sort(), 'archive/index.json months differ from the published editions');
 
   const home = await homepage(dist);
   const feed = xmlValues(await readFile(path.join(exportDir, 'rss.xml'), 'utf8'));
@@ -102,44 +111,43 @@ export async function verifyExport(exportDir, dist, { latestDate }) {
   const feedDate = new Date(feed.get('rss/channel/lastBuildDate')?.[0]).toISOString().slice(0, 10);
   assert.equal(feedDate, latestDate, 'RSS is not using the latest database edition');
 
-  for (const file of ['summary.json', 'archive/index.json', 'history.json', 'subjects/index.json']) {
-    await readJson(path.join(exportDir, 'data', file));
+  for (const file of ['history.json', 'subjects/index.json']) await readJson(path.join(exportDir, 'data', file));
+  for (const file of await readdir(path.join(exportDir, 'data/archive'))) {
+    if (file === 'index.json') continue;
+    const month = await readJson(path.join(exportDir, 'data/archive', file));
+    for (const record of month.records) assert.ok(dates.includes(record.date), `archive/${file} lists an edition that is not published: ${record.date}`);
   }
 
-  const index = xmlValues(await readFile(path.join(exportDir, 'sitemap.xml'), 'utf8'));
-  const sitemaps = index.get('sitemapindex/sitemap/loc') ?? [];
+  const sitemapIndex = xmlValues(await readFile(path.join(exportDir, 'sitemap.xml'), 'utf8'));
+  const sitemaps = sitemapIndex.get('sitemapindex/sitemap/loc') ?? [];
   assert.ok(sitemaps.length > 0, 'Sitemap index is empty');
   const entries = [];
   for (const sitemap of sitemaps) {
-    const xml = xmlValues(await readFile(path.join(exportDir, sitePath(sitemap)), 'utf8'));
-    const locs = xml.get('urlset/url/loc') ?? [];
-    const mods = xml.get('urlset/url/lastmod') ?? [];
+    const rel = sitePath(sitemap).slice(1);
+    assert.ok(await deployed(rel), `Sitemap index lists a file that is not deployed: ${sitemap}`);
+    // Sitemaps this run did not regenerate are already on the bucket.
+    if (!(await isFile(path.join(exportDir, rel)))) continue;
+    const locs = xmlValues(await readFile(path.join(exportDir, rel), 'utf8')).get('urlset/url/loc') ?? [];
     assert.ok(locs.length > 0, `Empty sitemap: ${sitemap}`);
-    // lastmod is optional per entry; only article sitemaps rely on it, and every article entry has one.
-    locs.forEach((loc, i) => entries.push({ loc, lastmod: sitePath(sitemap).startsWith('/sitemap-articles-') ? mods[i] : undefined }));
+    entries.push(...locs);
   }
-  assert.equal(new Set(entries.map((e) => e.loc)).size, entries.length, 'Sitemaps contain duplicate URLs');
-  assert.ok(entries.some((e) => e.loc === `${SITE}/daily/${latestDate}`), 'Sitemap omits the latest daily edition');
+  assert.equal(new Set(entries).size, entries.length, 'Sitemaps contain duplicate URLs');
+  assert.ok(entries.includes(`${SITE}/daily/${latestDate}`), 'Sitemap omits the latest daily edition');
 
   const sitemapArticles = new Set();
-  for (const { loc, lastmod } of entries) {
+  for (const loc of entries) {
     const route = sitePath(loc);
-    let match;
-    if ((match = route.match(/^\/daily\/(\d{4}-\d{2}-\d{2})$/))) {
-      assert.ok(deployed.has(match[1]), `Sitemap lists an edition that is not deployed: ${loc}`);
-    } else if ((match = route.match(/^\/daily\/(\d{4}-\d{2})$/))) {
-      assert.ok(await isFile(path.join(exportDir, route, 'index.html')), `No month page exported for ${loc}`);
-      await readJson(path.join(exportDir, `data/archive/${match[1]}.json`));
-    } else if ((match = route.match(/^\/subjects\/([^/]+)$/))) {
-      assert.ok(await isFile(path.join(exportDir, route, 'index.html')), `No subject page exported for ${loc}`);
-      await readJson(path.join(exportDir, `data/subjects/${match[1]}.json`));
-    } else if ((match = route.match(/^\/article\/([^/]+)$/))) {
-      sitemapArticles.add(match[1]);
-      const built = await isFile(path.join(dist, route, 'index.html'));
-      assert.ok(built || (lastmod && deployed.has(lastmod)), `Sitemap lists an article that is not deployed: ${loc}`);
-    } else {
-      assert.ok(await isFile(path.join(dist, route === '/' ? '' : route, 'index.html')), `Sitemap URL has no built page: ${loc}`);
-    }
+    const key = route === '/' ? 'index.html' : `${route.slice(1)}/index.html`;
+    assert.ok(await deployed(key), `Sitemap lists a page that is not deployed: ${loc}`);
+    const month = route.match(/^\/daily\/(\d{4}-\d{2})$/);
+    if (month) await readJson(path.join(exportDir, `data/archive/${month[1]}.json`)).catch(async (error) => {
+      // A month file is only rewritten when its editions change.
+      if (!inventory.has(`data/archive/${month[1]}.json`)) throw error;
+    });
+    const subject = route.match(/^\/subjects\/([^/]+)$/);
+    if (subject) await readJson(path.join(exportDir, `data/subjects/${subject[1]}.json`));
+    const article = route.match(/^\/article\/([^/]+)$/);
+    if (article) sitemapArticles.add(article[1]);
   }
   const builtArticles = await listDirs(path.join(dist, 'article'));
   for (const pid of builtArticles) assert.ok(sitemapArticles.has(pid), `Built article is missing from the sitemap: ${pid}`);
@@ -150,5 +158,5 @@ export async function verifyExport(exportDir, dist, { latestDate }) {
       for (const token of SHELL_TOKENS) assert.ok(!html.includes(token), `${dir}/${name} still contains ${token}`);
     }
   }
-  return { latestDate, deployed: deployed.size, rssItems: feedLinks.length, sitemapUrls: entries.length, builtArticles: builtArticles.length };
+  return { latestDate, published: dates.length, rssItems: feedLinks.length, sitemapUrls: entries.length, builtArticles: builtArticles.length };
 }

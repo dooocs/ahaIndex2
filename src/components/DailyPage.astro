@@ -10,9 +10,13 @@ interface Props {
   items: ProcessedItem[];
   dailyArchive?: DailyArchive | null;
   date?: string;
-  /** Neighbouring edition dates, linked as 上一期 / 下一期. */
+  /**
+   * The edition before this one, linked as 上一期 in the HTML: a crawler walks
+   * the archive backwards from the homepage. 下一期 is filled in by
+   * scripts/sidebar.ts from /data/summary.json, so an old page never needs a
+   * rebuild to link to a newer edition.
+   */
   prevDate?: string | null;
-  nextDate?: string | null;
   showArchiveBanner?: boolean;
   heading?: string;
   sidebarMode?: 'score' | 'intro';
@@ -23,7 +27,6 @@ const {
   dailyArchive = null,
   date,
   prevDate = null,
-  nextDate = null,
   showArchiveBanner = true,
   heading,
   sidebarMode = 'score',
@@ -54,12 +57,10 @@ const isHome = sidebarMode === 'intro';
         <div class="loading-state">今日暂无更新</div>
       )}
     </div>
-    {(prevDate || nextDate) && (
-      <nav class="edition-nav" aria-label="往期导航">
-        {prevDate ? <a href={`/daily/${prevDate}`} rel="prev">← 上一期 · {prevDate}</a> : <span></span>}
-        {nextDate ? <a href={`/daily/${nextDate}`} rel="next">下一期 · {nextDate} →</a> : <span></span>}
-      </nav>
-    )}
+    <nav class="edition-nav" aria-label="往期导航" data-edition-nav hidden={!prevDate}>
+      {prevDate ? <a href={`/daily/${prevDate}`} rel="prev">← 上一期 · {prevDate}</a> : <span></span>}
+      <a data-next-edition rel="next" hidden></a>
+    </nav>
   </main>
   <Sidebar items={items} dailyArchive={dailyArchive} mode={sidebarMode} date={snapshotDate} />
 </div>
@@ -77,6 +78,11 @@ const isHome = sidebarMode === 'intro';
     font-family: var(--fm);
     font-size: 11px;
     letter-spacing: 0.05em;
+  }
+
+  .edition-nav[hidden],
+  .edition-nav [hidden] {
+    display: none;
   }
 
   .edition-nav a {

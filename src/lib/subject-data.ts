@@ -105,17 +105,27 @@ function addDays(date: string, days: number): string {
 
 const mentionDate = (row: SubjectMentionRow) => dateOnly(row.snapshot_date);
 
+/** Mentions older than this many days before the anchor date never affect the statistics. */
+export const SIGNAL_WINDOW_DAYS = 60;
+
+/** The first date whose mentions computeSignalStats reads. */
+export function signalWindowStart(anchorDate: string): string {
+  return addDays(anchorDate, -(SIGNAL_WINDOW_DAYS - 1));
+}
+
 /**
- * 30-day signal counts, trend and a 14-day sparkline per subject. The window
- * ends at the newest mention among `mentions` (or `fallbackDate`), as before.
+ * 30-day signal counts, trend against the 30 days before, and a 14-day
+ * sparkline per subject, all ending at `anchorDate` (the latest edition), so
+ * every subject and every page measures the same window. `lastSeen` is used
+ * for the latest signal time of a subject with no mention in the window.
  */
 export function computeSignalStats(
   subjectIds: string[],
   mentions: SubjectMentionRow[],
-  fallbackDate: string | null,
+  anchorDate: string,
+  lastSeen: Map<string, string | null> = new Map(),
 ): Map<string, SubjectSignalStats> {
-  const latestDate = mentions.map(mentionDate).filter(Boolean).sort().at(-1)
-    || fallbackDate || new Date().toISOString().slice(0, 10);
+  const latestDate = anchorDate;
   const currentStart = addDays(latestDate, -29);
   const previousStart = addDays(latestDate, -59);
   const previousEnd = addDays(currentStart, -1);
@@ -143,7 +153,7 @@ export function computeSignalStats(
       signal_count_30d: currentCount,
       previous_signal_count_30d: previousCount,
       trend_pct_30d: trendPct,
-      latest_signal_at: latestSignal?.created_at || latestSignal?.snapshot_date || null,
+      latest_signal_at: latestSignal?.created_at || latestSignal?.snapshot_date || lastSeen.get(subjectId) || null,
       sparkline: sparkDates.map((date) => rows.filter((row) => mentionDate(row) === date).length),
     });
   }

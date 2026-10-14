@@ -1,21 +1,57 @@
 # Build and release
 
-The site is built in two modes. Both run the same job
-(`.github/workflows/deploy.yml`): build, export, verify, upload.
+Principle: the daily build is small, predictable and strictly incremental;
+everything else happens only when a full build is asked for. Both modes run
+`scripts/run-deploy.sh` (from `.github/workflows/deploy.yml`): list the
+bucket, plan, build, export, verify, upload.
 
 | | daily (`build-deploy.yml`) | full (`full-build.yml`) |
 | --- | --- | --- |
 | Trigger | every `repository_dispatch` (`pipeline-done` etc.), push to `main`, manual | manual only |
-| Astro renders | homepage, the newest two editions, editions missing from the deploy manifest and the edition before each, their articles, and every page that needs no data | every page |
-| Uploads | everything it rendered except project pages, `_astro/`, the export; nothing deleted | everything, the export; optional cleanup |
-| CDN | refreshes the changed URLs | refreshes the whole site |
+| Astro renders | the newest edition and the one before it, articles whose newest edition is one of them, and the pages that need no data | every page |
+| Database | 2 small queries to plan; the built editions; the 60-day subject window | every edition, every article, all subject mentions |
+| Export | merges the built editions into the published data and sitemaps | recomputes all data and sitemaps |
+| Uploads | only files whose MD5 differs from the object on OSS; nothing deleted | everything; optional cleanup |
+| CDN | refreshes the uploaded URLs | refreshes the whole site |
 
-`scripts/plan-build.ts` picks the editions. A daily run becomes full on its own
-when OSS has no deploy manifest yet or more than 7 editions are missing from it.
-Both workflows share one concurrency group, so deploys never overlap. GitHub
-keeps one waiting run per group: a trigger that arrives while one run is in
-progress and another is waiting replaces the waiting one, so re-run a waiting
-full build if a daily run displaced it.
+A daily run never turns into a full one. Pages it does not build stay on OSS
+exactly as they were last uploaded.
+
+### Deployed = on the bucket
+
+Each run starts with one listing of the bucket (`ossutil ls -r`, parsed by
+`scripts/lib/inventory.mjs`). That listing, plus the pages the run builds, is
+what "deployed" means. Sitemaps, RSS and data are generated from database data
+but only reference deployed pages, and `scripts/verify-site.mjs` fails the run
+before any upload if one of them points elsewhere. If most published editions
+are missing from the listing, the export refuses to publish (a broken listing
+must not shrink the sitemap). The listing's ETags (MD5 for normal uploads) let
+a daily deploy skip unchanged files.
+
+### Incremental data
+
+`data/archive/<YYYY-MM>.json` holds a ledger: one record per edition (score,
+item count, top story, first three stories), from which the month and year
+views are derived (`src/lib/edition-ledger.ts`). A daily export reads the
+published `summary.json`, `archive/index.json`, the month files and the
+article sitemaps of the built editions (fetched from OSS into
+`.deploy/previous/`), recomputes the built editions' records from the
+database, and merges them in. A file it cannot fetch is recomputed from the
+database instead; with no published `summary.json` at all (the first run), it
+reads every edition once. Subject statistics anchor their 30-day window at the
+newest edition and read only the mentions of the last 60 days.
+
+### Missed builds
+
+The newest-two rule repairs one missed day by itself: the next run builds the
+missed edition as "the one before". A longer gap leaves editions off OSS; they
+stay out of the sitemap and data, and the plan step warns
+(`edition … is not on OSS`). Run **Build & Deploy** manually with backfill
+`missing` (it compares every database edition with the bucket, at most 16
+editions per run) or with a list of dates. 下一期 links are filled in by the
+browser from `summary.json`, so a backfilled edition appears in its
+neighbours' navigation without rebuilding them; 上一期 is static HTML, so a
+crawler can walk the archive backwards from the homepage.
 
 ### When to run a full build
 
@@ -24,26 +60,28 @@ they were last built. Run **Full Build & Deploy** after:
 
 - changing a template or component that older editions or articles use;
 - changing the shape of `data/*.json` (bump `DATA_VERSION` in
-  `src/lib/site-export.ts`; old pages then show a load error until rebuilt);
-- the pipeline revising items of past editions;
+  `src/lib/site-export.ts`; pages show a load error until rebuilt);
+- the pipeline revising items of past editions (their records, pages and
+  sitemap entries are only recomputed by a full build);
 - wanting project pages refreshed.
+
+Both workflows share one concurrency group, so deploys never overlap. GitHub
+keeps one waiting run per group: a trigger that arrives while one run is in
+progress and another is waiting replaces the waiting one, so re-run a waiting
+full build if a daily run displaced it.
 
 ### Where each page comes from
 
 - **Astro (SSG):** `/`, `/daily/<date>`, `/article/<pid>`, project pages,
-  static pages. Project pages are rebuilt by full builds only.
+  static pages.
 - **Shells + data:** `/daily`, `/daily/<YYYY-MM>`, `/history`, `/subjects`,
-  `/subjects/<slug>`, and the sidebar calendar/chart on edition pages are
-  rendered in the browser from `/data/*.json` (`src/scripts/*-pages.ts`,
+  `/subjects/<slug>`, the sidebar calendar/chart and 下一期 on edition pages
+  are rendered in the browser from `/data/*.json` (`src/scripts/*-pages.ts`,
   `src/scripts/sidebar.ts`). The browser never reads the database.
-- **Export (`scripts/export-site-data.ts`):** writes `data/*.json`,
-  `sitemap*.xml`, `rss.xml`, the deploy manifest, and per-URL copies of the
-  shell templates in `src/pages/shell/` (each month and subject URL is a real
-  object with its own title, description and canonical URL). Sitemaps and data
-  only include editions listed in the manifest, i.e. pages that are deployed.
-
-`_deploy/manifest.json` on OSS lists the deployed editions. It is uploaded last,
-after every page it lists is live, and the next daily run reads it.
+- **Export (`scripts/export-site-data.ts`):** `data/*.json`, `sitemap*.xml`,
+  `rss.xml`, and per-URL copies of the shell templates in `src/pages/shell/`
+  (each month and subject URL is a real object with its own title,
+  description and canonical URL).
 
 ### Local development
 
@@ -66,6 +104,14 @@ To look at a build as it will be served, with real credentials in `.env`:
 ```sh
 npm run build && npm run export:data -- --dist dist --out export
 npm run preview:site            # http://127.0.0.1:4400, dist + export merged as on OSS
+```
+
+To rehearse whole runs without OSS, point `scripts/run-deploy.sh` at a
+directory standing in for the bucket (with the mock database running):
+
+```sh
+MODE=full DEPLOY_TARGET=local:/tmp/bucket bash scripts/run-deploy.sh
+MODE=daily DEPLOY_TARGET=local:/tmp/bucket bash scripts/run-deploy.sh
 ```
 
 The **Test Deploy (Staging)** workflow checks that build, export and upload
@@ -94,22 +140,21 @@ versioned build snapshot can address this separately without truncating history.
 
 ## Verification and release
 
-CI runs `npm test`, the build, the export, then `npm run verify:site -- --dist
-dist --export export` before anything is uploaded. It compares the newest
-database edition with the homepage and RSS, checks every homepage article was
-built, that sitemaps list only deployed editions and articles, that every month
-and subject URL has its exported page and data, and that no shell token is left.
-Production runs are serialized and have a 45-minute job limit.
+`npm test` runs before every deploy. After the export,
+`scripts/verify-site.mjs` compares the newest database edition with the
+homepage, RSS and summary, checks every homepage article was built, and checks
+that data, sitemaps and the sitemap index only reference deployed pages and
+that no shell token is left. Nothing is uploaded unless it passes.
 
-`scripts/deploy-oss.sh` uploads assets first, then pages, then data and feeds,
-then the bare-URL copies, then the manifest, then refreshes the CDN. Any failed
-upload stops the deploy before the manifest, so the next run rebuilds what is
-missing. Set
-`DEPLOY_TARGET=local:/tmp/bucket` to rehearse a deploy into a directory.
+`scripts/deploy-oss.sh` uploads assets first, then pages, then data and feeds
+(so data never points at a page whose upload failed), then the bare-URL copies,
+then refreshes the CDN. Any failed upload stops the deploy; the next run
+retries, since it compares against the bucket again.
 
-A full run can list (`dry-run`, the default) or delete objects under `_astro/ article/ daily/ data/ projects/ subjects/` that no
-deploy writes any more. Deletion refuses to remove more than 30% of them.
-Objects outside those prefixes (for example `og/`) are never touched.
+A full run can list (`dry-run`, the default) or delete objects under
+`_astro/ article/ daily/ data/ projects/ subjects/` that no deploy writes any
+more. Deletion refuses to remove more than 30% of them. Objects outside those
+prefixes (for example `og/`) are never touched.
 
 For a production data audit, compare the heatmap completion count and generated
 project count against `count(*)` and `count(distinct subject_id)` from

@@ -158,6 +158,33 @@ export async function getScoreRows(db: Db): Promise<ScoreRow[]> {
   );
 }
 
+/** Score rows of the given editions only, in the same order as getScoreRows. */
+export async function getScoreRowsForDates(db: Db, dates: string[]): Promise<ScoreRow[]> {
+  if (dates.length === 0) return [];
+  return fetchAllRows<ScoreRow>((from, to) =>
+    db.from(TABLE)
+      .select('snapshot_date, processed_item_id, rank, aha_index, processed_title, title, source_name, tags, original_url, url')
+      .in('snapshot_date', [...new Set(dates)])
+      .order('snapshot_date', { ascending: false })
+      .order('rank', { ascending: true })
+      .order('processed_item_id', { ascending: true })
+      .range(from, to),
+  );
+}
+
+/** (article, date) pairs of editions in [from, to], newest date first. */
+export async function getArticleRouteItemsBetween(db: Db, from: string, to: string): Promise<ArticleRouteItem[]> {
+  return fetchAllRows<ArticleRouteItem>((start, end) =>
+    db.from(TABLE)
+      .select('id, processed_item_id, snapshot_date')
+      .gte('snapshot_date', from)
+      .lte('snapshot_date', to)
+      .order('snapshot_date', { ascending: false })
+      .order('processed_item_id', { ascending: true })
+      .range(start, end),
+  );
+}
+
 const DAILY_ARCHIVE_COLUMNS = 'snapshot_date, aha_score, aha_delta, item_count, top_story_title, top_story_source, top_tags, rarity_score, timeliness_score, impact_score, percentile_90d, percentile_tier, sample_size_90d';
 
 export async function getLatestDailyArchive(db: Db): Promise<DailyArchive | null> {
@@ -235,6 +262,36 @@ export async function getSubjectInsights(db: Db, subjectId: string): Promise<Sub
   return (data as SubjectInsight[]) ?? [];
 }
 
+/** Published insights of many subjects in one paginated read. */
+export async function getSubjectInsightsFor(db: Db, subjectIds: string[]): Promise<Map<string, SubjectInsight[]>> {
+  const bySubject = new Map<string, SubjectInsight[]>();
+  try {
+    for (const batch of chunkValues([...new Set(subjectIds)], 100)) {
+      const rows = await fetchAllRows<SubjectInsight>((from, to) =>
+        db.from('subject_insights')
+          .select('id, subject_id, snapshot_date, module_type, insight_key, title, summary, analysis, event_date, comparison_subject_ids, dimensions_json, importance_score, confidence, evidence_item_ids, evidence_refs_json, related_subject_ids, generated_by, generator_version, status, published_at')
+          .in('subject_id', batch)
+          .eq('status', 'published')
+          .order('subject_id', { ascending: true })
+          .order('module_type', { ascending: true })
+          .order('event_date', { ascending: false, nullsFirst: false })
+          .order('importance_score', { ascending: false, nullsFirst: false })
+          .order('id', { ascending: true })
+          .range(from, to),
+      );
+      for (const row of rows) {
+        const list = bySubject.get(row.subject_id);
+        if (list) list.push(row);
+        else bySubject.set(row.subject_id, [row]);
+      }
+    }
+  } catch (error) {
+    if (isMissingRelationError(error)) return bySubject;
+    throw error;
+  }
+  return bySubject;
+}
+
 export interface SubjectMentionRow {
   subject_id: string;
   item_id: string;
@@ -248,16 +305,21 @@ export interface SubjectMentionRow {
   evidence?: Record<string, any> | null;
 }
 
-/** All mentions of the given subjects, newest first. Paginated: no silent cap. */
-export async function fetchSubjectMentions(db: Db, subjectIds: string[]): Promise<SubjectMentionRow[]> {
+const MENTION_COLUMNS = 'subject_id, item_id, snapshot_date, source_name, score, context, created_at, detected_by, confidence, evidence';
+
+/**
+ * Mentions of the given subjects, newest first, from `since` (inclusive) when
+ * given, else all of them. Paginated: no silent cap.
+ */
+export async function fetchSubjectMentions(db: Db, subjectIds: string[], since?: string): Promise<SubjectMentionRow[]> {
   const ids = [...new Set(subjectIds.filter(Boolean))];
   const rows: SubjectMentionRow[] = [];
   try {
     for (const batch of chunkValues(ids, 100)) {
       rows.push(...await fetchAllRows<SubjectMentionRow>((from, to) =>
-        db.from('subject_mentions')
-          .select('subject_id, item_id, snapshot_date, source_name, score, context, created_at, detected_by, confidence, evidence')
-          .in('subject_id', batch)
+        (since
+          ? db.from('subject_mentions').select(MENTION_COLUMNS).in('subject_id', batch).gte('snapshot_date', since)
+          : db.from('subject_mentions').select(MENTION_COLUMNS).in('subject_id', batch))
           .order('snapshot_date', { ascending: false })
           .order('created_at', { ascending: false })
           .order('subject_id', { ascending: true })
@@ -270,6 +332,22 @@ export async function fetchSubjectMentions(db: Db, subjectIds: string[]): Promis
     throw error;
   }
   return rows;
+}
+
+/** The newest `limit` mentions of one subject before `before` (exclusive). */
+export async function fetchMentionsBefore(db: Db, subjectId: string, before: string, limit: number): Promise<SubjectMentionRow[]> {
+  const { data, error } = await db.from('subject_mentions').select(MENTION_COLUMNS)
+    .eq('subject_id', subjectId)
+    .lt('snapshot_date', before)
+    .order('snapshot_date', { ascending: false })
+    .order('created_at', { ascending: false })
+    .order('item_id', { ascending: true })
+    .limit(limit);
+  if (error) {
+    if (isMissingRelationError(error)) return [];
+    throw error;
+  }
+  return (data as SubjectMentionRow[]) ?? [];
 }
 
 export interface DisplaySignalItem {

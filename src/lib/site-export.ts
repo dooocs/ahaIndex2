@@ -1,15 +1,15 @@
 // Shapes of the files the export script publishes next to the built pages
-// (/data/*.json, the deploy manifest, per-URL copies of shell pages), and the
-// daily build plan. Pure functions; scripts/export-site-data.ts does the IO.
+// (/data/*.json, per-URL copies of shell pages) and the daily build plan.
+// Pure functions; scripts/export-site-data.ts does the IO.
 import {
-  computeDailyArchives,
-  computeGlobalStats,
-  computeMonthlyArchives,
-  computeWeeklyArchives,
-  dayScore,
-  itemTitle,
-  type ScoreIndex,
-} from './archive.ts';
+  dailyArchives,
+  globalStats,
+  monthlyArchive,
+  weeklyArchives,
+  type EditionRecord,
+  type EditionSummary,
+  type TopItem,
+} from './edition-ledger.ts';
 import { fallbackSignalStats } from './subject-data.ts';
 import type {
   DailyArchive,
@@ -28,35 +28,10 @@ export const DATA_VERSION = 1;
 export const MONTH_NAMES = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-// ─── Deploy manifest and build plan ─────────────────
+// ─── Build plan ─────────────────────────────────────
 
-export interface DeployManifest {
-  v: number;
-  /** Edition dates whose pages are on OSS, newest first. */
-  dates: string[];
-  latest_date: string | null;
-  mode: 'daily' | 'full';
-  commit: string | null;
-  generated_at: string;
-}
-
-export function parseManifest(text: string | null | undefined): DeployManifest | null {
-  if (!text) return null;
-  const value = JSON.parse(text);
-  if (!value || value.v !== DATA_VERSION || !Array.isArray(value.dates) || !value.dates.every((d: unknown) => typeof d === 'string' && DATE.test(d))) {
-    throw new Error('Deploy manifest has an unexpected shape');
-  }
-  return value as DeployManifest;
-}
-
-/**
- * Dates now deployed: what the previous manifest recorded plus the editions
- * this run built, limited to dates that still exist in the database.
- */
-export function mergeDeployedDates(previous: string[], built: string[], database: string[]): string[] {
-  const exists = new Set(database);
-  return [...new Set([...previous, ...built])].filter((d) => exists.has(d)).sort().reverse();
-}
+/** A daily run never builds more than this many editions, backfill included. */
+export const MAX_DAILY_EDITIONS = 16;
 
 export interface BuildPlan {
   mode: 'daily' | 'full';
@@ -65,46 +40,45 @@ export interface BuildPlan {
   reason: string;
 }
 
-/** More missing editions than this and a daily build gives way to a full one. */
-export const MAX_DAILY_BACKFILL = 7;
-
-export function planBuild(requested: 'daily' | 'full', databaseDates: string[], manifest: DeployManifest | null): BuildPlan {
-  if (requested === 'full') return { mode: 'full', dates: [], reason: 'full build requested' };
-  if (!manifest) return { mode: 'full', dates: [], reason: 'no deploy manifest yet' };
-  const newestFirst = [...new Set(databaseDates)].sort().reverse();
-  if (newestFirst.length === 0) return { mode: 'full', dates: [], reason: 'database has no editions' };
-  const deployed = new Set(manifest.dates);
-  const missing = newestFirst.filter((d) => !deployed.has(d));
-  if (missing.length > MAX_DAILY_BACKFILL) {
-    return { mode: 'full', dates: [], reason: `${missing.length} editions are not deployed` };
+/**
+ * Daily: the newest edition and the one before it, plus any backfill dates.
+ * A daily run never turns into a full one: too many dates is an error.
+ */
+export function planDaily(latest: string | null, previous: string | null, backfill: string[] = []): BuildPlan {
+  if (!latest) throw new Error('The database has no editions');
+  const invalid = backfill.filter((d) => !DATE.test(d));
+  if (invalid.length > 0) throw new Error(`Invalid backfill dates: ${invalid.join(', ')}`);
+  const dates = [...new Set([latest, previous, ...backfill].filter((d): d is string => Boolean(d)))].sort().reverse();
+  if (dates.length > MAX_DAILY_EDITIONS) {
+    throw new Error(`A daily run builds at most ${MAX_DAILY_EDITIONS} editions (asked for ${dates.length}); run the full build instead`);
   }
-  // Each missing edition plus the edition before it, whose 下一期 link must now
-  // point at it; and always the newest two, so a run with nothing new (a code
-  // push) still refreshes today's and yesterday's pages.
-  const before = missing.map((d) => newestFirst[newestFirst.indexOf(d) + 1]).filter(Boolean);
-  const dates = [...new Set([...newestFirst.slice(0, 2), ...missing, ...before])].sort().reverse();
-  return { mode: 'daily', dates, reason: `${missing.length} new edition(s)` };
+  const extra = dates.length - (previous ? 2 : 1);
+  return { mode: 'daily', dates, reason: extra > 0 ? `newest two + ${extra} backfilled` : 'newest two' };
 }
+
+/** Database editions whose page is not on OSS, newest first. */
+export function missingEditions(databaseDates: string[], deployedKeys: Set<string>): string[] {
+  return [...new Set(databaseDates)].filter((d) => !deployedKeys.has(editionKey(d))).sort().reverse();
+}
+
+// ─── Deployed pages ─────────────────────────────────
+
+export const editionKey = (date: string) => `daily/${date}/index.html`;
+export const articleKey = (pid: string) => `article/${pid}/index.html`;
 
 // ─── /data/*.json ───────────────────────────────────
-
-/** Restrict an index to deployed editions, so the JSON describes the live site. */
-export function restrictIndex(index: ScoreIndex, dates: string[]): ScoreIndex {
-  const keep = new Set(dates);
-  return new Map([...index.entries()].filter(([d]) => keep.has(d)));
-}
 
 export interface SummaryJson {
   v: number;
   latest_date: string | null;
   stats: GlobalStats;
-  /** Every edition, newest first: date, day score (0-100), item count. */
-  editions: { date: string; score: number; count: number }[];
+  /** Every deployed edition, newest first: date, day score (0-100), item count. */
+  editions: EditionSummary[];
 }
 
-export function summaryJson(index: ScoreIndex): SummaryJson {
-  const editions = [...index.entries()].map(([date, rows]) => ({ date, score: dayScore(rows), count: rows.length }));
-  return { v: DATA_VERSION, latest_date: editions[0]?.date ?? null, stats: computeGlobalStats(index), editions };
+export function summaryJson(editions: EditionSummary[]): SummaryJson {
+  const sorted = editions.map(({ date, score, count }) => ({ date, score, count })).sort((a, b) => b.date.localeCompare(a.date));
+  return { v: DATA_VERSION, latest_date: sorted[0]?.date ?? null, stats: globalStats(sorted), editions: sorted };
 }
 
 export interface ArchiveIndexJson {
@@ -114,56 +88,50 @@ export interface ArchiveIndexJson {
   years: { year: number; months: MonthlyArchive[] }[];
 }
 
-export function archiveIndexJson(index: ScoreIndex): ArchiveIndexJson {
-  const years = [...new Set([...index.keys()].map((d) => Number(d.slice(0, 4))))].sort((a, b) => b - a);
+/** `months`: one summary per month with editions, any order. */
+export function archiveIndexJson(months: MonthlyArchive[], summary: SummaryJson): ArchiveIndexJson {
+  const years = [...new Set(months.map((m) => Number(m.month.slice(0, 4))))].sort((a, b) => b - a);
   return {
     v: DATA_VERSION,
-    latest_date: [...index.keys()][0] ?? null,
-    stats: computeGlobalStats(index),
-    years: years.map((year) => ({ year, months: computeMonthlyArchives(index, year) })),
+    latest_date: summary.latest_date,
+    stats: summary.stats,
+    years: years.map((year) => ({
+      year,
+      months: months.filter((m) => m.month.startsWith(`${year}-`)).sort((a, b) => b.month.localeCompare(a.month)),
+    })),
   };
-}
-
-export interface TopItem {
-  title: string;
-  tags: string[];
-  source_name: string | null;
-  url: string | null;
 }
 
 export interface ArchiveMonthJson {
   v: number;
   month: string;
-  stats: GlobalStats;
-  summary: MonthlyArchive | null;
+  /** The ledger: one record per edition of the month, newest first. */
+  records: EditionRecord[];
+  summary: MonthlyArchive;
   weeks: WeeklyArchive[];
   days: DailyArchive[];
   /** The first three stories of each edition, in page order. */
   top_items: Record<string, TopItem[]>;
 }
 
-export function archiveMonthJson(index: ScoreIndex, month: string): ArchiveMonthJson {
-  const year = Number(month.slice(0, 4));
-  const monthNum = Number(month.slice(5, 7));
-  const days = computeDailyArchives(index, year, monthNum);
-  const top_items: Record<string, TopItem[]> = {};
-  for (const day of days) {
-    top_items[day.snapshot_date] = (index.get(day.snapshot_date) || []).slice(0, 3).map((row) => ({
-      title: itemTitle(row),
-      tags: (row.tags || []).slice(0, 2),
-      source_name: row.source_name,
-      url: row.original_url || row.url || null,
-    }));
-  }
+export function archiveMonthJson(month: string, records: EditionRecord[]): ArchiveMonthJson {
+  const sorted = [...records].sort((a, b) => b.date.localeCompare(a.date));
   return {
     v: DATA_VERSION,
     month,
-    stats: computeGlobalStats(index),
-    summary: computeMonthlyArchives(index, year).find((m) => m.month === `${month}-01`) ?? null,
-    weeks: computeWeeklyArchives(index, year, monthNum),
-    days,
-    top_items,
+    records: sorted,
+    summary: monthlyArchive(month, sorted),
+    weeks: weeklyArchives(Number(month.slice(0, 4)), sorted),
+    days: dailyArchives(sorted),
+    top_items: Object.fromEntries(sorted.map((r) => [r.date, r.first])),
   };
+}
+
+export function parseDataFile<T extends { v: number }>(text: string | null, name: string): T | null {
+  if (text === null) return null;
+  const value = JSON.parse(text);
+  if (value?.v !== DATA_VERSION) throw new Error(`${name} has data version ${value?.v}, expected ${DATA_VERSION}`);
+  return value as T;
 }
 
 /** Fields a briefing card renders. */

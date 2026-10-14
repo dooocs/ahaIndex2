@@ -1,40 +1,11 @@
 // Build-time data access for Astro pages: memoized wrappers around the shared
-// queries (queries.ts) and pure computations (archive.ts, subject-data.ts).
+// queries (queries.ts). Only the homepage, edition, article and project pages
+// read the database at build time; everything else is published by the export.
 import { getSupabase } from './supabase';
 import { isDailyBuild, scopeDatesFromEnv } from './build-scope';
 import * as q from './queries.ts';
 import { pickLatestRelatedData } from './project-heatmap';
-import {
-  computeDailyArchives,
-  computeGlobalStats,
-  computeMonthlyArchives,
-  computeWeeklyArchives,
-  indexScoreRows,
-} from './archive.ts';
-import {
-  buildDirectorySections,
-  buildSignals,
-  computeSignalStats,
-  mergeSubjectStats,
-  relatedSubjects,
-  sortSignalMentions,
-} from './subject-data.ts';
-import type {
-  DailyArchive,
-  GlobalStats,
-  MonthlyArchive,
-  ProcessedItem,
-  ProjectEntry,
-  ProjectHeatmapRow,
-  SubjectCatalogEntry,
-  SubjectDirectorySection,
-  SubjectInsight,
-  SubjectSignal,
-  SubjectSignalStats,
-  TimelineEntry,
-  TrackInfo,
-  WeeklyArchive,
-} from './types';
+import type { DailyArchive, ProjectEntry, ProjectHeatmapRow, TimelineEntry } from './types';
 
 export type { ArticleRouteItem } from './queries.ts';
 
@@ -86,35 +57,9 @@ export const getBuildDates = () => memo('buildDates', async (): Promise<string[]
   return prev ? [latest, prev] : [latest];
 });
 
-const getScoreIndex = () => memo('scoreIndex', async () => indexScoreRows(await q.getScoreRows(db())));
-
-export async function getGlobalStats(): Promise<GlobalStats> {
-  return computeGlobalStats(await getScoreIndex());
-}
-
-export async function getMonthlyArchives(year: number): Promise<MonthlyArchive[]> {
-  return computeMonthlyArchives(await getScoreIndex(), year);
-}
-
-export async function getWeeklyArchives(year: number, month: number): Promise<WeeklyArchive[]> {
-  return computeWeeklyArchives(await getScoreIndex(), year, month);
-}
-
-export async function getDailyArchives(year: number, month: number): Promise<DailyArchive[]> {
-  return computeDailyArchives(await getScoreIndex(), year, month);
-}
-
-export async function getHistoryItems(): Promise<ProcessedItem[]> {
-  const dates = (await getAllDates()).slice(0, 5);
-  const items: ProcessedItem[] = [];
-  for (const d of dates) items.push(...await getItemsByDate(d));
-  return items.sort((a, b) => (b.aha_index || 0) - (a.aha_index || 0)).slice(0, 100);
-}
-
 // ─── Projects ───────────────────────────────────────
 
 export const getProjectHeatmapData = () => memo<ProjectHeatmapRow[]>('phmData', () => q.getProjectHeatmapData(db()));
-export const getTracks = () => memo<TrackInfo[]>('tracks', () => q.getTracks(db()));
 
 export function buildProjects(rows: ProjectHeatmapRow[]): ProjectEntry[] {
   const grouped = new Map<string, ProjectHeatmapRow[]>();
@@ -173,14 +118,6 @@ export function buildProjects(rows: ProjectHeatmapRow[]): ProjectEntry[] {
 
 export const getProjects = () => memo<ProjectEntry[]>('projects', async () => buildProjects(await getProjectHeatmapData()));
 
-export async function getProjectBySlug(slug: string): Promise<ProjectEntry | null> {
-  return (await getProjects()).find((p) => p.slug === slug) ?? null;
-}
-
-export async function getProjectById(id: string): Promise<ProjectEntry | null> {
-  return (await getProjects()).find((p) => p.subject_id === id) ?? null;
-}
-
 export const getProjectDates = () => memo<string[]>('projectDates', async () => {
   const dates = new Set<string>();
   for (const r of await getProjectHeatmapData()) {
@@ -188,43 +125,3 @@ export const getProjectDates = () => memo<string[]>('projectDates', async () => 
   }
   return [...dates].sort();
 });
-
-// ─── Subjects ───────────────────────────────────────
-
-export const getDirectorySubjects = () => memo<SubjectCatalogEntry[]>('directorySubjects', async () => {
-  const [subjects, stats] = await Promise.all([q.getDirectorySubjectRows(db()), q.getSubjectStats(db())]);
-  return mergeSubjectStats(subjects, stats);
-});
-
-export async function getSubjectDirectorySections(): Promise<SubjectDirectorySection[]> {
-  return buildDirectorySections(await getDirectorySubjects());
-}
-
-export async function getPublicDirectorySubjects(): Promise<SubjectCatalogEntry[]> {
-  return (await getSubjectDirectorySections()).flatMap((section) => section.subjects);
-}
-
-export async function getSubjectBySlug(slug: string): Promise<SubjectCatalogEntry | null> {
-  return (await getPublicDirectorySubjects()).find((subject) => subject.slug === slug) ?? null;
-}
-
-export const getSubjectInsights = (subjectId: string): Promise<SubjectInsight[]> => q.getSubjectInsights(db(), subjectId);
-
-export async function getSubjectSignalStatsBySubject(subjectIds: string[]): Promise<Map<string, SubjectSignalStats>> {
-  const mentions = await q.fetchSubjectMentions(db(), subjectIds);
-  return computeSignalStats(subjectIds, mentions, await getLatestDate());
-}
-
-export async function getSubjectSignals(subjectId: string, limit = 20): Promise<SubjectSignal[]> {
-  const sorted = sortSignalMentions(await q.fetchSubjectMentions(db(), [subjectId]));
-  const itemIds = sorted.slice(0, limit).map((row) => row.item_id).filter(Boolean);
-  const [displayItems, rawItems] = await Promise.all([
-    q.loadDisplaySignalItems(db(), itemIds),
-    q.loadRawSnapshotSignalItems(db(), itemIds),
-  ]);
-  return buildSignals(sorted, displayItems, rawItems, limit);
-}
-
-export async function getRelatedSubjects(subject: SubjectCatalogEntry, limit = 6): Promise<SubjectCatalogEntry[]> {
-  return relatedSubjects(await getDirectorySubjects(), subject, limit);
-}

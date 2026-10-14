@@ -1,7 +1,8 @@
 name: Deploy (reusable)
 
-# The build, export, verification and upload shared by build-deploy.yml (daily)
-# and full-build.yml (full). See docs/build-data.md.
+# The run shared by build-deploy.yml (daily) and full-build.yml (full):
+# scripts/run-deploy.sh lists the bucket, plans, builds, exports, verifies and
+# uploads. See docs/build-data.md.
 
 on:
   workflow_call:
@@ -10,6 +11,10 @@ on:
         description: daily or full
         type: string
         required: true
+      backfill:
+        description: 'daily only: empty, "missing", or comma-separated edition dates'
+        type: string
+        default: ''
       cleanup:
         description: 'full only: none, dry-run or delete OSS objects that no deploy writes any more'
         type: string
@@ -22,6 +27,12 @@ jobs:
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_BUILD_KEY: ${{ secrets.SUPABASE_BUILD_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+      OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+      PUBLIC_COMMUNITY_ENABLED: ${{ vars.PUBLIC_COMMUNITY_ENABLED }}
+      PUBLIC_COMMUNITY_SUPABASE_URL: ${{ vars.PUBLIC_COMMUNITY_SUPABASE_URL }}
+      PUBLIC_COMMUNITY_SUPABASE_KEY: ${{ vars.PUBLIC_COMMUNITY_SUPABASE_KEY }}
+      PUBLIC_COMMUNITY_TURNSTILE_KEY: ${{ vars.PUBLIC_COMMUNITY_TURNSTILE_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -34,54 +45,25 @@ jobs:
 
       - run: npm test
 
-      - name: Install ossutil
+      - run: npm run verify:community:service
+
+      - name: Install ossutil and the CDN SDK
         run: |
           curl -Lo ossutil.zip https://gosspublic.alicdn.com/ossutil/v2/2.2.1/ossutil-2.2.1-linux-amd64.zip
           unzip ossutil.zip
           chmod +x ossutil-2.2.1-linux-amd64/ossutil
           sudo mv ossutil-2.2.1-linux-amd64/ossutil /usr/local/bin/ossutil
+          pip install alibabacloud_cdn20180510 --quiet
 
-      - name: Fetch the deploy manifest
-        env:
-          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
-          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+      - name: Remove the staging copy
         run: |
-          mkdir -p .deploy
-          ossutil cp oss://amazingindex/_deploy/manifest.json .deploy/manifest.prev.json --force \
-            --endpoint https://oss-cn-hangzhou.aliyuncs.com --access-key-id "$OSS_ACCESS_KEY_ID" \
-            --access-key-secret "$OSS_ACCESS_KEY_SECRET" --region cn-hangzhou \
-            || echo "No deploy manifest yet: this run builds the full site"
-
-      # A daily run becomes full on its own when OSS has no manifest yet or more
-      # than 7 editions are missing from it (scripts/plan-build.ts).
-      - name: Plan the build
-        run: npm run plan:build -- --mode "${{ inputs.mode }}" --manifest .deploy/manifest.prev.json --out .deploy/plan.json
-
-      - name: Verify community service and build
-        run: |
-          npm run verify:community:service
-          npm run build
-        env:
-          PUBLIC_COMMUNITY_ENABLED: ${{ vars.PUBLIC_COMMUNITY_ENABLED }}
-          PUBLIC_COMMUNITY_SUPABASE_URL: ${{ vars.PUBLIC_COMMUNITY_SUPABASE_URL }}
-          PUBLIC_COMMUNITY_SUPABASE_KEY: ${{ vars.PUBLIC_COMMUNITY_SUPABASE_KEY }}
-          PUBLIC_COMMUNITY_TURNSTILE_KEY: ${{ vars.PUBLIC_COMMUNITY_TURNSTILE_KEY }}
-
-      - name: Export data, sitemaps and RSS
-        run: npm run export:data -- --dist dist --out export --mode "$BUILD_MODE" --prev-manifest .deploy/manifest.prev.json
-
-      - name: Verify pages and export
-        run: npm run verify:site -- --dist dist --export export
-
-      - name: Deploy to OSS and refresh the CDN
-        env:
-          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
-          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
-          CLEANUP: ${{ inputs.cleanup }}
-        run: |
-          set -euo pipefail
           ossutil rm oss://amazingindex/__test__/ --recursive --force \
             --endpoint https://oss-cn-hangzhou.aliyuncs.com --access-key-id "$OSS_ACCESS_KEY_ID" \
             --access-key-secret "$OSS_ACCESS_KEY_SECRET" --region cn-hangzhou || true
-          pip install alibabacloud_cdn20180510 --quiet
-          bash scripts/deploy-oss.sh
+
+      - name: Build and deploy
+        env:
+          MODE: ${{ inputs.mode }}
+          BACKFILL: ${{ inputs.backfill }}
+          CLEANUP: ${{ inputs.cleanup }}
+        run: bash scripts/run-deploy.sh

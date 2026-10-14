@@ -267,8 +267,16 @@ function visibleTables(fixture, latestDate) {
 
 export function startMockSupabase({ port = PORT, latestDate = process.env.MOCK_LATEST_DATE } = {}) {
   const tables = visibleTables(buildFixture(), latestDate);
+  // Per-table request, row and byte counts since the last GET /__stats?reset=1.
+  let stats = {};
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
+    if (url.pathname === '/__stats') {
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify(stats));
+      if (url.searchParams.get('reset')) stats = {};
+      return;
+    }
     const match = url.pathname.match(/^\/rest\/v1\/([a-z_0-9]+)$/);
     res.setHeader('Content-Type', 'application/json');
     if (!match || req.method !== 'GET') {
@@ -281,7 +289,12 @@ export function startMockSupabase({ port = PORT, latestDate = process.env.MOCK_L
       return;
     }
     try {
-      res.writeHead(200).end(JSON.stringify(queryRows(rows, url.searchParams)));
+      const body = JSON.stringify(queryRows(rows, url.searchParams));
+      const entry = (stats[match[1]] ||= { requests: 0, rows: 0, bytes: 0 });
+      entry.requests += 1;
+      entry.rows += JSON.parse(body).length;
+      entry.bytes += Buffer.byteLength(body);
+      res.writeHead(200).end(body);
     } catch (error) {
       res.writeHead(400).end(JSON.stringify({ code: 'PGRST100', message: error.message }));
     }

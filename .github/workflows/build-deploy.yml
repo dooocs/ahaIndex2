@@ -1,9 +1,9 @@
 name: Build & Deploy
 
-# Daily build: the homepage, the newest two editions, editions the deploy
-# manifest is missing (and the one before each), their articles, and every
-# page that needs no data. Project pages and older editions are only rebuilt
-# by full-build.yml.
+# Daily build: the newest edition and the one before it, their articles, and
+# the pages that need no data; data, sitemaps and RSS are updated
+# incrementally. Older editions and project pages are only rebuilt by
+# full-build.yml. Never turns into a full build on its own.
 
 on:
   repository_dispatch:
@@ -20,6 +20,11 @@ on:
       - 'docs/**'
       - '**/*.md'
   workflow_dispatch:
+    inputs:
+      backfill:
+        description: 'Also build editions that are missing from OSS: "missing" finds them (at most 16 editions per run), or list dates (2026-10-01,2026-10-02)'
+        type: string
+        default: ''
 
 # Shared with full-build.yml: one production deploy at a time. GitHub keeps
 # one pending run per group, so a newer trigger replaces a waiting one.
@@ -32,4 +37,5 @@ jobs:
     uses: ./.github/workflows/deploy.yml
     with:
       mode: daily
+      backfill: ${{ inputs.backfill || '' }}
     secrets: inherit

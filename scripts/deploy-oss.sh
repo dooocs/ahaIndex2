@@ -2,10 +2,14 @@
 # Uploads a verified build (dist/) and export (export/) to OSS, then refreshes
 # the CDN. Run after the build, scripts/export-site-data.ts and
 # scripts/verify-site.mjs have passed: nothing here re-checks content.
+# Daily uploads only what differs from the bucket inventory taken at the start
+# of the run; full uploads everything. Neither deletes anything unless
+# CLEANUP=delete is asked for on a full run.
 #
 # Environment:
 #   BUILD_MODE      daily | full (required)
 #   BUILD_DATES     daily mode: the edition dates that were built (comma-separated)
+#   INVENTORY       bucket listing from scripts/lib/inventory.mjs (default .deploy/remote.json; required for daily)
 #   DEPLOY_PREFIX   object key prefix, e.g. "__test__/" for staging (default: none)
 #   DEPLOY_TARGET   oss (default) | local:/path — a directory standing in for the bucket, for dry runs
 #   SKIP_CDN        1 = do not refresh the CDN
@@ -23,9 +27,12 @@ CLEANUP="${CLEANUP:-none}"
 DIST="${DIST_DIR:-dist}"
 EXPORT="${EXPORT_DIR:-export}"
 WORK="${DEPLOY_WORKDIR:-.deploy}"
+INVENTORY="${INVENTORY:-$WORK/remote.json}"
 
 START=$(date +%s)
-node scripts/lib/deploy-files.mjs --dist "$DIST" --export "$EXPORT" --mode "$MODE" --dates "$DATES" --out "$WORK"
+INVENTORY_ARGS=()
+[[ -f "$INVENTORY" ]] && INVENTORY_ARGS=(--inventory "$INVENTORY")
+node scripts/lib/deploy-files.mjs --dist "$DIST" --export "$EXPORT" --mode "$MODE" --dates "$DATES" "${INVENTORY_ARGS[@]}" --out "$WORK"
 STAGE="$WORK/stage"
 
 if [[ "$TARGET" == oss ]]; then
@@ -67,7 +74,7 @@ put() {
 }
 
 # 1. Assets first, so no uploaded page references a missing file.
-put "$DIST/_astro" "_astro/" "max-age=31536000,immutable" "" 20 &
+put "$STAGE/astro" "_astro/" "max-age=31536000,immutable" "" 20 &
 PID_ASTRO=$!
 put "$STAGE/other" "" "" "" 10 &
 PID_OTHER=$!
@@ -95,34 +102,25 @@ else
   echo "ℹ️  local target: bare URL copies skipped ($(grep -c . "$WORK/bare.txt" || true))"
 fi
 
-# 4. The manifest last: the next daily build trusts it to list only live editions.
-if [[ "$TARGET" == oss ]]; then
-  ossutil cp "$EXPORT/_deploy/manifest.json" "${DEST}_deploy/manifest.json" --force \
-    --metadata "Cache-Control=no-cache" --metadata "Content-Type=application/json; charset=utf-8" "${CREDS[@]}"
-else
-  mkdir -p "$LOCAL_ROOT/_deploy" && cp "$EXPORT/_deploy/manifest.json" "$LOCAL_ROOT/_deploy/manifest.json"
-fi
-echo "✅ manifest uploaded; deploy took $(( $(date +%s) - START ))s"
+echo "✅ deploy took $(( $(date +%s) - START ))s"
 
 # 5. CDN.
 if [[ "${SKIP_CDN:-0}" != 1 && "$TARGET" == oss && -z "$PREFIX" ]]; then
   if [[ "$MODE" == full ]]; then
     python3 scripts/refresh-cdn.py --directory
   else
-    python3 scripts/refresh-cdn.py --urls "$WORK/cdn-urls.txt"
+    if [[ -s "$WORK/cdn-urls.txt" ]]; then python3 scripts/refresh-cdn.py --urls "$WORK/cdn-urls.txt"; fi
   fi
 fi
 
 # 6. Objects that no deploy writes any more (old asset hashes, removed pages).
 if [[ "$MODE" == full && "$CLEANUP" != none ]]; then
-  : > "$WORK/remote.txt"
-  for dir in _astro/ article/ daily/ data/ projects/ subjects/; do
-    if [[ "$TARGET" == oss ]]; then
-      ossutil ls "$DEST$dir" --recursive -s "${CREDS[@]}" | grep '^oss://' | sed "s#^$DEST##" >> "$WORK/remote.txt" || true
-    else
-      (cd "$LOCAL_ROOT" && find "$dir" -type f 2>/dev/null) >> "$WORK/remote.txt" || true
-    fi
-  done
+  [[ -f "$INVENTORY" ]] || { echo "Cleanup needs the bucket inventory ($INVENTORY)" >&2; exit 1; }
+  node -e '
+    const keys = Object.keys(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).objects);
+    const prefixes = ["_astro/", "article/", "daily/", "data/", "projects/", "subjects/"];
+    console.log(keys.filter((k) => prefixes.some((p) => k.startsWith(p))).join("\n"));
+  ' "$INVENTORY" > "$WORK/remote.txt"
   sort -u "$WORK/remote.txt" -o "$WORK/remote.txt"
   comm -23 "$WORK/remote.txt" <(sort -u "$WORK/expected.txt") > "$WORK/orphans.txt"
   ORPHANS=$(grep -c . "$WORK/orphans.txt" || true)

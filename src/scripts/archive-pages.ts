@@ -11,6 +11,7 @@ import {
   renderGlobalStats,
   safeUrl,
   type GlobalStats,
+  type SummaryData,
 } from './site-data.ts';
 
 interface MonthlyArchive {
@@ -26,7 +27,6 @@ interface WeeklyArchive { week_number: number; start_date: string; end_date: str
 interface TopItem { title: string; tags: string[]; source_name: string | null; url: string | null }
 interface ArchiveMonth {
   month: string;
-  stats: GlobalStats;
   summary: MonthlyArchive | null;
   weeks: WeeklyArchive[];
   days: DailyArchive[];
@@ -148,7 +148,11 @@ function dayBlock(day: DailyArchive, items: TopItem[]): string {
 onPage('[data-archive-month]', async (root) => {
   const month = location.pathname.match(/\/daily\/(\d{4}-\d{2})\/?$/)?.[1];
   if (!month) throw new Error('Not a month archive URL');
-  const data = await loadData<ArchiveMonth>(`/data/archive/${month}.json`);
+  // A month file only changes with its own editions; site-wide statistics come from the summary.
+  const [data, summary] = await Promise.all([
+    loadData<ArchiveMonth>(`/data/archive/${month}.json`),
+    loadData<SummaryData>('/data/summary.json'),
+  ]);
   const year = Number(month.slice(0, 4));
   const name = MONTH_NAMES[Number(month.slice(5, 7)) - 1];
 
@@ -167,7 +171,7 @@ onPage('[data-archive-month]', async (root) => {
       <div class="back-to-overview"> <a href="/daily" class="lnk">返回年度归档 ↑</a> </div>
     </div>`;
   }).join('');
-  root.querySelector('[data-global-stats]')!.innerHTML = renderGlobalStats(data.stats);
+  root.querySelector('[data-global-stats]')!.innerHTML = renderGlobalStats(summary.stats);
 
   root.querySelectorAll<HTMLElement>('.day-head[data-date]').forEach((head) => {
     head.addEventListener('click', () => {

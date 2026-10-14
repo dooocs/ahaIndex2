@@ -1,10 +1,11 @@
-// node scripts/verify-site.mjs dist|export --mode daily|full [--dates d1,d2] [--export export]
+// node scripts/verify-site.mjs --mode daily|full [--dates d1,d2] [--export export] [--inventory .deploy/remote.json]
 // Checks the built pages (and, with --export, the exported files) against the
 // newest edition in the database. Exits non-zero before anything is uploaded.
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { createClient } from '@supabase/supabase-js';
 import { verifyDist, verifyExport } from './lib/verify-site.mjs';
+import { readInventory } from './lib/inventory.mjs';
 
 const { values } = parseArgs({
   options: {
@@ -12,6 +13,7 @@ const { values } = parseArgs({
     export: { type: 'string' },
     mode: { type: 'string', default: process.env.BUILD_MODE || 'full' },
     dates: { type: 'string', default: process.env.BUILD_DATES || '' },
+    inventory: { type: 'string' },
   },
 });
 const url = process.env.SUPABASE_URL;
@@ -29,5 +31,7 @@ const mode = values.mode === 'daily' ? 'daily' : 'full';
 const dates = values.dates.split(',').map((d) => d.trim()).filter(Boolean);
 console.log(`Pages verified: ${JSON.stringify(await verifyDist(dist, { latestDate, mode, dates }))}`);
 if (values.export) {
-  console.log(`Export verified: ${JSON.stringify(await verifyExport(path.resolve(values.export), dist, { latestDate }))}`);
+  const inventory = values.inventory ? await readInventory(values.inventory) : new Map();
+  if (mode === 'daily' && !values.inventory) throw new Error('Verifying a daily export needs --inventory');
+  console.log(`Export verified: ${JSON.stringify(await verifyExport(path.resolve(values.export), dist, { latestDate, inventory }))}`);
 }
