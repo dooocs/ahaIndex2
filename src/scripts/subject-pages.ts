@@ -35,6 +35,9 @@ function sparklinePoints(values: number[], width: number, height: number) {
 
 const trendClass = (stats: SignalStats) => (stats.trend_pct_30d >= 0 ? 'is-up' : 'is-down');
 
+/** A slug as a path segment; ':' stays as is, so URLs read /subjects/company:xiaomi. */
+const segment = (slug: string) => encodeURIComponent(slug).replace(/%3A/gi, ':');
+
 // ─── /subjects ──────────────────────────────────────
 
 function freshness(value: string | null, today: string | null) {
@@ -46,7 +49,7 @@ function freshness(value: string | null, today: string | null) {
 function subjectCard(subject: SubjectCard, today: string | null): string {
   const tags = [subject.type, ...subject.aliases].filter(Boolean);
   const stats = subject.stats;
-  return `<a class="subject-link-item" href="/subjects/${encodeURIComponent(subject.slug)}">
+  return `<a class="subject-link-item" href="/subjects/${segment(subject.slug)}">
     <div class="subject-card-top">
       <div>
         <div class="subject-link-name">${esc(subject.display_name)}</div>
@@ -88,7 +91,7 @@ function moduleBlock(no: string, title: string, badge: string | number, body: st
 onPage('[data-subject-detail]', async (root) => {
   const slug = decodeURIComponent(location.pathname.match(/\/subjects\/([^/]+)\/?$/)?.[1] || '');
   if (!slug) throw new Error('Not a subject URL');
-  const { subject, stats, signals, highlights, related } = await loadData<SubjectDetail>(`/data/subjects/${encodeURIComponent(slug)}.json`);
+  const { subject, stats, signals, highlights, related } = await loadData<SubjectDetail>(`/data/subjects/${segment(slug)}.json`);
   const homepage = safeUrl(subject.homepage_url);
 
   const signalList = signals.length > 0
@@ -111,7 +114,7 @@ onPage('[data-subject-detail]', async (root) => {
     : '<div class="subject-module-empty">暂无发布内容</div>';
 
   const relatedList = related.length > 0
-    ? `<div class="subject-related-list"> ${related.map((r) => `<a href="/subjects/${encodeURIComponent(r.slug)}"> ${esc(r.display_name)} <span>→</span> </a>`).join('')} </div>`
+    ? `<div class="subject-related-list"> ${related.map((r) => `<a href="/subjects/${segment(r.slug)}"> ${esc(r.display_name)} <span>→</span> </a>`).join('')} </div>`
     : '<div class="subject-module-empty">暂无关联专题</div>';
 
   root.innerHTML = `

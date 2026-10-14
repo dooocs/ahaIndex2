@@ -131,7 +131,8 @@ export function buildFixture() {
     const subjectId = id();
     const visible = s !== 26;
     subjects.push({
-      id: subjectId, slug: `subject-${s}`, type: sectionsBySlug[s % 4], display_name: `专题 ${s}`,
+      id: subjectId, // Production slugs look like company:xiaomi.
+      slug: s % 2 ? `${sectionsBySlug[s % 4]}:subject-${s}` : `subject-${s}`, type: sectionsBySlug[s % 4], display_name: `专题 ${s}`,
       aliases: [`S${s}`, `Alias ${s}`], description: `专题 ${s} 描述`, definition: s % 3 ? `专题 ${s} 定义 & "说明"` : null,
       homepage_url: s % 2 ? `https://example.com/subject-${s}` : null, metadata: null,
       first_seen_at: `${dates[0]}T00:00:00Z`, last_seen_at: `${dates.at(-s % 10 - 1)}T00:00:00Z`, mention_count: 60,

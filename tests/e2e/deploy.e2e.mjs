@@ -87,9 +87,12 @@ function assertConsistent(bucket) {
     if (!key.endsWith('.html')) continue;
     for (const [, href] of read(bucket, key).matchAll(/href="([^"]*)"/g)) {
       if (!href.startsWith('/') || href.startsWith('//')) continue;
-      const route = href.split(/[?#]/)[0];
+      const route = decodeURIComponent(href.split(/[?#]/)[0]);
       assert.ok(page(route), `${key} links to ${href}, which is not on the bucket`);
     }
+  }
+  for (const { slug } of JSON.parse(read(bucket, 'data/subjects/index.json')).sections.flatMap((x) => x.subjects)) {
+    assert.ok(page(`/subjects/${slug}`) && keys.has(`data/subjects/${slug}.json`), `subject ${slug} is listed but its page or data is missing`);
   }
   const summary = JSON.parse(read(bucket, 'data/summary.json'));
   for (const { date } of summary.editions) assert.ok(page(`/daily/${date}`), `summary.json lists ${date}, which is not on the bucket`);

@@ -127,7 +127,13 @@ export async function verifyExport(exportDir, dist, { latestDate, inventory = ne
   const feedDate = new Date(feed.get('rss/channel/lastBuildDate')?.[0]).toISOString().slice(0, 10);
   assert.equal(feedDate, latestDate, 'RSS is not using the latest database edition');
 
-  for (const file of ['history.json', 'subjects/index.json']) await readJson(path.join(exportDir, 'data', file));
+  await readJson(path.join(exportDir, 'data/history.json'));
+  // Every subject the index lists has its page and its data.
+  const subjectIndex = await readJson(path.join(exportDir, 'data/subjects/index.json'));
+  for (const { slug } of subjectIndex.sections.flatMap((section) => section.subjects)) {
+    assert.ok(await isFile(path.join(exportDir, 'subjects', slug, 'index.html')), `Subject ${slug} is listed but has no page`);
+    await readJson(path.join(exportDir, 'data/subjects', `${slug}.json`));
+  }
   for (const file of await readdir(path.join(exportDir, 'data/archive'))) {
     if (file === 'index.json') continue;
     const month = await readJson(path.join(exportDir, 'data/archive', file));

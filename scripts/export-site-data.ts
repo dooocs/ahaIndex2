@@ -71,7 +71,9 @@ import { readInventory } from './lib/inventory.mjs';
 
 const SIGNAL_LIMIT = 12;
 const RELATED_LIMIT = 8;
-const SAFE_SEGMENT = /^(?!\.{1,2}$)[A-Za-z0-9._-]+$/;
+// One URL path segment and one OSS key segment: production slugs look like
+// "company:xiaomi". Anything that would change the path is refused.
+const SAFE_SEGMENT = /^(?!\.{1,2}$)[^/\\?#%\s\u0000-\u001f]+$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 const { values: args } = parseArgs({
@@ -206,7 +208,8 @@ const sections = buildDirectorySections(mergeSubjectStats(subjectRows, subjectSt
     ...section,
     subjects: section.subjects.filter((subject) => {
       if (SAFE_SEGMENT.test(subject.slug)) return true;
-      log(`skip subject with unsafe slug ${JSON.stringify(subject.slug)}`);
+      const message = `subject ${JSON.stringify(subject.slug)} has a slug that is not a single URL path segment; it gets no page`;
+      console.log(process.env.GITHUB_ACTIONS ? `::warning::${message}` : `[export] warning: ${message}`);
       return false;
     }),
   }))

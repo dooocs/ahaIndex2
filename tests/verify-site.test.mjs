@@ -37,7 +37,8 @@ async function fixture(t, mode = 'daily') {
   await e('data/archive/index.json', data({ years: [{ year: 2026, months: [{ month: '2026-10-01' }] }] }));
   await e('data/archive/2026-10.json', month([DATE, OLD]));
   await e('rss.xml', `<rss><channel><lastBuildDate>Wed, 07 Oct 2026 00:00:00 GMT</lastBuildDate><item><link>${SITE}/article/a</link></item></channel></rss>`);
-  for (const file of ['history.json', 'subjects/index.json', 'subjects/s.json']) await e(`data/${file}`, data());
+  for (const file of ['history.json', 'subjects/s.json']) await e(`data/${file}`, data());
+  await e('data/subjects/index.json', data({ sections: [{ subjects: [{ slug: 's' }] }] }));
   await e('daily/2026-10/index.html', '<title>October</title>');
   await e('subjects/s/index.html', '<title>S</title>');
   await e('sitemap.xml', `<sitemapindex><sitemap><loc>${SITE}/sitemap-pages.xml</loc></sitemap><sitemap><loc>${SITE}/sitemap-articles-2026.xml</loc></sitemap><sitemap><loc>${SITE}/sitemap-articles-2025.xml</loc></sitemap></sitemapindex>`);
