@@ -140,17 +140,21 @@ export interface ScoreRow {
   rank: number;
   aha_index: number | null;
   processed_title: string | null;
-  title: string | null;
+  /** Not a column of display_items in production; kept for the title fallback of full rows. */
+  title?: string | null;
   source_name: string | null;
   tags: string[] | null;
   original_url: string | null;
-  url: string | null;
+  url?: string | null;
 }
+
+// Only columns that exist on production display_items (it has no title or url).
+const SCORE_COLUMNS = 'snapshot_date, processed_item_id, rank, aha_index, processed_title, source_name, tags, original_url';
 
 export async function getScoreRows(db: Db): Promise<ScoreRow[]> {
   return fetchAllRows<ScoreRow>((from, to) =>
     db.from(TABLE)
-      .select('snapshot_date, processed_item_id, rank, aha_index, processed_title, title, source_name, tags, original_url, url')
+      .select(SCORE_COLUMNS)
       .order('snapshot_date', { ascending: false })
       .order('rank', { ascending: true })
       .order('processed_item_id', { ascending: true })
@@ -163,7 +167,7 @@ export async function getScoreRowsForDates(db: Db, dates: string[]): Promise<Sco
   if (dates.length === 0) return [];
   return fetchAllRows<ScoreRow>((from, to) =>
     db.from(TABLE)
-      .select('snapshot_date, processed_item_id, rank, aha_index, processed_title, title, source_name, tags, original_url, url')
+      .select(SCORE_COLUMNS)
       .in('snapshot_date', [...new Set(dates)])
       .order('snapshot_date', { ascending: false })
       .order('rank', { ascending: true })

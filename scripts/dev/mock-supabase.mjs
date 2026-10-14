@@ -61,8 +61,6 @@ export function buildFixture() {
         snapshot_date: date,
         source_name: pick(sources),
         content_type: 'snapshot',
-        title: `Original title ${pid}`,
-        url: `https://example.com/${pid}`,
         original_url: `https://example.com/${pid}`,
         author: null,
         processed_title: `${date} 精选 ${rank}：${pick(tagPool)} 进展 <${pid}> & 测试`,
@@ -251,6 +249,10 @@ export function queryRows(rows, params) {
   const limit = Math.min(Number(params.get('limit') || MAX_ROWS), MAX_ROWS);
   result = result.slice(offset, offset + limit);
   const select = (params.get('select') || '*').split(',').map((c) => c.trim()).filter(Boolean);
+  // Like PostgREST: selecting a column the table does not have is an error.
+  const known = rows.length > 0 ? new Set(Object.keys(rows[0])) : null;
+  const unknown = known ? select.filter((c) => c !== '*' && !known.has(c)) : [];
+  if (unknown.length > 0) throw Object.assign(new Error(`column ${unknown[0]} does not exist`), { code: '42703' });
   if (!select.includes('*')) {
     result = result.map((row) => Object.fromEntries(select.map((column) => [column, row[column] ?? null])));
   }
@@ -296,7 +298,7 @@ export function startMockSupabase({ port = PORT, latestDate = process.env.MOCK_L
       entry.bytes += Buffer.byteLength(body);
       res.writeHead(200).end(body);
     } catch (error) {
-      res.writeHead(400).end(JSON.stringify({ code: 'PGRST100', message: error.message }));
+      res.writeHead(400).end(JSON.stringify({ code: error.code || 'PGRST100', message: error.message }));
     }
   });
   return new Promise((resolve) => server.listen(port, '127.0.0.1', () => resolve(server)));
