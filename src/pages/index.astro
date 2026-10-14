@@ -2,12 +2,12 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import DailyPage from '../components/DailyPage.astro';
 import { SITE_NAME, SITE_SLOGAN } from '../lib/site';
-import { getLatestDate, getItemsByDate, getLatestDailyArchive, getNeighborDates } from '../lib/data';
+import { getLatestDate, getItemsByDate, getLatestDailyArchive, getPreviousPublished } from '../lib/data';
 
 const latestDate = await getLatestDate();
 const items = latestDate ? await getItemsByDate(latestDate) : [];
 const dailyArchive = await getLatestDailyArchive();
-const { prev } = latestDate ? await getNeighborDates(latestDate) : { prev: null };
+const prev = latestDate ? await getPreviousPublished(latestDate) : null;
 ---
 
 <BaseLayout>

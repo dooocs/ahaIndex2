@@ -104,3 +104,26 @@ test('rejects built articles missing from the sitemap and unfilled shell copies'
   await e('subjects/s/index.html', SHELL);
   await assert.rejects(verifyExport(exportDir, dist, { latestDate: DATE, inventory }), /still contains __SHELL_TITLE__/);
 });
+
+test('rejects 上一期 links to editions that are neither deployed nor built', async (t) => {
+  const { dist, d, inventory } = await fixture(t);
+  await d(`daily/${DATE}/index.html`, `<a href="/daily/${OLD}" rel="prev">← 上一期</a>`);
+  await verifyDist(dist, { latestDate: DATE, mode: 'daily', dates: [DATE], inventory });
+  inventory.delete(`daily/${OLD}/index.html`);
+  await assert.rejects(verifyDist(dist, { latestDate: DATE, mode: 'daily', dates: [DATE], inventory }), /links 上一期 to a page that is not deployed: \/daily\/2026-10-06/);
+});
+
+test('rejects an export that drops previously published editions or articles', async (t) => {
+  const { dist, exportDir, inventory } = await fixture(t);
+  const previousDir = path.join(path.dirname(exportDir), 'previous');
+  await mkdir(path.join(previousDir, 'data'), { recursive: true });
+  await writeFile(path.join(previousDir, 'data/summary.json'), data({ editions: [{ date: OLD }] }));
+  await writeFile(path.join(previousDir, 'sitemap-articles-2026.xml'), urlset([['/article/older', OLD]]));
+  await verifyExport(exportDir, dist, { latestDate: DATE, inventory, previousDir });
+
+  await writeFile(path.join(previousDir, 'data/summary.json'), data({ editions: [{ date: '2026-10-01' }] }));
+  await assert.rejects(verifyExport(exportDir, dist, { latestDate: DATE, inventory, previousDir }), /Previously published edition 2026-10-01 is missing/);
+  await writeFile(path.join(previousDir, 'data/summary.json'), data({ editions: [] }));
+  await writeFile(path.join(previousDir, 'sitemap-articles-2026.xml'), urlset([['/article/gone', OLD]]));
+  await assert.rejects(verifyExport(exportDir, dist, { latestDate: DATE, inventory, previousDir }), /Previously published article .*gone is missing/);
+});

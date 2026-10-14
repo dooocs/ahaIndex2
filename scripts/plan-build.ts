@@ -42,17 +42,22 @@ if (values.mode === 'full') {
   const keys = new Set(inventory?.keys() ?? []);
 
   let backfill: string[] = [];
+  let after: string[] = [];
   const request = values.backfill.trim();
   if (request === 'missing') {
     if (!inventory) throw new Error('--backfill missing needs --inventory');
-    backfill = missingEditions(await getAllDates(db), keys);
+    const all = await getAllDates(db); // newest first
+    backfill = missingEditions(all, keys);
+    after = backfill.map((d) => all[all.indexOf(d) - 1]).filter(Boolean);
     console.log(`[plan] editions in the database but not on OSS: ${backfill.length ? backfill.join(', ') : 'none'}`);
   } else if (request) {
     backfill = request.split(',').map((d) => d.trim()).filter(Boolean);
+    after = (await Promise.all(backfill.map((d) => getNeighborDates(db, d)))).map((n) => n.next).filter((d): d is string => Boolean(d));
   }
-  plan = planDaily(latest, prev, backfill);
+  // The edition after a restored one is rebuilt too, so its 上一期 links to it.
+  plan = planDaily(latest, prev, [...backfill, ...after]);
 
-  // The page before yesterday's links to it as 上一期's target: say so if it is missing.
+  // A gap behind the newest two: 上一期 skips it, the archive leaves it out; say so.
   if (inventory && prev && !request) {
     const { prev: before } = await getNeighborDates(db, prev);
     if (before && !keys.has(editionKey(before))) {

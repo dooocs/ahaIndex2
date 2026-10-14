@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   MAX_DAILY_EDITIONS,
+  assertStillDeployed,
   archiveIndexJson,
   archiveMonthJson,
   fillShell,
@@ -86,4 +87,13 @@ test('shell metadata matches the former page titles', () => {
     description: '在 AmazingIndex 探索 2026年一月 的 AI 行业动态与突破。',
   });
   assert.equal(subjectShellMeta({ slug: 'x', display_name: 'X', definition: null, description: null }).description, 'X 的关键事件、突出点和横向对比。');
+});
+
+test('published pages missing from the listing stop the export instead of being dropped', () => {
+  const listed = new Set(['daily/2026-10-12/index.html', 'daily/2026-10-13/index.html']);
+  assertStillDeployed(['daily/2026-10-13/index.html'], (k) => listed.has(k), 'editions are');
+  assert.throws(
+    () => assertStillDeployed(['daily/2026-10-13/index.html', 'daily/2026-10-01/index.html'], (k) => listed.has(k), 'previously published editions are'),
+    /1 previously published editions are missing from the OSS listing .*daily\/2026-10-01.*Refusing to publish/,
+  );
 });

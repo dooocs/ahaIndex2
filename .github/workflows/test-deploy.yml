@@ -1,21 +1,39 @@
 name: Test Deploy (Staging)
 
-# A full build uploaded under oss://amazingindex/__test__/, without touching
-# the production bucket or the CDN. The next production deploy removes it.
-# It checks that a build, export and upload succeed. It is not a visual
-# preview: pages under __test__/ load /_astro/ and /data/ from the site root.
-# To look at a build, run `npm run preview:site` locally (docs/build-data.md).
+# Runs the production deploy script against the real bucket under
+# oss://amazingindex/__test__/ only: nothing outside that prefix is written,
+# and the CDN is not touched. The next production deploy removes the prefix.
+#   1. full run into an empty __test__/
+#   2. the real `ossutil ls` output: every object listed, ETag = local MD5
+#   3. a daily run on top (inventory, fetching published files, skipping
+#      unchanged files, incremental export)
+#   4. the same daily run again: must upload nothing
+# Not a visual preview (pages under __test__/ load /_astro/ and /data/ from
+# the site root); for that, run `npm run preview:site` locally.
 
 on:
   workflow_dispatch:  # 只能手动触发
 
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: false
+
 jobs:
   test-deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_BUILD_KEY: ${{ secrets.SUPABASE_BUILD_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
-      BUILD_MODE: full
+      OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+      OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+      PUBLIC_COMMUNITY_ENABLED: ${{ vars.PUBLIC_COMMUNITY_ENABLED }}
+      PUBLIC_COMMUNITY_SUPABASE_URL: ${{ vars.PUBLIC_COMMUNITY_SUPABASE_URL }}
+      PUBLIC_COMMUNITY_SUPABASE_KEY: ${{ vars.PUBLIC_COMMUNITY_SUPABASE_KEY }}
+      PUBLIC_COMMUNITY_TURNSTILE_KEY: ${{ vars.PUBLIC_COMMUNITY_TURNSTILE_KEY }}
+      DEPLOY_PREFIX: __test__/
+      SKIP_CDN: '1'
+      CLEANUP: none
     steps:
       - uses: actions/checkout@v4
 
@@ -28,22 +46,6 @@ jobs:
 
       - run: npm test
 
-      - name: Verify community service and build
-        run: |
-          npm run verify:community:service
-          npm run build
-        env:
-          PUBLIC_COMMUNITY_ENABLED: ${{ vars.PUBLIC_COMMUNITY_ENABLED }}
-          PUBLIC_COMMUNITY_SUPABASE_URL: ${{ vars.PUBLIC_COMMUNITY_SUPABASE_URL }}
-          PUBLIC_COMMUNITY_SUPABASE_KEY: ${{ vars.PUBLIC_COMMUNITY_SUPABASE_KEY }}
-          PUBLIC_COMMUNITY_TURNSTILE_KEY: ${{ vars.PUBLIC_COMMUNITY_TURNSTILE_KEY }}
-
-      - name: Export data, sitemaps and RSS
-        run: npm run export:data -- --dist dist --out export --mode full
-
-      - name: Verify pages and export
-        run: npm run verify:site -- --dist dist --export export
-
       - name: Install ossutil
         run: |
           curl -Lo ossutil.zip https://gosspublic.alicdn.com/ossutil/v2/2.2.1/ossutil-2.2.1-linux-amd64.zip
@@ -51,15 +53,35 @@ jobs:
           chmod +x ossutil-2.2.1-linux-amd64/ossutil
           sudo mv ossutil-2.2.1-linux-amd64/ossutil /usr/local/bin/ossutil
 
-      - name: Deploy to OSS (staging)
-        env:
-          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
-          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
-          DEPLOY_PREFIX: __test__/
-          SKIP_CDN: '1'
+      - name: Empty the staging prefix
         run: |
-          set -euo pipefail
           ossutil rm oss://amazingindex/__test__/ --recursive --force \
             --endpoint https://oss-cn-hangzhou.aliyuncs.com --access-key-id "$OSS_ACCESS_KEY_ID" \
             --access-key-secret "$OSS_ACCESS_KEY_SECRET" --region cn-hangzhou || true
-          bash scripts/deploy-oss.sh
+
+      - name: 1. Full run into __test__/
+        run: MODE=full bash scripts/run-deploy.sh
+
+      - name: 2. Real listing matches what was uploaded
+        run: |
+          ossutil ls oss://amazingindex/__test__/ --recursive \
+            --endpoint https://oss-cn-hangzhou.aliyuncs.com --access-key-id "$OSS_ACCESS_KEY_ID" \
+            --access-key-secret "$OSS_ACCESS_KEY_SECRET" --region cn-hangzhou > .deploy/staging-ls.txt
+          node scripts/staging-check.mjs --listing .deploy/staging-ls.txt --prefix __test__/
+          # A published file downloads back byte for byte.
+          ossutil cp oss://amazingindex/__test__/data/summary.json /tmp/summary.json --force \
+            --endpoint https://oss-cn-hangzhou.aliyuncs.com --access-key-id "$OSS_ACCESS_KEY_ID" \
+            --access-key-secret "$OSS_ACCESS_KEY_SECRET" --region cn-hangzhou
+          cmp /tmp/summary.json export/data/summary.json
+
+      - name: 3. Daily run on top
+        run: |
+          MODE=daily bash scripts/run-deploy.sh | tee .deploy/daily-1.log
+          grep -E '^\[(inventory|plan|export|deploy-files)\]' .deploy/daily-1.log
+
+      - name: 4. Same daily run again uploads nothing
+        run: |
+          MODE=daily bash scripts/run-deploy.sh | tee .deploy/daily-2.log
+          line=$(grep '^\[deploy-files\]' .deploy/daily-2.log)
+          echo "$line"
+          [[ "$line" == *" upload=0 "* && "$line" == *" bare=0 "* ]] || { echo "::error::A repeated daily run uploaded files: ETags are not being matched"; exit 1; }

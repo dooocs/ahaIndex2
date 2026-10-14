@@ -56,8 +56,11 @@ async function listDirs(dir) {
   return (await readdir(dir, { withFileTypes: true }).catch(() => [])).filter((e) => e.isDirectory()).map((e) => e.name);
 }
 
-/** `dates`: the editions a daily build rendered; ignored for full builds. */
-export async function verifyDist(dist, { latestDate, mode, dates = [] }) {
+/**
+ * `dates`: the editions a daily build rendered; ignored for full builds.
+ * `inventory`: what is on the bucket, for links to pages this run did not build.
+ */
+export async function verifyDist(dist, { latestDate, mode, dates = [], inventory = new Map() }) {
   const home = await homepage(dist);
   assert.ok(home.links.length > 0, 'Homepage lists no articles');
   assert.ok(home.volText.includes(latestDate.replaceAll('-', '.')), 'Homepage masthead is not using the latest database edition');
@@ -68,6 +71,15 @@ export async function verifyDist(dist, { latestDate, mode, dates = [] }) {
   assert.ok(mode !== 'daily' || dates.includes(latestDate), 'A daily build must include the latest edition');
   for (const date of editions) {
     assert.ok(await isFile(path.join(dist, 'daily', date, 'index.html')), `Edition page was not built: ${date}`);
+  }
+  // 上一期 links only to an edition that is deployed or built now.
+  const editionPages = ['index.html', ...(await listDirs(path.join(dist, 'daily'))).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).map((d) => `daily/${d}/index.html`)];
+  for (const page of editionPages) {
+    const nodes = [...elements(parse(await readFile(path.join(dist, page), 'utf8')))];
+    for (const link of nodes.filter((node) => node.tagName === 'a' && attr(node, 'rel') === 'prev')) {
+      const key = `${attr(link, 'href').replace(/^\//, '').replace(/\/$/, '')}/index.html`;
+      assert.ok(inventory.has(key) || await isFile(path.join(dist, key)), `${page} links 上一期 to a page that is not deployed: ${attr(link, 'href')}`);
+    }
   }
   for (const shell of ['shell/daily-month/index.html', 'shell/subject/index.html']) {
     const html = await readFile(path.join(dist, shell), 'utf8');
@@ -85,8 +97,12 @@ async function readJson(file) {
   return value;
 }
 
-/** `inventory`: key → ETag of what is on the bucket (empty for a full run without one). */
-export async function verifyExport(exportDir, dist, { latestDate, inventory = new Map() }) {
+/**
+ * `inventory`: key → ETag of what is on the bucket (empty for a full run without one).
+ * `previousDir`: the published files a daily export merged into; nothing they
+ * list may be missing from the new files.
+ */
+export async function verifyExport(exportDir, dist, { latestDate, inventory = new Map(), previousDir }) {
   const deployed = async (key) => inventory.has(key) || await isFile(path.join(dist, key)) || await isFile(path.join(exportDir, key));
 
   const summary = await readJson(path.join(exportDir, 'data/summary.json'));
@@ -149,6 +165,19 @@ export async function verifyExport(exportDir, dist, { latestDate, inventory = ne
     const article = route.match(/^\/article\/([^/]+)$/);
     if (article) sitemapArticles.add(article[1]);
   }
+  if (previousDir) {
+    const before = await readFile(path.join(previousDir, 'data/summary.json'), 'utf8').then(JSON.parse).catch(() => null);
+    for (const { date } of before?.editions ?? []) {
+      assert.ok(dates.includes(date), `Previously published edition ${date} is missing from summary.json`);
+    }
+    for (const file of await readdir(previousDir).catch(() => [])) {
+      if (!/^sitemap-articles-\d{4}\.xml$/.test(file)) continue;
+      for (const loc of xmlValues(await readFile(path.join(previousDir, file), 'utf8')).get('urlset/url/loc') ?? []) {
+        assert.ok(entries.includes(loc), `Previously published article ${loc} is missing from the article sitemaps`);
+      }
+    }
+  }
+
   const builtArticles = await listDirs(path.join(dist, 'article'));
   for (const pid of builtArticles) assert.ok(sitemapArticles.has(pid), `Built article is missing from the sitemap: ${pid}`);
 

@@ -1,7 +1,7 @@
 ---
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import DailyPage from '../../../components/DailyPage.astro';
-import { getBuildDates, getItemsByDate, getDailyArchiveByDate, getNeighborDates } from '../../../lib/data';
+import { getBuildDates, getItemsByDate, getDailyArchiveByDate, getPreviousPublished } from '../../../lib/data';
 
 export async function getStaticPaths() {
   const dates = await getBuildDates();
@@ -11,7 +11,7 @@ export async function getStaticPaths() {
 const { date } = Astro.params;
 const items = await getItemsByDate(date!);
 const dailyArchive = await getDailyArchiveByDate(date!);
-const { prev } = await getNeighborDates(date!);
+const prev = await getPreviousPublished(date!);
 
 const pageTitle = `${date} AI 行业精选简报 | AmazingIndex`;
 const pageDesc = `AmazingIndex ${date} 每日 AI 行业精选简报。基于多维度量化算法，为您筛选当日最具价值的 AI 行业动态与创新洞察。`;

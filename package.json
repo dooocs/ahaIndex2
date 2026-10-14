@@ -20,7 +20,8 @@
     "plan:build": "node --experimental-strip-types --no-warnings --env-file-if-exists=.env scripts/plan-build.ts",
     "export:data": "node --experimental-strip-types --no-warnings --env-file-if-exists=.env scripts/export-site-data.ts",
     "dev:mock-db": "node scripts/dev/mock-supabase.mjs",
-    "preview:site": "node scripts/dev/preview-site.mjs"
+    "preview:site": "node scripts/dev/preview-site.mjs",
+    "test:e2e": "node --test --test-concurrency=1 tests/e2e/*.e2e.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.103.0",

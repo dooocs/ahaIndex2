@@ -2,7 +2,7 @@
 // queries (queries.ts). Only the homepage, edition, article and project pages
 // read the database at build time; everything else is published by the export.
 import { getSupabase } from './supabase';
-import { isDailyBuild, scopeDatesFromEnv } from './build-scope';
+import { deployedEditionDates, isDailyBuild, scopeDatesFromEnv } from './build-scope';
 import * as q from './queries.ts';
 import { pickLatestRelatedData } from './project-heatmap';
 import type { DailyArchive, ProjectEntry, ProjectHeatmapRow, TimelineEntry } from './types';
@@ -55,6 +55,29 @@ export const getBuildDates = () => memo('buildDates', async (): Promise<string[]
   if (!latest) return [];
   const { prev } = await getNeighborDates(latest);
   return prev ? [latest, prev] : [latest];
+});
+
+/** How far back 上一期 looks for a published edition before it is left out. */
+const PREVIOUS_LOOKBACK = 30;
+
+/**
+ * The edition 上一期 links to: the nearest earlier edition whose page is on
+ * the bucket or built by this run, so the link never points at a page that is
+ * not there (an edition missing from OSS is skipped). Null if there is none
+ * within PREVIOUS_LOOKBACK editions.
+ */
+export const getPreviousPublished = (date: string) => memo(`previousPublished:${date}`, async (): Promise<string | null> => {
+  const deployed = deployedEditionDates();
+  const built = new Set(await getBuildDates());
+  const published = (d: string) => built.has(d) || deployed === null || deployed.has(d);
+  let cursor = date;
+  for (let i = 0; i < PREVIOUS_LOOKBACK; i++) {
+    const { prev } = await getNeighborDates(cursor);
+    if (!prev) return null;
+    if (published(prev)) return prev;
+    cursor = prev;
+  }
+  return null;
 });
 
 // ─── Projects ───────────────────────────────────────

@@ -52,6 +52,7 @@ import {
   archiveIndexJson,
   archiveMonthJson,
   articleKey,
+  assertStillDeployed,
   editionKey,
   fillShell,
   historyJson,
@@ -115,7 +116,6 @@ async function builtDates(): Promise<string[]> {
 const db = createBuildClient(process.env.SUPABASE_URL, process.env.SUPABASE_BUILD_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY);
 if (mode === 'daily' && !args.inventory) throw new Error('A daily export needs --inventory to know which pages are deployed');
 const inventory = args.inventory ? await readInventory(args.inventory) : new Map<string, string | null>();
-const isDeployed = async (key: string) => inventory.has(key) || isFile(path.join(dist, key));
 
 const built = await builtDates();
 if (built.length === 0) throw new Error(`No edition pages found in ${dist}/daily`);
@@ -136,19 +136,22 @@ let monthsToWrite: string[];
 let summary: SummaryJson;
 let monthSummaries: MonthlyArchive[];
 
-async function recordsFromRows(rows: q.ScoreRow[]): Promise<EditionRecord[]> {
-  const result: EditionRecord[] = [];
-  for (const [date, dayRows] of indexScoreRows(rows)) if (await isDeployed(editionKey(date))) result.push(editionRecord(date, dayRows));
-  return result;
+function indexToRecords(rows: q.ScoreRow[]): EditionRecord[] {
+  return [...indexScoreRows(rows)].map(([date, dayRows]) => editionRecord(date, dayRows));
 }
+
+
+// Every page any existing file lists must still be there: listed in the
+// inventory or built now. Nothing is silently dropped from published data.
+const deployedKeys = new Set(inventory.keys());
+for (const date of built) deployedKeys.add(editionKey(date));
+for (const pid of await readdir(path.join(dist, 'article')).catch(() => [])) deployedKeys.add(articleKey(pid));
+const isListed = (key: string) => deployedKeys.has(key);
 
 if (previousSummary) {
   // Incremental: the built editions, merged into what is published.
-  const notListed = previousSummary.editions.filter((e) => !inventory.has(editionKey(e.date)));
-  if (notListed.length > Math.max(3, previousSummary.editions.length / 10)) {
-    throw new Error(`${notListed.length} of ${previousSummary.editions.length} published editions are missing from the bucket inventory; the listing looks incomplete, refusing to publish`);
-  }
-  const updates = await recordsFromRows(await q.getScoreRowsForDates(db, built));
+  assertStillDeployed(previousSummary.editions.map((e) => editionKey(e.date)), isListed, 'previously published editions are');
+  const updates = indexToRecords(await q.getScoreRowsForDates(db, built));
   monthsToWrite = [...new Set(updates.map((r) => r.date.slice(0, 7)))].sort(byNewest);
   records = [];
   for (const month of monthsToWrite) {
@@ -157,30 +160,26 @@ if (previousSummary) {
     if (!previousMonth) {
       // No published month file yet: read that month's other editions once.
       const others = previousSummary.editions.filter((e) => e.date.startsWith(month) && !built.includes(e.date)).map((e) => e.date);
-      base = await recordsFromRows(await q.getScoreRowsForDates(db, others));
+      base = indexToRecords(await q.getScoreRowsForDates(db, others));
     }
-    const kept = [];
-    for (const r of base) if (r.date.startsWith(month) && await isDeployed(editionKey(r.date))) kept.push(r);
-    records.push(...mergeRecords(kept, updates.filter((r) => r.date.startsWith(month))));
+    assertStillDeployed(base.map((r) => editionKey(r.date)), isListed, `editions in archive/${month}.json are`);
+    records.push(...mergeRecords(base.filter((r) => r.date.startsWith(month)), updates.filter((r) => r.date.startsWith(month))));
   }
-  const editions = new Map(previousSummary.editions.filter((e) => inventory.has(editionKey(e.date))).map((e) => [e.date, e]));
+  const editions = new Map(previousSummary.editions.map((e) => [e.date, e]));
   for (const r of updates) editions.set(r.date, { date: r.date, score: r.score, count: r.count });
   summary = summaryJson([...editions.values()]);
   const previousIndex = parseDataFile<ArchiveIndexJson>(await previous('data/archive/index.json'), 'archive/index.json');
   const months = new Map((previousIndex?.years ?? []).flatMap((y) => y.months).map((m) => [m.month.slice(0, 7), m]));
   for (const month of monthsToWrite) months.set(month, monthlyArchive(month, records.filter((r) => r.date.startsWith(month))));
-  // Months with no deployed edition left drop out.
-  const liveMonths = new Set(summary.editions.map((e) => e.date.slice(0, 7)));
-  monthSummaries = [...months.entries()].filter(([m]) => liveMonths.has(m)).map(([, s]) => s);
+  monthSummaries = [...months.values()];
   log(`incremental: ${updates.length} edition record(s) into ${monthsToWrite.join(', ')}; ${summary.editions.length} editions published`);
 } else {
-  // Full export, or the first daily export: every edition, read once.
+  // Full export, or the first daily export: every edition, read once. Every
+  // database edition must have a page; a daily run that finds one missing
+  // stops (a backfill run builds it), rather than leaving it out.
   const allRows = await q.getScoreRows(db);
-  const databaseDates = [...indexScoreRows(allRows).keys()];
-  records = await recordsFromRows(allRows);
-  if (mode === 'daily' && records.length < databaseDates.length / 2) {
-    throw new Error(`Only ${records.length} of ${databaseDates.length} editions are on the bucket inventory; the listing looks incomplete, refusing to publish`);
-  }
+  records = indexToRecords(allRows);
+  assertStillDeployed(records.map((r) => editionKey(r.date)), isListed, 'database editions are');
   monthsToWrite = [...new Set(records.map((r) => r.date.slice(0, 7)))].sort(byNewest);
   summary = summaryJson(records);
   monthSummaries = monthsToWrite.map((month) => monthlyArchive(month, records.filter((r) => r.date.startsWith(month))));
@@ -267,13 +266,13 @@ const yearOf = (year: string) => {
 };
 async function addFromDatabase(year: string) {
   for (const item of uniqueArticleItems(await q.getArticleRouteItemsBetween(db, `${year}-01-01`, `${year}-12-31`))) {
-    if (await isDeployed(articleKey(item.processed_item_id))) yearOf(year).set(item.processed_item_id, item.snapshot_date);
+    if (isListed(articleKey(item.processed_item_id))) yearOf(year).set(item.processed_item_id, item.snapshot_date);
   }
 }
 
 if (mode === 'full') {
   for (const item of uniqueArticleItems(await q.getAllArticleRouteItems(db))) {
-    if (await isDeployed(articleKey(item.processed_item_id))) yearOf(item.snapshot_date.slice(0, 4)).set(item.processed_item_id, item.snapshot_date);
+    if (isListed(articleKey(item.processed_item_id))) yearOf(item.snapshot_date.slice(0, 4)).set(item.processed_item_id, item.snapshot_date);
   }
 } else {
   // The articles this run built, each dated by the newest edition it appears in.
@@ -287,10 +286,9 @@ if (mode === 'full') {
       log(`article sitemap ${year}: no published file, read from the database`);
       continue;
     }
-    for (const { url, lastmod } of parseUrlset(published)) {
-      const pid = pidOf(url);
-      if (lastmod && await isDeployed(articleKey(pid))) yearOf(year).set(pid, lastmod);
-    }
+    const entries = parseUrlset(published);
+    assertStillDeployed(entries.map(({ url }) => articleKey(pidOf(url))), isListed, `articles in ${getArticleSitemapPath(year).slice(1)} are`);
+    for (const { url, lastmod } of entries) if (lastmod) yearOf(year).set(pidOf(url), lastmod);
   }
   for (const route of routes) {
     for (const [year, entries] of articleYears) if (year !== route.snapshot_date.slice(0, 4)) entries.delete(route.processed_item_id);

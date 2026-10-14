@@ -1,4 +1,4 @@
-// node scripts/verify-site.mjs --mode daily|full [--dates d1,d2] [--export export] [--inventory .deploy/remote.json]
+// node scripts/verify-site.mjs --mode daily|full [--dates d1,d2] [--export export] [--inventory .deploy/remote.json] [--previous .deploy/previous]
 // Checks the built pages (and, with --export, the exported files) against the
 // newest edition in the database. Exits non-zero before anything is uploaded.
 import path from 'node:path';
@@ -14,6 +14,7 @@ const { values } = parseArgs({
     mode: { type: 'string', default: process.env.BUILD_MODE || 'full' },
     dates: { type: 'string', default: process.env.BUILD_DATES || '' },
     inventory: { type: 'string' },
+    previous: { type: 'string' },
   },
 });
 const url = process.env.SUPABASE_URL;
@@ -29,9 +30,9 @@ if (!latestDate) throw new Error('No latest database edition found');
 const dist = path.resolve(values.dist);
 const mode = values.mode === 'daily' ? 'daily' : 'full';
 const dates = values.dates.split(',').map((d) => d.trim()).filter(Boolean);
-console.log(`Pages verified: ${JSON.stringify(await verifyDist(dist, { latestDate, mode, dates }))}`);
+const inventory = values.inventory ? await readInventory(values.inventory) : new Map();
+console.log(`Pages verified: ${JSON.stringify(await verifyDist(dist, { latestDate, mode, dates, inventory }))}`);
 if (values.export) {
-  const inventory = values.inventory ? await readInventory(values.inventory) : new Map();
   if (mode === 'daily' && !values.inventory) throw new Error('Verifying a daily export needs --inventory');
-  console.log(`Export verified: ${JSON.stringify(await verifyExport(path.resolve(values.export), dist, { latestDate, inventory }))}`);
+  console.log(`Export verified: ${JSON.stringify(await verifyExport(path.resolve(values.export), dist, { latestDate, inventory, previousDir: values.previous && path.resolve(values.previous) }))}`);
 }

@@ -9,12 +9,15 @@
 #   BACKFILL        daily only: "" | missing | 2026-10-01,2026-10-02
 #   CLEANUP         full only: none | dry-run | delete (see deploy-oss.sh)
 #   DEPLOY_TARGET   oss (default) | local:/dir
+#   DEPLOY_PREFIX   key prefix for an isolated copy, e.g. "__test__/" (staging); default: the site itself
 #   OSS_BUCKET, OSS_ACCESS_KEY_ID, OSS_ACCESS_KEY_SECRET, SUPABASE_URL, SUPABASE_BUILD_KEY
 set -euo pipefail
 
 MODE="${MODE:?MODE must be daily or full}"
 TARGET="${DEPLOY_TARGET:-oss}"
 BUCKET="${OSS_BUCKET:-amazingindex}"
+PREFIX="${DEPLOY_PREFIX:-}"
+export DEPLOY_PREFIX="$PREFIX"
 WORK=.deploy
 NODE_TS=(node --experimental-strip-types --no-warnings)
 CREDS=(--endpoint https://oss-cn-hangzhou.aliyuncs.com --access-key-id "${OSS_ACCESS_KEY_ID:-}" --access-key-secret "${OSS_ACCESS_KEY_SECRET:-}" --region cn-hangzhou)
@@ -24,10 +27,10 @@ mkdir -p "$WORK/previous"
 
 # 1. What is on the bucket now: the ground truth for "deployed".
 if [[ "$TARGET" == oss ]]; then
-  ossutil ls "oss://$BUCKET/" -r "${CREDS[@]}" > "$WORK/oss-ls.txt"
-  node scripts/lib/inventory.mjs --oss-ls "$WORK/oss-ls.txt" --bucket "$BUCKET" --out "$WORK/remote.json"
+  ossutil ls "oss://$BUCKET/$PREFIX" --recursive "${CREDS[@]}" > "$WORK/oss-ls.txt"
+  node scripts/lib/inventory.mjs --oss-ls "$WORK/oss-ls.txt" --bucket "$BUCKET" --prefix "$PREFIX" --out "$WORK/remote.json"
 else
-  node scripts/lib/inventory.mjs --local "${TARGET#local:}" --out "$WORK/remote.json"
+  node scripts/lib/inventory.mjs --local "${TARGET#local:}" --prefix "$PREFIX" --out "$WORK/remote.json"
 fi
 
 # 2. Which editions to build.
@@ -48,17 +51,17 @@ if [[ "$BUILD_MODE" == daily ]]; then
   for rel in $previous_files; do
     mkdir -p "$(dirname "$WORK/previous/$rel")"
     if [[ "$TARGET" == oss ]]; then
-      ossutil cp "oss://$BUCKET/$rel" "$WORK/previous/$rel" --force "${CREDS[@]}" > /dev/null 2>&1 || echo "ℹ️  $rel not fetched"
+      ossutil cp "oss://$BUCKET/$PREFIX$rel" "$WORK/previous/$rel" --force "${CREDS[@]}" > /dev/null 2>&1 || echo "ℹ️  $rel not fetched"
     else
-      cp "${TARGET#local:}/$rel" "$WORK/previous/$rel" 2> /dev/null || echo "ℹ️  $rel not fetched"
+      cp "${TARGET#local:}/$PREFIX$rel" "$WORK/previous/$rel" 2> /dev/null || echo "ℹ️  $rel not fetched"
     fi
   done
 fi
 
 # 4–6. Build, export, verify: nothing is uploaded unless all three pass.
-npm run build
+DEPLOY_INVENTORY="$WORK/remote.json" npm run build
 "${NODE_TS[@]}" scripts/export-site-data.ts --dist dist --out export --mode "$BUILD_MODE" --inventory "$WORK/remote.json" --previous "$WORK/previous"
-node scripts/verify-site.mjs --dist dist --export export --inventory "$WORK/remote.json"
+node scripts/verify-site.mjs --dist dist --export export --inventory "$WORK/remote.json" --previous "$WORK/previous"
 
 # 7. Upload what changed (daily) or everything (full).
 INVENTORY="$WORK/remote.json" DEPLOY_TARGET="$TARGET" bash scripts/deploy-oss.sh

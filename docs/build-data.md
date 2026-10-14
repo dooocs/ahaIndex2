@@ -19,14 +19,21 @@ exactly as they were last uploaded.
 
 ### Deployed = on the bucket
 
-Each run starts with one listing of the bucket (`ossutil ls -r`, parsed by
-`scripts/lib/inventory.mjs`). That listing, plus the pages the run builds, is
-what "deployed" means. Sitemaps, RSS and data are generated from database data
-but only reference deployed pages, and `scripts/verify-site.mjs` fails the run
-before any upload if one of them points elsewhere. If most published editions
-are missing from the listing, the export refuses to publish (a broken listing
-must not shrink the sitemap). The listing's ETags (MD5 for normal uploads) let
-a daily deploy skip unchanged files.
+Each run starts with one listing of the bucket (`ossutil ls --recursive`,
+parsed by `scripts/lib/inventory.mjs`). That listing, plus the pages the run
+builds, is what "deployed" means. Sitemaps, RSS and data are generated from
+database data but only reference deployed pages; `scripts/verify-site.mjs`
+fails the run before any upload if one of them, or a 上一期 link, points
+elsewhere. The listing's ETags (MD5 for normal uploads) let a daily deploy
+skip unchanged files.
+
+Published content is never dropped silently. If an edition or article that
+the published `summary.json`, a month file or an article sitemap lists is
+missing from the listing, the export stops with an error naming it, and
+nothing is uploaded; the verify step also checks that every previously
+published edition and article is still listed. Content leaves the published
+data only through an explicit full build after it was removed from the
+database.
 
 ### Incremental data
 
@@ -44,14 +51,15 @@ newest edition and read only the mentions of the last 60 days.
 ### Missed builds
 
 The newest-two rule repairs one missed day by itself: the next run builds the
-missed edition as "the one before". A longer gap leaves editions off OSS; they
-stay out of the sitemap and data, and the plan step warns
-(`edition … is not on OSS`). Run **Build & Deploy** manually with backfill
-`missing` (it compares every database edition with the bucket, at most 16
-editions per run) or with a list of dates. 下一期 links are filled in by the
-browser from `summary.json`, so a backfilled edition appears in its
-neighbours' navigation without rebuilding them; 上一期 is static HTML, so a
-crawler can walk the archive backwards from the homepage.
+missed edition as "the one before". A longer gap leaves editions off OSS:
+they stay out of the sitemap and data, 上一期 on the edition after the gap
+skips to the nearest deployed edition (the build reads the same listing), and
+the plan step warns (`edition … is not on OSS`). Run **Build & Deploy**
+manually with backfill `missing` (it compares every database edition with
+the bucket, at most 16 editions per run) or with a list of dates; the edition
+after each restored one is rebuilt too, so its 上一期 points at it again.
+下一期 is filled in by the browser from `summary.json`, so neighbours pick up
+a restored edition without a rebuild.
 
 ### When to run a full build
 
@@ -61,9 +69,16 @@ they were last built. Run **Full Build & Deploy** after:
 - changing a template or component that older editions or articles use;
 - changing the shape of `data/*.json` (bump `DATA_VERSION` in
   `src/lib/site-export.ts`; pages show a load error until rebuilt);
-- the pipeline revising items of past editions (their records, pages and
-  sitemap entries are only recomputed by a full build);
+- the pipeline revising or removing items of past editions (their records,
+  pages and sitemap entries are only recomputed by a full build);
 - wanting project pages refreshed.
+
+Pages built before this build system keep working: every link on them still
+resolves (checked by rehearsing the first run on a bucket deployed by the
+previous code). What they lack until one manual full build: 上一期/下一期
+navigation, and a sidebar (calendar, 7-edition chart, edition count) that
+follows the live data instead of the build they came from. The archive,
+month, subject, history and static pages are replaced by the first daily run.
 
 Both workflows share one concurrency group, so deploys never overlap. GitHub
 keeps one waiting run per group: a trigger that arrives while one run is in
@@ -114,9 +129,21 @@ MODE=full DEPLOY_TARGET=local:/tmp/bucket bash scripts/run-deploy.sh
 MODE=daily DEPLOY_TARGET=local:/tmp/bucket bash scripts/run-deploy.sh
 ```
 
-The **Test Deploy (Staging)** workflow checks that build, export and upload
-succeed under `__test__/`; it is not a visual preview, because its pages load
-`/_astro/` and `/data/` from the site root.
+`npm run test:e2e` runs deploy scenarios end to end (`tests/e2e/`): the real
+`run-deploy.sh` against the mock database and a stand-in ossutil
+(`scripts/dev/fake-ossutil.mjs`): a multi-day gap and its backfill, an
+incomplete listing, interrupted page and bare-copy uploads, the first run on a
+bucket without data files, and a run with nothing new. After each run every
+internal link and every data/sitemap reference must resolve. About 5 minutes;
+it runs on pull requests.
+
+The **Test Deploy (Staging)** workflow runs the production script against the
+real bucket under `__test__/` only (nothing else is written, the CDN is not
+touched): a full run, a check that the real `ossutil ls` output lists every
+uploaded object with an ETag equal to its local MD5, a daily run on top, and
+the same daily run again, which must upload nothing. It is not a visual
+preview: pages under `__test__/` load `/_astro/` and `/data/` from the site
+root.
 
 ## Heatmap pagination
 
@@ -146,9 +173,10 @@ homepage, RSS and summary, checks every homepage article was built, and checks
 that data, sitemaps and the sitemap index only reference deployed pages and
 that no shell token is left. Nothing is uploaded unless it passes.
 
-`scripts/deploy-oss.sh` uploads assets first, then pages, then data and feeds
-(so data never points at a page whose upload failed), then the bare-URL copies,
-then refreshes the CDN. Any failed upload stops the deploy; the next run
+`scripts/deploy-oss.sh` uploads assets, then pages, then the bare-URL copies
+(`/daily/2026-10-13` serves the same page as `/daily/2026-10-13/`), and only
+then the data, RSS and sitemaps that point at them, then refreshes the CDN.
+Any failed upload stops the deploy before the indexes change; the next run
 retries, since it compares against the bucket again.
 
 A full run can list (`dry-run`, the default) or delete objects under

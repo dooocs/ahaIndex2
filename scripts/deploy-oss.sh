@@ -82,18 +82,11 @@ wait "$PID_ASTRO"
 wait "$PID_OTHER"
 echo "✅ assets uploaded"
 
-# 2. Pages, then the data and feeds that point at them: a failed page upload
-#    never leaves a sitemap or archive listing a page that is not there.
+# 2. Pages, then their bare-URL copies (/daily/2026-10-13 serves the same
+#    page as /daily/2026-10-13/). Every page the new indexes point at is in
+#    place before step 3 publishes them.
 put "$STAGE/html" "" "no-cache" "text/html; charset=utf-8" 20
-put "$STAGE/json" "" "max-age=300" "application/json; charset=utf-8" 10 &
-PID_JSON=$!
-put "$STAGE/xml" "" "max-age=300" "application/xml; charset=utf-8" 5 &
-PID_XML=$!
-wait "$PID_JSON"
-wait "$PID_XML"
-echo "✅ pages, data and feeds uploaded"
-
-# 3. Bare URLs: /daily/2026-10-13 serves the same page as /daily/2026-10-13/.
+echo "✅ pages uploaded"
 if [[ "$TARGET" == oss ]]; then
   # xargs exits non-zero if any copy fails.
   tr '\t\n' '\0\0' < "$WORK/bare.txt" | xargs -0 -r -P 20 -n 2 bash -c 'copy_bare "$1" "$2"' _
@@ -102,9 +95,19 @@ else
   echo "ℹ️  local target: bare URL copies skipped ($(grep -c . "$WORK/bare.txt" || true))"
 fi
 
+# 3. Last, the data, RSS and sitemaps that point at those pages. Any failure
+#    above stops the script here, leaving the previous indexes published.
+put "$STAGE/json" "" "max-age=300" "application/json; charset=utf-8" 10 &
+PID_JSON=$!
+put "$STAGE/xml" "" "max-age=300" "application/xml; charset=utf-8" 5 &
+PID_XML=$!
+wait "$PID_JSON"
+wait "$PID_XML"
+echo "✅ data, RSS and sitemaps uploaded"
+
 echo "✅ deploy took $(( $(date +%s) - START ))s"
 
-# 5. CDN.
+# 4. CDN.
 if [[ "${SKIP_CDN:-0}" != 1 && "$TARGET" == oss && -z "$PREFIX" ]]; then
   if [[ "$MODE" == full ]]; then
     python3 scripts/refresh-cdn.py --directory
@@ -113,7 +116,7 @@ if [[ "${SKIP_CDN:-0}" != 1 && "$TARGET" == oss && -z "$PREFIX" ]]; then
   fi
 fi
 
-# 6. Objects that no deploy writes any more (old asset hashes, removed pages).
+# 5. Objects that no deploy writes any more (old asset hashes, removed pages).
 if [[ "$MODE" == full && "$CLEANUP" != none ]]; then
   [[ -f "$INVENTORY" ]] || { echo "Cleanup needs the bucket inventory ($INVENTORY)" >&2; exit 1; }
   node -e '

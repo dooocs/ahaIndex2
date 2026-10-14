@@ -66,6 +66,22 @@ export function missingEditions(databaseDates: string[], deployedKeys: Set<strin
 export const editionKey = (date: string) => `daily/${date}/index.html`;
 export const articleKey = (pid: string) => `article/${pid}/index.html`;
 
+/**
+ * Published content is only ever removed on purpose. Throws when any of
+ * `keys` (pages that published data or sitemaps reference) is not deployed,
+ * instead of letting the export drop it from summary.json or a sitemap.
+ */
+export function assertStillDeployed(keys: string[], isDeployed: (key: string) => boolean, context: string): void {
+  const missing = keys.filter((key) => !isDeployed(key));
+  if (missing.length === 0) return;
+  throw new Error(
+    `${missing.length} ${context} missing from the OSS listing and this build ` +
+    `(${missing.slice(0, 5).join(', ')}${missing.length > 5 ? ', …' : ''}). ` +
+    'Refusing to publish data that would drop them. If the listing is incomplete, re-run; ' +
+    'if pages are really gone, restore them with a backfill run, or run the full build to rebuild everything.',
+  );
+}
+
 // ─── /data/*.json ───────────────────────────────────
 
 export interface SummaryJson {

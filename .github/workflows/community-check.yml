@@ -10,7 +10,7 @@ permissions:
 jobs:
   community:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -34,6 +34,8 @@ jobs:
           npm run verify:community
           npm run verify:community:login
           PLAYWRIGHT_CHANNEL=chromium npm run verify:community:review
+      - name: Deploy scenarios end to end (mock database, stand-in OSS)
+        run: npm run test:e2e
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

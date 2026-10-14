@@ -3,7 +3,7 @@
 // reference listed or just-built pages) and lets a deploy skip files whose
 // content is already there.
 //
-//   ossutil ls oss://amazingindex/ -r > .deploy/oss-ls.txt
+//   ossutil ls oss://amazingindex/ --recursive > .deploy/oss-ls.txt
 //   node scripts/lib/inventory.mjs --oss-ls .deploy/oss-ls.txt --bucket amazingindex --out .deploy/remote.json
 //   node scripts/lib/inventory.mjs --local /tmp/bucket --out .deploy/remote.json   # a local stand-in bucket
 //
@@ -77,8 +77,8 @@ async function main() {
   if (values['oss-ls']) objects = parseOssutilLs(await readFile(values['oss-ls'], 'utf8'), values.bucket, values.prefix);
   else if (values.local) objects = await localInventory(path.join(values.local, values.prefix));
   else throw new Error('Pass --oss-ls <listing file> or --local <directory>');
-  // Staging copies never count as deployed pages.
-  for (const key of [...objects.keys()]) if (key.startsWith('__test__/')) objects.delete(key);
+  // Staging copies never count as deployed pages of the site itself.
+  if (!values.prefix) for (const key of [...objects.keys()]) if (key.startsWith('__test__/')) objects.delete(key);
   await writeInventory(values.out, objects);
   const withEtag = [...objects.values()].filter(Boolean).length;
   const editions = [...objects.keys()].filter((k) => /^daily\/\d{4}-\d{2}-\d{2}\/index\.html$/.test(k)).length;
