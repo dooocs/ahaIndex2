@@ -1,0 +1,69 @@
+name: Deploy (reusable)
+
+# The run shared by build-deploy.yml (daily) and full-build.yml (full):
+# scripts/run-deploy.sh lists the bucket, plans, builds, exports, verifies and
+# uploads. See docs/build-data.md.
+
+on:
+  workflow_call:
+    inputs:
+      mode:
+        description: daily or full
+        type: string
+        required: true
+      backfill:
+        description: 'daily only: empty, "missing", or comma-separated edition dates'
+        type: string
+        default: ''
+      cleanup:
+        description: 'full only: none, dry-run or delete OSS objects that no deploy writes any more'
+        type: string
+        default: none
+
+jobs:
+  build-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_BUILD_KEY: ${{ secrets.SUPABASE_BUILD_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+      OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+      PUBLIC_COMMUNITY_ENABLED: ${{ vars.PUBLIC_COMMUNITY_ENABLED }}
+      PUBLIC_COMMUNITY_SUPABASE_URL: ${{ vars.PUBLIC_COMMUNITY_SUPABASE_URL }}
+      PUBLIC_COMMUNITY_SUPABASE_KEY: ${{ vars.PUBLIC_COMMUNITY_SUPABASE_KEY }}
+      PUBLIC_COMMUNITY_TURNSTILE_KEY: ${{ vars.PUBLIC_COMMUNITY_TURNSTILE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+
+      - run: npm run verify:community:service
+
+      - name: Install ossutil and the CDN SDK
+        run: |
+          curl -Lo ossutil.zip https://gosspublic.alicdn.com/ossutil/v2/2.2.1/ossutil-2.2.1-linux-amd64.zip
+          unzip ossutil.zip
+          chmod +x ossutil-2.2.1-linux-amd64/ossutil
+          sudo mv ossutil-2.2.1-linux-amd64/ossutil /usr/local/bin/ossutil
+          pip install alibabacloud_cdn20180510 --quiet
+
+      - name: Remove the staging copy
+        run: |
+          ossutil rm oss://amazingindex/__test__/ --recursive --force \
+            --endpoint https://oss-cn-hangzhou.aliyuncs.com --access-key-id "$OSS_ACCESS_KEY_ID" \
+            --access-key-secret "$OSS_ACCESS_KEY_SECRET" --region cn-hangzhou || true
+
+      - name: Build and deploy
+        env:
+          MODE: ${{ inputs.mode }}
+          BACKFILL: ${{ inputs.backfill }}
+          CLEANUP: ${{ inputs.cleanup }}
+        run: bash scripts/run-deploy.sh

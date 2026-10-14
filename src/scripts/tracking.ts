@@ -244,6 +244,11 @@ function initClickTracking() {
   }) as EventListener);
 }
 
+// Pages that render cards in the browser (history) announce them once they are in the DOM.
+document.addEventListener('aha:content-rendered', () => {
+  if (!document.querySelector('[data-community]')) initImpressionTracking();
+});
+
 document.addEventListener('astro:page-load', () => {
   if (document.querySelector('[data-community]')) { pauseVisible15sTimer(); return; }
   initGaDiagnosticTracking();

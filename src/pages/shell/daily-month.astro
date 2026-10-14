@@ -1,0 +1,66 @@
+---
+// Template for /daily/<YYYY-MM>. Not published itself: the export script
+// copies it to each month's URL with that month's title, description and
+// canonical URL, and the browser renders /data/archive/<YYYY-MM>.json.
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Masthead from '../../components/Masthead.astro';
+import Footer from '../../components/Footer.astro';
+import { SITE_URL } from '../../lib/site';
+import { SHELL_TOKENS } from '../../lib/site-export';
+---
+
+<BaseLayout
+  title={SHELL_TOKENS.title}
+  description={SHELL_TOKENS.description}
+  canonicalUrl={`${SITE_URL}${SHELL_TOKENS.path}`}
+>
+  <div class="archive-page" data-archive-month>
+    <Masthead />
+
+    <div class="layout">
+      <div class="main-col">
+        <div class="breadcrumb">
+          <a href="/" data-astro-reload>首页</a><span class="sep">/</span><a href="/daily">历史归档</a><span class="sep">/</span><span data-month-crumb></span>
+        </div>
+
+        <div class="page-header">
+          <h1 data-month-title>&nbsp;</h1>
+          <div class="sub">按周浏览 · <a href="/daily" class="month-back-year">返回年度视图</a></div>
+        </div>
+
+        <div>
+          <div class="month-detail-header">
+            <h2>本月概览</h2>
+            <span class="cnt" data-month-count></span>
+          </div>
+          <div data-weeks>
+            <div class="loading-state" data-loading>正在加载本月归档…</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="side-col">
+        <div class="side-section">
+          <div class="side-title">全局统计</div>
+          <div class="side-stats" data-global-stats></div>
+        </div>
+
+        <div class="side-section">
+          <div class="side-title">关于归档</div>
+          <div class="about-box">
+            AmazingIndex 历史归档保存了 AI 行业的每日演进。
+            每一期都是最具影响力新闻的快照，由我们的 <strong>Aha Index</strong> 算法进行评分，以在噪音中凸显真正的突破。
+          </div>
+        </div>
+
+        <div class="side-footer">
+          <span>AmazingIndex</span>
+          <span>始于 2024</span>
+        </div>
+      </div>
+    </div>
+    <Footer />
+  </div>
+</BaseLayout>
+
+<script src="../../scripts/archive-pages.ts"></script>

@@ -1,0 +1,26 @@
+name: Full Build & Deploy
+
+# Rebuilds every page: all editions and articles with the current templates,
+# and the project pages. Run it after changing a template that old editions
+# use, after changing the shape of data/*.json, or to refresh project pages.
+
+on:
+  workflow_dispatch:
+    inputs:
+      cleanup:
+        description: 'List or delete OSS objects that no deploy writes any more (old asset hashes, removed pages)'
+        type: choice
+        options: [dry-run, none, delete]
+        default: dry-run
+
+concurrency:
+  group: production-build-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    uses: ./.github/workflows/deploy.yml
+    with:
+      mode: full
+      cleanup: ${{ inputs.cleanup }}
+    secrets: inherit

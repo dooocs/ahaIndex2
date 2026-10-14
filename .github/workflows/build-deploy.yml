@@ -1,149 +1,41 @@
 name: Build & Deploy
 
+# Daily build: the newest edition and the one before it, their articles, and
+# the pages that need no data; data, sitemaps and RSS are updated
+# incrementally. Older editions and project pages are only rebuilt by
+# full-build.yml. Never turns into a full build on its own.
+
 on:
   repository_dispatch:
-    # build-deploy: manual / legacy dispatch
-    # external-workflow-complete: other repos call POST .../dispatches after their workflow finishes
     # pipeline-done: ahaIndexSync sends this after its pipeline completes
+    # external-workflow-complete: other repos call POST .../dispatches when their workflow finishes
+    # build-deploy: manual / legacy dispatch
     types:
       - build-deploy
       - external-workflow-complete
       - pipeline-done
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
   workflow_dispatch:
+    inputs:
+      backfill:
+        description: 'Also build editions that are missing from OSS: "missing" finds them (at most 16 editions per run), or list dates (2026-10-01,2026-10-02)'
+        type: string
+        default: ''
 
+# Shared with full-build.yml: one production deploy at a time. GitHub keeps
+# one pending run per group, so a newer trigger replaces a waiting one.
 concurrency:
   group: production-build-deploy
   cancel-in-progress: false
 
 jobs:
-  build-deploy:
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-
-      - run: npm ci
-
-      - run: npm test
-
-      - name: Verify community service and build
-        run: |
-          npm run verify:community:service
-          npm run build
-        env:
-          PUBLIC_COMMUNITY_ENABLED: ${{ vars.PUBLIC_COMMUNITY_ENABLED }}
-          PUBLIC_COMMUNITY_SUPABASE_URL: ${{ vars.PUBLIC_COMMUNITY_SUPABASE_URL }}
-          PUBLIC_COMMUNITY_SUPABASE_KEY: ${{ vars.PUBLIC_COMMUNITY_SUPABASE_KEY }}
-          PUBLIC_COMMUNITY_TURNSTILE_KEY: ${{ vars.PUBLIC_COMMUNITY_TURNSTILE_KEY }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_BUILD_KEY: ${{ secrets.SUPABASE_BUILD_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
-
-      - run: npm run verify:rss
-
-      - run: npm run verify:build
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_BUILD_KEY: ${{ secrets.SUPABASE_BUILD_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
-
-      - name: Install ossutil
-        run: |
-          curl -Lo ossutil.zip https://gosspublic.alicdn.com/ossutil/v2/2.2.1/ossutil-2.2.1-linux-amd64.zip
-          unzip ossutil.zip
-          chmod +x ossutil-2.2.1-linux-amd64/ossutil
-          sudo mv ossutil-2.2.1-linux-amd64/ossutil /usr/local/bin/ossutil
-
-      - name: Deploy to OSS
-        env:
-          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
-          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
-        run: |
-          set -euo pipefail
-          CREDS="--endpoint https://oss-cn-hangzhou.aliyuncs.com --access-key-id $OSS_ACCESS_KEY_ID --access-key-secret $OSS_ACCESS_KEY_SECRET --region cn-hangzhou"
-
-          # 清理 staging 残留
-          echo "🧹 清理 __test__/ 目录..."
-          ossutil rm oss://amazingindex/__test__/ --recursive --force $CREDS || true
-          echo "✅ staging 清理完成"
-
-          START=$(date +%s)
-
-          # 1. _astro 长缓存（后台）
-          ossutil sync ./dist/_astro/ oss://amazingindex/_astro/ \
-            --force -j 20 \
-            --metadata "Cache-Control=max-age=31536000,immutable" \
-            $CREDS &
-          PID_ASTRO=$!
-
-          # 2. HTML 文件（后台）
-          mkdir -p /tmp/html-stage
-          rsync -a --include='*/' --include='*.html' --exclude='*' \
-            --exclude='_astro/***' \
-            ./dist/ /tmp/html-stage/
-
-          ossutil sync /tmp/html-stage/ oss://amazingindex/ \
-            --force -j 20 \
-            --metadata "Cache-Control=no-cache" \
-            --metadata "Content-Type=text/html; charset=utf-8" \
-            $CREDS &
-          PID_HTML=$!
-
-          # 3. 其他静态文件 robots/favicon/sitemap/rss（后台）
-          ossutil sync ./dist/ oss://amazingindex/ \
-            --force -j 10 \
-            --exclude "*.html" \
-            --exclude "_astro/*" \
-            $CREDS &
-          PID_REST=$!
-
-          wait $PID_ASTRO $PID_HTML $PID_REST
-          echo "✅ 三路并行上传完成"
-
-          # 4. bare URL：基于本地 dist 生成 OSS 内部复制
-          find ./dist -name 'index.html' \
-            | grep -v '^\./dist/index.html$' \
-            | sed 's|^\./dist/||' \
-            | while read rel; do
-                key="${rel%/index.html}"
-                ossutil cp "oss://amazingindex/$rel" "oss://amazingindex/$key" \
-                  --force \
-                  --metadata "Cache-Control=no-cache" \
-                  --metadata "Content-Type=text/html; charset=utf-8" \
-                  $CREDS &
-                if [ $(jobs -r | wc -l) -ge 20 ]; then wait -n; fi
-              done
-          wait
-
-          END=$(date +%s)
-          echo "✅ 部署完成，总耗时 $((END-START))s"
-
-      - name: Refresh CDN
-        env:
-          ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
-          ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
-        run: |
-          pip install alibabacloud_cdn20180510 --quiet
-          python3 - <<'EOF'
-          import os
-          from alibabacloud_cdn20180510.client import Client
-          from alibabacloud_cdn20180510 import models as cdn_models
-          from alibabacloud_tea_openapi import models as open_api_models
-
-          config = open_api_models.Config(
-              access_key_id=os.environ['ALIBABA_CLOUD_ACCESS_KEY_ID'],
-              access_key_secret=os.environ['ALIBABA_CLOUD_ACCESS_KEY_SECRET'],
-              endpoint='cdn.aliyuncs.com'
-          )
-          client = Client(config)
-
-          req = cdn_models.RefreshObjectCachesRequest(
-              object_path='https://www.amazingindex.com/',
-              object_type='Directory'
-          )
-          client.refresh_object_caches(req)
-          print("Refreshed entire site directory")
-          EOF
+  deploy:
+    uses: ./.github/workflows/deploy.yml
+    with:
+      mode: daily
+      backfill: ${{ inputs.backfill || '' }}
+    secrets: inherit

@@ -1,28 +1,17 @@
 ---
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import DailyPage from '../../../components/DailyPage.astro';
-import { getAllDates, getItemsByDate, getGlobalStats, getDailyArchives, getDailyArchiveByDate } from '../../../lib/data';
+import { getBuildDates, getItemsByDate, getDailyArchiveByDate, getPreviousPublished } from '../../../lib/data';
 
 export async function getStaticPaths() {
-  const dates = await getAllDates();
+  const dates = await getBuildDates();
   return dates.map(date => ({ params: { date } }));
 }
 
 const { date } = Astro.params;
 const items = await getItemsByDate(date!);
-const stats = await getGlobalStats();
 const dailyArchive = await getDailyArchiveByDate(date!);
-
-const dateObj = new Date(date! + 'T00:00:00');
-const curMonthDays = await getDailyArchives(dateObj.getFullYear(), dateObj.getMonth() + 1);
-// If that month has fewer than 7 days around this date, also fetch previous month
-let days = curMonthDays;
-if (curMonthDays.length < 7) {
-  const prevMonth = dateObj.getMonth() === 0 ? 12 : dateObj.getMonth();
-  const prevYear = dateObj.getMonth() === 0 ? dateObj.getFullYear() - 1 : dateObj.getFullYear();
-  const prevMonthDays = await getDailyArchives(prevYear, prevMonth);
-  days = [...curMonthDays, ...prevMonthDays].sort((a, b) => b.snapshot_date.localeCompare(a.snapshot_date));
-}
+const prev = await getPreviousPublished(date!);
 
 const pageTitle = `${date} AI 行业精选简报 | AmazingIndex`;
 const pageDesc = `AmazingIndex ${date} 每日 AI 行业精选简报。基于多维度量化算法，为您筛选当日最具价值的 AI 行业动态与创新洞察。`;
@@ -43,5 +32,5 @@ const pageDesc = `AmazingIndex ${date} 每日 AI 行业精选简报。基于多�
     "url": `https://www.amazingindex.com/daily/${date}`
   }}
 >
-  <DailyPage items={items} stats={stats} days={days} dailyArchive={dailyArchive} date={date} heading={`${date} AI 行业精选简报`} />
+  <DailyPage items={items} dailyArchive={dailyArchive} date={date} prevDate={prev} heading={`${date} AI 行业精选简报`} />
 </BaseLayout>

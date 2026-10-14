@@ -1,18 +1,22 @@
 ---
 import ArticleLayout from '../../layouts/ArticleLayout.astro';
-import type { ArticleRouteItem } from '../../lib/data';
-import { getAllArticleRouteItems, getItemsByDate } from '../../lib/data';
+import { getAllArticleRouteItems, getArticleRouteItemsFor, getBuildDates, getItemsByDate } from '../../lib/data';
+import { isDailyBuild } from '../../lib/build-scope';
+import { uniqueArticleItems } from '../../lib/sitemap';
 
+// One page per article, dated by the newest edition it appears in. A daily
+// build renders the articles whose newest edition is one it renders.
 export async function getStaticPaths() {
-  const allItems = await getAllArticleRouteItems();
-  const seen = new Map<string, ArticleRouteItem>();
-  for (const item of allItems) {
-    if (!item.processed_item_id) continue;
-    if (!seen.has(item.processed_item_id)) {
-      seen.set(item.processed_item_id, item);
-    }
+  let routes;
+  if (isDailyBuild()) {
+    const dates = await getBuildDates();
+    const pids = (await Promise.all(dates.map(getItemsByDate))).flat().map(item => item.processed_item_id);
+    const inScope = new Set(dates);
+    routes = uniqueArticleItems(await getArticleRouteItemsFor(pids)).filter(item => inScope.has(item.snapshot_date));
+  } else {
+    routes = uniqueArticleItems(await getAllArticleRouteItems());
   }
-  return Array.from(seen.values()).map(item => ({
+  return routes.map(item => ({
     params: { pid: item.processed_item_id },
     props: { snapshotDate: item.snapshot_date },
   }));

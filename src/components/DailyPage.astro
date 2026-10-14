@@ -3,15 +3,20 @@ import Masthead from './Masthead.astro';
 import BriefingCard from './BriefingCard.astro';
 import Sidebar from './Sidebar.astro';
 import Footer from './Footer.astro';
-import type { ProcessedItem, DailyArchive, GlobalStats } from '../lib/types';
+import type { ProcessedItem, DailyArchive } from '../lib/types';
 import { SITE_NAME, SITE_SLOGAN } from '../lib/site';
 
 interface Props {
   items: ProcessedItem[];
-  stats: GlobalStats;
-  days: DailyArchive[];
   dailyArchive?: DailyArchive | null;
   date?: string;
+  /**
+   * The edition before this one, linked as 上一期 in the HTML: a crawler walks
+   * the archive backwards from the homepage. 下一期 is filled in by
+   * scripts/sidebar.ts from /data/summary.json, so an old page never needs a
+   * rebuild to link to a newer edition.
+   */
+  prevDate?: string | null;
   showArchiveBanner?: boolean;
   heading?: string;
   sidebarMode?: 'score' | 'intro';
@@ -19,10 +24,9 @@ interface Props {
 
 const {
   items,
-  stats,
-  days,
   dailyArchive = null,
   date,
+  prevDate = null,
   showArchiveBanner = true,
   heading,
   sidebarMode = 'score',
@@ -53,13 +57,43 @@ const isHome = sidebarMode === 'intro';
         <div class="loading-state">今日暂无更新</div>
       )}
     </div>
+    <nav class="edition-nav" aria-label="往期导航" data-edition-nav hidden={!prevDate}>
+      {prevDate ? <a href={`/daily/${prevDate}`} rel="prev">← 上一期 · {prevDate}</a> : <span></span>}
+      <a data-next-edition rel="next" hidden></a>
+    </nav>
   </main>
-  <Sidebar items={items} stats={stats} days={days} dailyArchive={dailyArchive} mode={sidebarMode} />
+  <Sidebar items={items} dailyArchive={dailyArchive} mode={sidebarMode} date={snapshotDate} />
 </div>
 
 <Footer showArchiveBanner={showArchiveBanner} date={snapshotDate} />
 
 <style>
+  .edition-nav {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    margin: 32px 0 8px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    font-family: var(--fm);
+    font-size: 11px;
+    letter-spacing: 0.05em;
+  }
+
+  .edition-nav[hidden],
+  .edition-nav [hidden] {
+    display: none;
+  }
+
+  .edition-nav a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+
+  .edition-nav a:hover {
+    color: var(--ink);
+  }
+
   .home-intro-mobile {
     display: none;
   }
