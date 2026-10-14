@@ -19,7 +19,8 @@
     "verify:site": "node --env-file-if-exists=.env scripts/verify-site.mjs",
     "plan:build": "node --experimental-strip-types --no-warnings --env-file-if-exists=.env scripts/plan-build.ts",
     "export:data": "node --experimental-strip-types --no-warnings --env-file-if-exists=.env scripts/export-site-data.ts",
-    "dev:mock-db": "node scripts/dev/mock-supabase.mjs"
+    "dev:mock-db": "node scripts/dev/mock-supabase.mjs",
+    "preview:site": "node scripts/dev/preview-site.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.103.0",

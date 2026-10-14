@@ -1,17 +1,32 @@
 # Build and release
 
-The site is built in two modes. Both end in the same export, verification and
-upload steps (`.github/workflows/build-deploy.yml`).
+The site is built in two modes. Both run the same job
+(`.github/workflows/deploy.yml`): build, export, verify, upload.
 
-| | daily | full |
+| | daily (`build-deploy.yml`) | full (`full-build.yml`) |
 | --- | --- | --- |
-| Trigger | `pipeline-done` / `external-workflow-complete` dispatch | push to `main`, `build-deploy` dispatch, manual run, Sundays 03:17 Beijing |
-| Astro renders | homepage, the newest two editions, editions missing from the deploy manifest, and their articles | every page |
-| Uploads | those pages + `_astro/` + the export, nothing deleted | everything + the export; optional cleanup |
+| Trigger | every `repository_dispatch` (`pipeline-done` etc.), push to `main`, manual | manual only |
+| Astro renders | homepage, the newest two editions, editions missing from the deploy manifest and the edition before each, their articles, and every page that needs no data | every page |
+| Uploads | everything it rendered except project pages, `_astro/`, the export; nothing deleted | everything, the export; optional cleanup |
 | CDN | refreshes the changed URLs | refreshes the whole site |
 
-`scripts/plan-build.ts` picks the mode. A daily run falls back to full when OSS
-has no deploy manifest yet or more than 7 editions are missing from it.
+`scripts/plan-build.ts` picks the editions. A daily run becomes full on its own
+when OSS has no deploy manifest yet or more than 7 editions are missing from it.
+Both workflows share one concurrency group, so deploys never overlap. GitHub
+keeps one waiting run per group: a trigger that arrives while one run is in
+progress and another is waiting replaces the waiting one, so re-run a waiting
+full build if a daily run displaced it.
+
+### When to run a full build
+
+A daily build leaves older edition pages, older articles and project pages as
+they were last built. Run **Full Build & Deploy** after:
+
+- changing a template or component that older editions or articles use;
+- changing the shape of `data/*.json` (bump `DATA_VERSION` in
+  `src/lib/site-export.ts`; old pages then show a load error until rebuilt);
+- the pipeline revising items of past editions;
+- wanting project pages refreshed.
 
 ### Where each page comes from
 
@@ -46,23 +61,16 @@ The dev server maps `/daily/<YYYY-MM>` and `/subjects/<slug>` to their shell
 routes and serves `/data/*.json` from `./export`. A daily build is
 `BUILD_MODE=daily BUILD_DATES=2026-02-20,2026-02-19 npm run build`.
 
+To look at a build as it will be served, with real credentials in `.env`:
 
-## Credentials
+```sh
+npm run build && npm run export:data -- --dist dist --out export
+npm run preview:site            # http://127.0.0.1:4400, dist + export merged as on OSS
+```
 
-Set `SUPABASE_URL` and `SUPABASE_BUILD_KEY` in `.env` or CI. The key must have
-read access to the tables used by the site. A publishable key uses `anon`; a
-secret key uses `service_role`. The build logs the key type and role, never the
-credential. The old `SUPABASE_SERVICE_ROLE_KEY` variable and GitHub Secret remain
-supported as fallbacks, including installations that put a publishable key there.
-Do not expose server-side keys through `PUBLIC_` variables or generated assets.
-
-The production configuration audited on 2026-10-07 had `anon.statement_timeout`
-at 15 seconds and `service_role.statement_timeout` at 80 seconds. The failing
-GitHub requests used a publishable key, so the applicable role was `anon`.
-These are audit values, not constants enforced or changed by this repository.
-Check `pg_roles.rolconfig` and `pg_db_role_setting` before changing database
-timeouts; `SHOW statement_timeout` on an administrative connection does not
-describe the API request's role settings.
+The **Test Deploy (Staging)** workflow checks that build, export and upload
+succeed under `__test__/`; it is not a visual preview, because its pages load
+`/_astro/` and `/data/` from the site root.
 
 ## Heatmap pagination
 
@@ -93,12 +101,13 @@ built, that sitemaps list only deployed editions and articles, that every month
 and subject URL has its exported page and data, and that no shell token is left.
 Production runs are serialized and have a 45-minute job limit.
 
-`scripts/deploy-oss.sh` uploads assets first, then pages, data and feeds, then
-the bare-URL copies, then the manifest, then refreshes the CDN. Set
+`scripts/deploy-oss.sh` uploads assets first, then pages, then data and feeds,
+then the bare-URL copies, then the manifest, then refreshes the CDN. Any failed
+upload stops the deploy before the manifest, so the next run rebuilds what is
+missing. Set
 `DEPLOY_TARGET=local:/tmp/bucket` to rehearse a deploy into a directory.
 
-A manual full run can list (`dry-run`, the default; also on the weekly run) or
-delete objects under `_astro/ article/ daily/ data/ projects/ subjects/` that no
+A full run can list (`dry-run`, the default) or delete objects under `_astro/ article/ daily/ data/ projects/ subjects/` that no
 deploy writes any more. Deletion refuses to remove more than 30% of them.
 Objects outside those prefixes (for example `og/`) are never touched.
 

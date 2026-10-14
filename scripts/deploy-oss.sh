@@ -75,14 +75,13 @@ wait "$PID_ASTRO"
 wait "$PID_OTHER"
 echo "✅ assets uploaded"
 
-# 2. Pages, data and feeds.
-put "$STAGE/html" "" "no-cache" "text/html; charset=utf-8" 20 &
-PID_HTML=$!
+# 2. Pages, then the data and feeds that point at them: a failed page upload
+#    never leaves a sitemap or archive listing a page that is not there.
+put "$STAGE/html" "" "no-cache" "text/html; charset=utf-8" 20
 put "$STAGE/json" "" "max-age=300" "application/json; charset=utf-8" 10 &
 PID_JSON=$!
 put "$STAGE/xml" "" "max-age=300" "application/xml; charset=utf-8" 5 &
 PID_XML=$!
-wait "$PID_HTML"
 wait "$PID_JSON"
 wait "$PID_XML"
 echo "✅ pages, data and feeds uploaded"

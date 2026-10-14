@@ -42,14 +42,13 @@ export function uploadClass(rel) {
 /**
  * Which built files a deploy uploads, excluding `_astro/` (always uploaded
  * whole) and shell templates (only published through their per-URL copies).
- * A daily deploy takes the homepage, its edition pages and its articles;
- * every other page is left as the last full deploy published it.
+ * A daily build renders only its editions and their articles, so everything it
+ * built is current and goes out, except project pages: they are rendered empty
+ * in daily mode and left as the last full deploy published them.
  */
-export function selectPages(distFiles, mode, dates = []) {
+export function selectPages(distFiles, mode) {
   const pages = distFiles.filter((rel) => !rel.startsWith('_astro/') && !rel.startsWith('shell/'));
-  if (mode === 'full') return pages;
-  const editions = new Set(dates.map((d) => `daily/${d}/index.html`));
-  return pages.filter((rel) => rel === 'index.html' || editions.has(rel) || /^article\/[^/]+\/index\.html$/.test(rel));
+  return mode === 'full' ? pages : pages.filter((rel) => !rel.startsWith('projects/'));
 }
 
 /** The URL forms of an object: a directory index is served with and without its slash. */
@@ -72,7 +71,7 @@ export async function planDeploy({ dist, exportDir, mode, dates }) {
   for (const d of dates) if (!DATE.test(d)) throw new Error(`Invalid date ${d}`);
   if (mode === 'daily' && dates.length === 0) throw new Error('A daily deploy needs its edition dates');
   const distFiles = await listFiles(dist);
-  const pages = selectPages(distFiles, mode, dates);
+  const pages = selectPages(distFiles, mode);
   if (mode === 'daily') {
     const missing = ['index.html', ...dates.map((d) => `daily/${d}/index.html`)].filter((rel) => !pages.includes(rel));
     if (missing.length > 0) throw new Error(`Daily deploy is missing built pages: ${missing.join(', ')}`);

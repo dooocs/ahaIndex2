@@ -18,9 +18,11 @@ test('a full deploy uploads every built page except assets and shell templates',
   assert.ok(!pages.some((p) => p.startsWith('_astro/') || p.startsWith('shell/')));
 });
 
-test('a daily deploy uploads the homepage, its editions and their articles only', () => {
-  assert.deepEqual(selectPages(DIST, 'daily', ['2026-10-13', '2026-10-12']).sort(), [
-    'article/p1/index.html', 'daily/2026-10-12/index.html', 'daily/2026-10-13/index.html', 'index.html',
+test('a daily deploy uploads everything it built except project pages', () => {
+  // A daily build renders no other editions; static pages and shells go out so code changes ship.
+  assert.deepEqual(selectPages(DIST.filter((p) => p !== 'daily/2026-09-01/index.html'), 'daily').sort(), [
+    '404.html', 'about/index.html', 'article/p1/index.html', 'daily/2026-10-12/index.html', 'daily/2026-10-13/index.html',
+    'daily/index.html', 'index.html', 'robots.txt',
   ]);
 });
 

@@ -33,9 +33,20 @@ test('daily builds the newest two editions', () => {
   assert.deepEqual(plan, { mode: 'daily', dates: ['2026-10-13', '2026-10-12'], reason: '1 new edition(s)' });
 });
 
-test('daily also backfills editions the manifest is missing', () => {
-  const plan = planBuild('daily', ['2026-10-13', '2026-10-12', '2026-10-09', '2026-10-08'], manifest(['2026-10-12', '2026-10-08']));
-  assert.deepEqual(plan.dates, ['2026-10-13', '2026-10-12', '2026-10-09']);
+test('daily backfills missing editions and the edition before each of them', () => {
+  // 10-09 was never deployed: 10-08 must be rebuilt for its 下一期 link.
+  const plan = planBuild('daily', ['2026-10-13', '2026-10-12', '2026-10-09', '2026-10-08', '2026-10-07'], manifest(['2026-10-12', '2026-10-08', '2026-10-07']));
+  assert.deepEqual(plan.dates, ['2026-10-13', '2026-10-12', '2026-10-09', '2026-10-08']);
+});
+
+test('daily after a failed deploy also rebuilds the last deployed edition', () => {
+  const plan = planBuild('daily', ['2026-10-13', '2026-10-12', '2026-10-11'], manifest(['2026-10-11']));
+  assert.deepEqual(plan.dates, ['2026-10-13', '2026-10-12', '2026-10-11']);
+});
+
+test('a daily run with nothing new still rebuilds the newest two editions', () => {
+  const plan = planBuild('daily', ['2026-10-13', '2026-10-12', '2026-10-11'], manifest(['2026-10-13', '2026-10-12', '2026-10-11']));
+  assert.deepEqual(plan, { mode: 'daily', dates: ['2026-10-13', '2026-10-12'], reason: '0 new edition(s)' });
 });
 
 test('too many missing editions turn a daily build into a full one', () => {

@@ -78,8 +78,11 @@ export function planBuild(requested: 'daily' | 'full', databaseDates: string[], 
   if (missing.length > MAX_DAILY_BACKFILL) {
     return { mode: 'full', dates: [], reason: `${missing.length} editions are not deployed` };
   }
-  // The newest two: today's edition, and yesterday's page for its "next" link.
-  const dates = [...new Set([...newestFirst.slice(0, 2), ...missing])].sort().reverse();
+  // Each missing edition plus the edition before it, whose 下一期 link must now
+  // point at it; and always the newest two, so a run with nothing new (a code
+  // push) still refreshes today's and yesterday's pages.
+  const before = missing.map((d) => newestFirst[newestFirst.indexOf(d) + 1]).filter(Boolean);
+  const dates = [...new Set([...newestFirst.slice(0, 2), ...missing, ...before])].sort().reverse();
   return { mode: 'daily', dates, reason: `${missing.length} new edition(s)` };
 }
 

@@ -131,12 +131,18 @@ await write('rss.xml', renderRss(homeItems, homeDate));
 
 // ─── Subjects ───────────────────────────────────────
 const [subjectRows, subjectStats] = await Promise.all([q.getDirectorySubjectRows(db), q.getSubjectStats(db)]);
-const sections = buildDirectorySections(mergeSubjectStats(subjectRows, subjectStats));
-const publicSubjects = sections.flatMap((s) => s.subjects).filter((subject) => {
-  if (SAFE_SEGMENT.test(subject.slug)) return true;
-  log(`skip subject with unsafe slug ${JSON.stringify(subject.slug)}`);
-  return false;
-});
+// A slug that is not a safe path segment gets no page, so it is left out everywhere.
+const sections = buildDirectorySections(mergeSubjectStats(subjectRows, subjectStats))
+  .map((section) => ({
+    ...section,
+    subjects: section.subjects.filter((subject) => {
+      if (SAFE_SEGMENT.test(subject.slug)) return true;
+      log(`skip subject with unsafe slug ${JSON.stringify(subject.slug)}`);
+      return false;
+    }),
+  }))
+  .filter((section) => section.subjects.length > 0);
+const publicSubjects = sections.flatMap((s) => s.subjects);
 const mentions = await q.fetchSubjectMentions(db, publicSubjects.map((s) => s.id));
 await write('data/subjects/index.json', json(subjectIndexJson(sections, computeSignalStats(publicSubjects.map((s) => s.id), mentions, homeDate), homeDate)));
 
