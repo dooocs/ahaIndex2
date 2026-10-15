@@ -348,13 +348,25 @@ async function init() {
         if (!value) continue;
         const fact = node('div', ''); fact.append(node('dt', label), node('dd', value)); facts.append(fact);
       }
-      detail.append(node('p', `NO. ${String(post.id).padStart(3, '0')} · ${new Date(post.created_at).toLocaleDateString('zh-CN')}`, 'post-meta'), node('h1', post.title), facts, node('h2', '关于我'), node('p', post.about, 'post-body'));
+      const heading = (text: string, label: string) => { const h2 = node('h2', text); h2.append(node('small', label)); return h2; };
+      const meta = node('p', '', 'post-meta');
+      meta.append(node('span', `NO. ${String(post.id).padStart(3, '0')}`, 'post-number'), document.createTextNode(`发布 ${new Date(post.created_at).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })}`));
+      detail.append(meta, node('h1', post.title), facts, heading('关于我', 'ABOUT'), node('p', post.about, 'post-body'));
       $('#post-author').textContent = post.nickname;
+      $('#post-avatar').textContent = [...post.nickname][0] || '';
+      $('#poster-section').hidden = false;
       void photos.load([post.id], true).catch(() => { if (!disposed) $('#post-photos').textContent = '照片暂不可用，请刷新重试。'; });
-      if (post.looking_for) detail.append(node('h2', '希望认识的你'), node('p', post.looking_for, 'post-body'));
+      if (post.looking_for) detail.append(heading('希望认识的你', 'WANTED'), node('p', post.looking_for, 'post-body'));
       if (post.contact) {
-        $('#post-contact').textContent = post.contact;
+        const contact = post.contact;
+        $('#post-contact').textContent = contact;
         $('#contact-section').hidden = false;
+        const copy = $<HTMLButtonElement>('#copy-contact');
+        if (!navigator.clipboard) copy.hidden = true;
+        copy.addEventListener('click', () => {
+          void navigator.clipboard.writeText(contact).then(() => { copy.textContent = '已复制'; }, () => { copy.textContent = '复制失败'; });
+          window.setTimeout(() => { if (!disposed) copy.textContent = '复制'; }, 2000);
+        });
       }
       const report = $('#report-post');
       report.hidden = false;

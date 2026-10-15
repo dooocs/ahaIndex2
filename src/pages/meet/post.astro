@@ -6,8 +6,10 @@ import CommunityLayout from '../../layouts/CommunityLayout.astro';
     <a href="/meet" class="community-back" data-astro-reload>返回相亲广场</a>
     <p id="community-message" role="status" aria-live="polite" class="community-message">正在加载帖子…</p>
     <div id="post-detail"></div>
-    <div id="contact-section" hidden><h2>联系方式</h2><p id="post-contact"></p></div>
-    <p class="community-note" id="report-post" hidden>遇到冒用或不当内容？<a href="mailto:hi@amazingindex.com">联系站点举报</a></p>
-    </div><aside class="community-side"><section><h2>发帖人 / POSTER</h2><p id="post-author" class="community-note"></p></section><section><h2>照片 / PHOTO</h2><div id="post-photos"></div></section><section><h2>安全提示 / SAFETY</h2><div class="community-note community-aside-note"><ol><li>首次见面请选择公共场所，并告知朋友行程。</li><li>不转账，不借钱，不轻信投资推荐。</li><li>遇到不当内容，请联系站点举报。</li></ol></div></section></aside>
+    <section id="contact-section" class="contact-box" hidden>
+      <h2>联系方式 <small>CONTACT</small></h2>
+      <div class="contact-row"><p id="post-contact"></p><button type="button" id="copy-contact" class="community-button secondary">复制</button></div>
+    </section>
+    </div><aside class="community-side"><section id="poster-section" hidden><h2>发帖人 / POSTER</h2><div class="poster"><span id="post-avatar" class="poster-avatar" aria-hidden="true"></span><p id="post-author" class="poster-name"></p></div></section><section><h2>照片 / PHOTO</h2><div id="post-photos"></div></section><section><h2>安全提示 / SAFETY</h2><div class="community-note community-aside-note"><ol><li>首次见面请选择公共场所，并告知朋友行程。</li><li>不转账，不借钱，不轻信投资推荐。</li><li>对方急于把你拉到其他平台，请多留心。</li></ol></div><p class="community-note side-links" id="report-post" hidden><a href="mailto:hi@amazingindex.com">举报此帖</a></p></section></aside>
   </article>
 </CommunityLayout>
