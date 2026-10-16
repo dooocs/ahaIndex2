@@ -39,13 +39,16 @@ BUILD_MODE=$(node -p "require('./$WORK/plan.json').mode")
 BUILD_DATES=$(node -p "require('./$WORK/plan.json').dates.join(',')")
 export BUILD_MODE BUILD_DATES
 
-# 3. Daily: the published files the export merges the new editions into. A
-#    file that cannot be fetched is recomputed from the database instead.
+# 3. Daily: the published files the export merges the new editions into, and
+#    every month file (each month's archive page is rendered from it). A file
+#    that cannot be fetched is recomputed from the database instead.
 if [[ "$BUILD_MODE" == daily ]]; then
   previous_files=$(node -e '
     const dates = process.env.BUILD_DATES.split(",");
     const files = ["data/summary.json", "data/archive/index.json"];
-    for (const m of new Set(dates.map((d) => d.slice(0, 7)))) files.push(`data/archive/${m}.json`);
+    // Every month file: the built months are merged into, the others render their /daily/<YYYY-MM> page.
+    const published = Object.keys(require("./'"$WORK"'/remote.json").objects).filter((k) => /^data\/archive\/\d{4}-\d{2}\.json$/.test(k)).map((k) => k.slice(13, 20));
+    for (const m of new Set([...dates.map((d) => d.slice(0, 7)), ...published])) files.push(`data/archive/${m}.json`);
     for (const y of new Set(dates.map((d) => d.slice(0, 4)))) files.push(`sitemap-articles-${y}.xml`);
     console.log(files.join(" "));')
   for rel in $previous_files; do

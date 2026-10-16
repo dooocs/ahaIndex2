@@ -1,7 +1,11 @@
 ---
-// Template for /daily/<YYYY-MM>. Not published itself: the export script
-// copies it to each month's URL with that month's title, description and
-// canonical URL, and the browser renders /data/archive/<YYYY-MM>.json.
+// Template for /daily/<YYYY-MM>. Not published itself: on every run (daily
+// and full) the export script writes it to each month's URL with that month's
+// title, description and canonical URL, and with the weeks, editions and
+// statistics filled in from the month's archive data (fillSlots in
+// src/lib/site-export.ts). Each data-ssr-slot element's default content is
+// what the dev server shows until src/scripts/archive-pages.ts renders it; it
+// must not contain an element of the slot's own tag.
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import Masthead from '../../components/Masthead.astro';
 import Footer from '../../components/Footer.astro';
@@ -20,29 +24,30 @@ import { SHELL_TOKENS } from '../../lib/site-export';
     <div class="layout">
       <div class="main-col">
         <div class="breadcrumb">
-          <a href="/" data-astro-reload>首页</a><span class="sep">/</span><a href="/daily">历史归档</a><span class="sep">/</span><span data-month-crumb></span>
+          <a href="/" data-astro-reload>首页</a><span class="sep">/</span><a href="/daily">历史归档</a><span class="sep">/</span><span data-month-crumb data-ssr-slot="month-crumb"></span>
         </div>
 
         <div class="page-header">
-          <h1 data-month-title>&nbsp;</h1>
+          <h1 data-month-title data-ssr-slot="month-title">&nbsp;</h1>
           <div class="sub">按周浏览 · <a href="/daily" class="month-back-year">返回年度视图</a></div>
         </div>
 
         <div>
           <div class="month-detail-header">
             <h2>本月概览</h2>
-            <span class="cnt" data-month-count></span>
+            <span class="cnt" data-month-count data-ssr-slot="month-count"></span>
           </div>
-          <div data-weeks>
-            <div class="loading-state" data-loading>正在加载本月归档…</div>
+          <div data-weeks data-ssr-slot="weeks">
+            <p class="loading-state" data-loading>正在加载本月归档…</p>
           </div>
+          <nav class="month-nav" aria-label="按月翻页" data-month-nav data-ssr-slot="month-nav"></nav>
         </div>
       </div>
 
       <div class="side-col">
         <div class="side-section">
           <div class="side-title">全局统计</div>
-          <div class="side-stats" data-global-stats></div>
+          <div class="side-stats" data-global-stats data-ssr-slot="global-stats"></div>
         </div>
 
         <div class="side-section">

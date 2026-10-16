@@ -28,7 +28,8 @@ function devSiteData() {
           }
           return;
         }
-        if (/^\/daily\/\d{4}-\d{2}\/?$/.test(url.pathname)) req.url = '/shell/daily-month/';
+        if (/^\/daily\/?$/.test(url.pathname)) req.url = `/shell/daily-year/${url.search}`;
+        else if (/^\/daily\/\d{4}-\d{2}\/?$/.test(url.pathname)) req.url = '/shell/daily-month/';
         else if (/^\/subjects\/[^/]+\/?$/.test(url.pathname)) req.url = '/shell/subject/';
         next();
       });

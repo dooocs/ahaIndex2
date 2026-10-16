@@ -28,7 +28,8 @@ async function fixture(t, mode = 'daily') {
   await d('index.html', '<div class="masthead-vol">VOL. 2026.10<br>2026.10.07</div><a class="article" href="/article/a">A</a>');
   await d('article/a/index.html');
   await d(`daily/${DATE}/index.html`);
-  for (const page of ['about', 'contact', 'history', 'privacy', 'terms', 'daily', 'subjects']) await d(`${page}/index.html`);
+  for (const page of ['about', 'contact', 'history', 'privacy', 'terms', 'subjects']) await d(`${page}/index.html`);
+  await d('shell/daily-year/index.html', SHELL);
   await d('shell/daily-month/index.html', SHELL);
   await d('shell/subject/index.html', SHELL);
   if (mode === 'full') await d('projects/example/index.html');
@@ -39,7 +40,8 @@ async function fixture(t, mode = 'daily') {
   await e('rss.xml', `<rss><channel><lastBuildDate>Wed, 07 Oct 2026 00:00:00 GMT</lastBuildDate><item><link>${SITE}/article/a</link></item></channel></rss>`);
   for (const file of ['history.json', 'subjects/s.json']) await e(`data/${file}`, data());
   await e('data/subjects/index.json', data({ sections: [{ subjects: [{ slug: 's' }] }] }));
-  await e('daily/2026-10/index.html', '<title>October</title>');
+  await e('daily/index.html', '<title>Archive</title><a href="/daily/2026-10">十月</a>');
+  await e('daily/2026-10/index.html', `<title>October</title><a href="/daily/${DATE}">10.07</a><a href="/daily/${OLD}">10.06</a>`);
   await e('subjects/s/index.html', '<title>S</title>');
   await e('sitemap.xml', `<sitemapindex><sitemap><loc>${SITE}/sitemap-pages.xml</loc></sitemap><sitemap><loc>${SITE}/sitemap-articles-2026.xml</loc></sitemap><sitemap><loc>${SITE}/sitemap-articles-2025.xml</loc></sitemap></sitemapindex>`);
   await e('sitemap-pages.xml', urlset([['/'], ['/about'], ['/daily'], ['/daily/2026-10'], [`/daily/${OLD}`, OLD], [`/daily/${DATE}`, DATE], ['/subjects/s']]));
@@ -52,6 +54,17 @@ test('accepts a daily build whose export only references deployed pages', async 
   const { dist, exportDir, inventory } = await fixture(t);
   assert.deepEqual(await verifyDist(dist, { latestDate: DATE, mode: 'daily', dates: [DATE] }), { mode: 'daily', latestDate: DATE, articles: 1, projects: 0 });
   assert.deepEqual(await verifyExport(exportDir, dist, { latestDate: DATE, inventory }), { latestDate: DATE, published: 2, rssItems: 1, sitemapUrls: 9, builtArticles: 1 });
+});
+
+test('rejects archive pages exported without their content or links', async (t) => {
+  const { dist, exportDir, e, inventory } = await fixture(t);
+  await e('daily/index.html', '<title>Archive</title><a href="/daily/2026-10">十月</a><p class="loading-state" data-loading>正在加载归档…</p>');
+  await assert.rejects(verifyExport(exportDir, dist, { latestDate: DATE, inventory }), /daily\/index.html was exported without its content/);
+  await e('daily/index.html', '<title>Archive</title>');
+  await assert.rejects(verifyExport(exportDir, dist, { latestDate: DATE, inventory }), /\/daily does not link 2026-10/);
+  await e('daily/index.html', '<title>Archive</title><a href="/daily/2026-10">十月</a>');
+  await e('daily/2026-10/index.html', `<title>October</title><a href="/daily/${DATE}">10.07</a>`);
+  await assert.rejects(verifyExport(exportDir, dist, { latestDate: DATE, inventory }), /does not link the edition 2026-10-06/);
 });
 
 test('a full build must include project pages', async (t) => {
