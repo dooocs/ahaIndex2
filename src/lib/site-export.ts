@@ -298,6 +298,32 @@ export function fillShell(html: string, meta: ShellMeta): string {
     .replaceAll(SHELL_TOKENS.path, escapeHtml(meta.path));
 }
 
+/**
+ * Replaces the content of each `data-ssr-slot="<name>"` element with the given
+ * HTML. A slot's default content (what the template shows before rendering)
+ * must not contain an element of the slot's own tag: the content ends at the
+ * first closing tag of that name. Every slot must occur exactly once.
+ */
+export function fillSlots(html: string, slots: Record<string, string>): string {
+  let out = html;
+  for (const [name, content] of Object.entries(slots)) {
+    if (!/^[a-z][a-z0-9-]*$/.test(name)) throw new Error(`Invalid slot name ${name}`);
+    const pattern = new RegExp(`(<([a-z][a-z0-9]*)\\b[^>]*\\sdata-ssr-slot="${name}"[^>]*>)[\\s\\S]*?(</\\2>)`, 'g');
+    const matches = out.match(pattern)?.length ?? 0;
+    if (matches !== 1) throw new Error(`Shell page has ${matches} slot(s) named ${name}, expected 1`);
+    out = out.replace(pattern, (_match, open: string, _tag: string, close: string) => `${open}${content}${close}`);
+  }
+  return out;
+}
+
+export function yearShellMeta(): ShellMeta {
+  return {
+    path: '/daily',
+    title: '历史归档 | AmazingIndex',
+    description: '深入探索 AmazingIndex 过去 AI 行业动态的综合数据库，经过评分和分类，方便您发现。',
+  };
+}
+
 export function monthShellMeta(month: string): ShellMeta {
   const year = month.slice(0, 4);
   const name = MONTH_NAMES[Number(month.slice(5, 7)) - 1];

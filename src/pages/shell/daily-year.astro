@@ -1,27 +1,30 @@
 ---
+// Template for /daily. Not published itself: the export script writes it to
+// /daily/index.html on every run (daily and full), with the year rail, month
+// grid, month index and statistics filled in from the published archive data
+// (fillSlots in src/lib/site-export.ts). Each data-ssr-slot element's default
+// content is what the dev server shows until src/scripts/archive-pages.ts
+// renders it; it must not contain an element of the slot's own tag.
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import Masthead from '../../components/Masthead.astro';
 import Footer from '../../components/Footer.astro';
-
-// Static shell: the months and statistics are rendered in the browser from
-// /data/archive/index.json, which the export script refreshes after each deploy.
-const pageTitle = '历史归档 | AmazingIndex';
-const pageDesc = '深入探索 AmazingIndex 过去 AI 行业动态的综合数据库，经过评分和分类，方便您发现。';
+import { SITE_URL } from '../../lib/site';
+import { SHELL_TOKENS } from '../../lib/site-export';
 ---
 
 <BaseLayout
-  title={pageTitle}
-  description={pageDesc}
-  canonicalUrl="https://www.amazingindex.com/daily"
-  ogTitle={pageTitle}
-  ogDescription={pageDesc}
-  ogUrl="https://www.amazingindex.com/daily"
+  title={SHELL_TOKENS.title}
+  description={SHELL_TOKENS.description}
+  canonicalUrl={`${SITE_URL}${SHELL_TOKENS.path}`}
+  ogTitle={SHELL_TOKENS.title}
+  ogDescription={SHELL_TOKENS.description}
+  ogUrl={`${SITE_URL}${SHELL_TOKENS.path}`}
   jsonLd={{
     "@context": "https://schema.org",
     "@type": "CollectionPage",
-    "name": pageTitle,
-    "description": pageDesc,
-    "url": "https://www.amazingindex.com/daily"
+    "name": SHELL_TOKENS.title,
+    "description": SHELL_TOKENS.description,
+    "url": `${SITE_URL}${SHELL_TOKENS.path}`
   }}
 >
   <div class="archive-page" data-archive-year>
@@ -37,22 +40,27 @@ const pageDesc = '深入探索 AmazingIndex 过去 AI 行业动态的综合数�
           <h1>历史归档</h1>
         </div>
 
-        <div class="archive-year-rail" data-year-rail></div>
+        <div class="archive-year-rail" data-year-rail data-ssr-slot="year-rail"></div>
 
-        <div class="month-grid" data-month-grid>
-          <div class="loading-state" data-loading>正在加载归档…</div>
+        <div class="month-grid" data-month-grid data-ssr-slot="month-grid">
+          <p class="loading-state" data-loading>正在加载归档…</p>
         </div>
+
+        <section class="month-index">
+          <h2 class="month-index-title">全部月份</h2>
+          <div class="month-index-list" data-month-index data-ssr-slot="month-index"></div>
+        </section>
       </div>
 
       <div class="side-col">
         <div class="side-section">
           <div class="side-title">全局统计</div>
-          <div class="side-stats" data-global-stats></div>
+          <div class="side-stats" data-global-stats data-ssr-slot="global-stats"></div>
         </div>
 
         <div class="side-section">
           <div class="side-title">分数分布</div>
-          <div data-distribution></div>
+          <div data-distribution data-ssr-slot="distribution"></div>
         </div>
 
         <div class="side-section">

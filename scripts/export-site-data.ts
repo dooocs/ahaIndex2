@@ -2,7 +2,8 @@
 //   data/*.json        archive, history, subject and sidebar data for client-rendered pages
 //   sitemap*.xml       database data, limited to pages that are deployed
 //   rss.xml            the homepage's edition
-//   daily/<YYYY-MM>/, subjects/<slug>/   per-URL copies of the built shell pages
+//   daily/, daily/<YYYY-MM>/   the archive pages, rendered from the archive data
+//   subjects/<slug>/   per-URL copies of the built subject shell
 //
 // node --experimental-strip-types scripts/export-site-data.ts --dist dist --out export \
 //   --mode daily|full --inventory .deploy/remote.json [--previous .deploy/previous]
@@ -55,6 +56,7 @@ import {
   assertStillDeployed,
   editionKey,
   fillShell,
+  fillSlots,
   historyJson,
   monthShellMeta,
   parseDataFile,
@@ -65,7 +67,20 @@ import {
   type ArchiveIndexJson,
   type ArchiveMonthJson,
   type SummaryJson,
+  yearShellMeta,
 } from '../src/lib/site-export.ts';
+import {
+  esc,
+  monthLabel,
+  renderDistribution,
+  renderGlobalStats,
+  renderMonthCount,
+  renderMonthGrid,
+  renderMonthIndex,
+  renderMonthNav,
+  renderMonthWeeks,
+  renderYearRail,
+} from '../src/lib/archive-render.ts';
 import type { MonthlyArchive } from '../src/lib/types.ts';
 import { readInventory } from './lib/inventory.mjs';
 
@@ -251,10 +266,54 @@ for (const subject of publicSubjects) {
   await write(`subjects/${subject.slug}/index.html`, fillShell(subjectShell, subjectShellMeta(subject)));
 }
 
-// ─── Archive month pages (unchanged copies are not uploaded again) ──
+// ─── Archive pages, rendered into the HTML ──────────
+// /daily and every /daily/<YYYY-MM> are written on every run, daily and full,
+// with their content in the page (crawlers and readers without JavaScript see
+// the links). Unchanged copies are not uploaded again. A daily run renders
+// the months it did not touch from their published files (run-deploy.sh
+// fetches every month file into --previous); a month file it cannot read is
+// recomputed from the database and published again.
+const publishedMonths = [...new Set(summary.editions.map((e) => e.date.slice(0, 7)))].sort(byNewest);
+const latest = summary.latest_date!;
+const now = { year: Number(latest.slice(0, 4)), month: Number(latest.slice(5, 7)) };
+const archiveIndex = archiveIndexJson(monthSummaries, summary);
+const globalStatsHtml = renderGlobalStats(summary.stats);
+
+async function monthData(month: string): Promise<ArchiveMonthJson> {
+  if (monthsToWrite.includes(month)) return archiveMonthJson(month, records.filter((r) => r.date.startsWith(month)));
+  const published = parseDataFile<ArchiveMonthJson>(await previous(`data/archive/${month}.json`), `archive/${month}.json`);
+  if (published) return published;
+  log(`archive/${month}.json not fetched: recomputing it from the database`);
+  const dates = summary.editions.filter((e) => e.date.startsWith(month)).map((e) => e.date);
+  const recomputed = archiveMonthJson(month, indexToRecords(await q.getScoreRowsForDates(db, dates)));
+  await write(`data/archive/${month}.json`, json(recomputed));
+  return recomputed;
+}
+
 const monthShell = await readFile(path.join(dist, 'shell/daily-month/index.html'), 'utf8');
-const publishedMonths = [...new Set(summary.editions.map((e) => e.date.slice(0, 7)))];
-for (const month of publishedMonths) await write(`daily/${month}/index.html`, fillShell(monthShell, monthShellMeta(month)));
+for (const month of publishedMonths) {
+  const data = await monthData(month);
+  const label = monthLabel(month);
+  await write(`daily/${month}/index.html`, fillSlots(fillShell(monthShell, monthShellMeta(month)), {
+    'month-crumb': esc(label),
+    'month-title': esc(label),
+    'month-count': renderMonthCount(data),
+    weeks: renderMonthWeeks(data),
+    'month-nav': renderMonthNav(month, publishedMonths),
+    'global-stats': globalStatsHtml,
+  }));
+}
+
+const yearShell = await readFile(path.join(dist, 'shell/daily-year/index.html'), 'utf8');
+const newestYear = archiveIndex.years[0];
+await write('daily/index.html', fillSlots(fillShell(yearShell, yearShellMeta()), {
+  'year-rail': renderYearRail(archiveIndex.years.map((y) => y.year), newestYear.year),
+  'month-grid': renderMonthGrid(newestYear.year, newestYear.months, now),
+  'month-index': renderMonthIndex(archiveIndex.years.flatMap((y) => y.months)),
+  'global-stats': globalStatsHtml,
+  distribution: renderDistribution(newestYear.months),
+}));
+log(`archive pages: /daily and ${publishedMonths.length} month page(s) rendered`);
 
 // ─── Sitemaps ───────────────────────────────────────
 const publishedDates = summary.editions.map((e) => e.date);

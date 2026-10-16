@@ -234,6 +234,71 @@
   opacity: 0.7;
 }
 
+/* /daily: every month with editions, as plain links. */
+.archive-page .month-index {
+  margin-top: 32px;
+  padding-top: 16px;
+  border-top: 1px solid var(--rule);
+}
+.archive-page .month-index-title {
+  font-family: var(--fs);
+  font-size: 16px;
+  font-weight: 900;
+  margin: 0 0 12px;
+}
+.archive-page .month-index-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px 16px;
+}
+.archive-page .month-index-link {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 0;
+  border-bottom: 1px dotted var(--rule);
+  font-size: 13px;
+  color: inherit;
+  text-decoration: none;
+}
+.archive-page .month-index-link:hover {
+  color: var(--accent);
+}
+.archive-page .month-index-link .mil-count {
+  font-family: var(--fm);
+  font-size: 10px;
+  color: var(--ink3);
+  white-space: nowrap;
+}
+
+/* /daily/<YYYY-MM>: 上个月 / 下个月. */
+.archive-page .month-nav {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--rule);
+}
+.archive-page .month-nav-link {
+  font-family: var(--fm);
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  color: var(--accent);
+  text-decoration: none;
+}
+.archive-page .month-nav-link:hover {
+  opacity: 0.7;
+}
+.archive-page .day-head .dh-date-link {
+  color: inherit;
+  text-decoration: none;
+}
+.archive-page .day-head .dh-date-link:hover {
+  color: var(--accent);
+}
+
 .archive-page .month-summary {
   font-family: var(--fs);
   font-size: 13px;

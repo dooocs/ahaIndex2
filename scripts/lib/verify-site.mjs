@@ -81,7 +81,7 @@ export async function verifyDist(dist, { latestDate, mode, dates = [], inventory
       assert.ok(inventory.has(key) || await isFile(path.join(dist, key)), `${page} links 上一期 to a page that is not deployed: ${attr(link, 'href')}`);
     }
   }
-  for (const shell of ['shell/daily-month/index.html', 'shell/subject/index.html']) {
+  for (const shell of ['shell/daily-year/index.html', 'shell/daily-month/index.html', 'shell/subject/index.html']) {
     const html = await readFile(path.join(dist, shell), 'utf8');
     for (const token of SHELL_TOKENS) assert.ok(html.includes(token), `${shell} is missing ${token}`);
   }
@@ -191,6 +191,27 @@ export async function verifyExport(exportDir, dist, { latestDate, inventory = ne
     for (const name of await listDirs(path.join(exportDir, dir))) {
       const html = await readFile(path.join(exportDir, dir, name, 'index.html'), 'utf8');
       for (const token of SHELL_TOKENS) assert.ok(!html.includes(token), `${dir}/${name} still contains ${token}`);
+    }
+  }
+
+  // The archive pages carry their content: /daily links every published
+  // month, each month page links every one of its editions.
+  const months = [...new Set(dates.map((d) => d.slice(0, 7)))];
+  const archivePage = async (rel) => {
+    const file = path.join(exportDir, rel);
+    assert.ok(await isFile(file), `Archive page was not exported: ${rel}`);
+    const html = await readFile(file, 'utf8');
+    for (const token of SHELL_TOKENS) assert.ok(!html.includes(token), `${rel} still contains ${token}`);
+    const nodes = [...elements(parse(html))];
+    assert.ok(!nodes.some((node) => node.attrs?.some((a) => a.name === 'data-loading')), `${rel} was exported without its content`);
+    return new Set(nodes.filter((node) => node.tagName === 'a').map((node) => attr(node, 'href')));
+  };
+  const yearLinks = await archivePage('daily/index.html');
+  for (const month of months) assert.ok(yearLinks.has(`/daily/${month}`), `/daily does not link ${month}`);
+  for (const month of months) {
+    const links = await archivePage(`daily/${month}/index.html`);
+    for (const date of dates.filter((d) => d.startsWith(month))) {
+      assert.ok(links.has(`/daily/${date}`), `/daily/${month} does not link the edition ${date}`);
     }
   }
   return { latestDate, published: dates.length, rssItems: feedLinks.length, sitemapUrls: entries.length, builtArticles: builtArticles.length };

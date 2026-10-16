@@ -78,7 +78,8 @@ resolves (checked by rehearsing the first run on a bucket deployed by the
 previous code). What they lack until one manual full build: 上一期/下一期
 navigation, and a sidebar (calendar, 7-edition chart, edition count) that
 follows the live data instead of the build they came from. The archive,
-month, subject, history and static pages are replaced by the first daily run.
+month, subject, history and static pages are replaced by the first daily run
+(the archive and month pages with their content rendered in).
 
 Both workflows share one concurrency group, so deploys never overlap. GitHub
 keeps one waiting run per group: a trigger that arrives while one run is in
@@ -89,14 +90,27 @@ full build if a daily run displaced it.
 
 - **Astro (SSG):** `/`, `/daily/<date>`, `/article/<pid>`, project pages,
   static pages.
-- **Shells + data:** `/daily`, `/daily/<YYYY-MM>`, `/history`, `/subjects`,
-  `/subjects/<slug>`, the sidebar calendar/chart and 下一期 on edition pages
-  are rendered in the browser from `/data/*.json` (`src/scripts/*-pages.ts`,
-  `src/scripts/sidebar.ts`). The browser never reads the database.
+- **Export-rendered archive:** `/daily` and every `/daily/<YYYY-MM>` are
+  written by the export on every run, daily and full, from the shell
+  templates `src/pages/shell/daily-year.astro` and `daily-month.astro` with
+  their content already in the HTML (`fillSlots` fills each
+  `data-ssr-slot` element with markup from `src/lib/archive-render.ts`).
+  Crawlers and readers without JavaScript get every month and edition link.
+  A daily run renders the months it did not build from their published
+  month files, which `run-deploy.sh` fetches; a month file it cannot fetch is
+  recomputed from the database and published again. Unchanged pages are not
+  uploaded. `verify-site.mjs` fails the run if `/daily` misses a month or a
+  month page misses one of its editions. In the browser,
+  `src/scripts/archive-pages.ts` only renders when a page still shows its
+  loading state (the dev server) or another year is asked for (`?year=`).
+- **Shells + data:** `/history`, `/subjects`, `/subjects/<slug>`, the sidebar
+  calendar/chart and 下一期 on edition pages are rendered in the browser from
+  `/data/*.json` (`src/scripts/*-pages.ts`, `src/scripts/sidebar.ts`). The
+  browser never reads the database.
 - **Export (`scripts/export-site-data.ts`):** `data/*.json`, `sitemap*.xml`,
-  `rss.xml`, and per-URL copies of the shell templates in `src/pages/shell/`
-  (each month and subject URL is a real object with its own title,
-  description and canonical URL).
+  `rss.xml`, the archive pages above, and per-URL copies of the subject shell
+  (each subject URL is a real object with its own title, description and
+  canonical URL).
 
 ### Local development
 
