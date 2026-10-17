@@ -1,5 +1,5 @@
 // 动态 (/feed): original X posts of the bloggers Octopus follows, with their
-// Chinese translation, from the last 24 hours. Octopus writes
+// Chinese translation, from the 24 hours up to the newest post. Octopus writes
 // proc_feed_posts hourly (collect → translate); this module reads it at build
 // time and turns it into author cards. Pure functions apart from getFeedPosts,
 // so tests/feed.test.mjs covers grouping and text rendering.
@@ -44,9 +44,19 @@ export interface FeedAuthor {
 
 const COLUMNS = 'id,author,display_name,avatar_url,published_at,updated_at,url,text_original,text_zh,media';
 
-/** Posts updated in the FEED_WINDOW_HOURS before `now`, newest first. Throws on a database error. */
-export async function getFeedPosts(db: SupabaseClient, now: Date): Promise<FeedPost[]> {
-  const since = new Date(now.getTime() - FEED_WINDOW_HOURS * 3600_000).toISOString();
+/**
+ * Posts updated in the FEED_WINDOW_HOURS up to the newest post, newest first.
+ * The window ends at the newest post, not at build time, so the page depends
+ * on the data alone: an hourly rebuild with nothing new is byte-identical and
+ * uploads nothing, and the nightly pause in collection does not empty it.
+ * Throws on a database error.
+ */
+export async function getFeedPosts(db: SupabaseClient): Promise<FeedPost[]> {
+  const newest = await db.from('proc_feed_posts').select('updated_at').order('updated_at', { ascending: false }).limit(1);
+  if (newest.error) throw new Error(`Failed to read proc_feed_posts: ${newest.error.message}`);
+  const end = newest.data?.[0]?.updated_at;
+  if (!end) return [];
+  const since = new Date(new Date(end).getTime() - FEED_WINDOW_HOURS * 3600_000).toISOString();
   const { data, error } = await db
     .from('proc_feed_posts')
     .select(COLUMNS)

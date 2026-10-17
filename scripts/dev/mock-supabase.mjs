@@ -162,8 +162,10 @@ export function buildFixture() {
     });
   }
 
-  // 动态: timestamps relative to now, so the 24-hour window always has posts.
-  const hoursAgo = (h) => new Date(Date.now() - h * 3600_000).toISOString();
+  // 动态: fixed timestamps (the page's window ends at the newest post), so
+  // repeated builds render the same /feed.
+  const feedEnd = Date.parse(`${dates.at(-1)}T12:00:00Z`);
+  const hoursAgo = (h) => new Date(feedEnd - h * 3600_000).toISOString();
   const media = (name, type = 'photo', width = 1200, height = 800) => ({ type, url: `https://www.amazingindex.com/media/x/mock-${name}.jpg`, width, height });
   const avatar = (handle) => `https://www.amazingindex.com/media/x/avatars/mock-${handle}.jpg`;
   const feedPosts = [

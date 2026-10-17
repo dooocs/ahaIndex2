@@ -28,8 +28,8 @@ const db = () => getSupabase();
 
 // ─── 动态 ───────────────────────────────────────────
 
-/** The last 24 hours of the feed as of build time. */
-export const getFeed = () => memo('feed', () => getFeedPosts(db(), new Date()));
+/** The 24 hours of the feed up to its newest post. */
+export const getFeed = () => memo('feed', () => getFeedPosts(db()));
 
 // ─── Daily editions ─────────────────────────────────
 

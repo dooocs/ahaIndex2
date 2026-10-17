@@ -12,9 +12,10 @@ import { FEED_PATH, FEED_WINDOW_HOURS, beijingTime, groupByAuthor, renderPostTex
 import { SITE_URL, siteTitle } from '../lib/site';
 import '../styles/feed.css';
 
-const builtAt = new Date().toISOString();
 const posts = await getFeed();
 const authors = groupByAuthor(posts);
+// The newest post, not the build time: the page changes only when the data does.
+const latestAt = authors[0]?.latest_at;
 
 const pageTitle = siteTitle('动态 · AI 博主 24 小时');
 const pageDesc = `AI 圈 ${authors.length || ''} 位博主最近 ${FEED_WINDOW_HOURS} 小时在 X 上的原创动态，原文与中文翻译对照，每小时更新。`;
@@ -30,9 +31,9 @@ const initial = (name: string) => Array.from(name.trim())[0]?.toUpperCase() ?? '
     <header class="feed-head">
       <div class="feed-kicker">Feed · 最近 {FEED_WINDOW_HOURS} 小时</div>
       <h1>动态</h1>
-      <p class="feed-intro">AI 圈博主在 X 上的原创帖子，原文在上、中文翻译在下。每小时更新，只保留最近 {FEED_WINDOW_HOURS} 小时。</p>
+      <p class="feed-intro">AI 圈博主在 X 上的原创帖子，原文在上、中文翻译在下。每小时更新，只看最近 {FEED_WINDOW_HOURS} 小时。</p>
       <div class="feed-meta">
-        <span>更新于 <time datetime={builtAt}>{beijingTime(builtAt)}</time>（北京时间）</span>
+        {latestAt && <span>最新 <time datetime={latestAt}>{beijingTime(latestAt)}</time>（北京时间）</span>}
         <span>{authors.length} 位博主</span>
         <span>{posts.length} 条</span>
       </div>

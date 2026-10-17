@@ -62,22 +62,28 @@ test('times are shown in Beijing time', () => {
   assert.equal(beijingTime('2026-10-17T04:24:47Z'), '10-17 12:24');
 });
 
-test('the query reads the last 24 hours, newest first, and fails loudly', async () => {
+test('the query reads the 24 hours up to the newest post, newest first, and fails loudly', async () => {
   const calls = [];
-  const db = (result) => ({
+  // results: one per query, in order (the newest post, then the window).
+  const db = (...results) => ({
     from(table) {
       const q = {
-        select(cols) { calls.push(['from', table, cols]); return q; },
+        select(cols) { calls.push(['select', cols]); return q; },
         gte(col, value) { calls.push(['gte', col, value]); return q; },
         order(col, opts) { calls.push(['order', col, opts.ascending]); return q; },
-        limit(n) { calls.push(['limit', n]); return Promise.resolve(result); },
+        limit(n) { calls.push(['limit', n]); return Promise.resolve(results.shift()); },
       };
       return q;
     },
   });
-  const now = new Date('2026-10-17T10:00:00Z');
-  const rows = await getFeedPosts(db({ data: [{ id: 'a', author: 'sama', updated_at: '2026-10-17T09:00:00Z' }], error: null }), now);
+  const rows = await getFeedPosts(db(
+    { data: [{ updated_at: '2026-10-17T09:00:00+00:00' }], error: null },
+    { data: [{ id: 'a', author: 'sama', updated_at: '2026-10-17T09:00:00+00:00' }], error: null },
+  ));
   assert.equal(rows[0].display_name, 'sama');
-  assert.deepEqual(calls.slice(1, 3), [['gte', 'updated_at', '2026-10-16T10:00:00.000Z'], ['order', 'updated_at', false]]);
-  await assert.rejects(getFeedPosts(db({ data: null, error: { message: 'permission denied' } }), now), /proc_feed_posts: permission denied/);
+  assert.deepEqual(calls.filter((c) => c[0] === 'gte'), [['gte', 'updated_at', '2026-10-16T09:00:00.000Z']]);
+  calls.length = 0;
+  assert.deepEqual(await getFeedPosts(db({ data: [], error: null })), [], 'an empty table needs no second query');
+  assert.equal(calls.filter((c) => c[0] === 'gte').length, 0);
+  await assert.rejects(getFeedPosts(db({ data: null, error: { message: 'permission denied' } })), /proc_feed_posts: permission denied/);
 });
