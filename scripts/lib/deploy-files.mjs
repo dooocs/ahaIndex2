@@ -7,6 +7,8 @@
 // daily: uploads only files whose content is not already on OSS (by MD5), and
 //        refreshes only their URLs. Nothing on OSS is deleted.
 // full:  uploads everything (a repair), refreshes the whole site.
+// feed:  the hourly 动态 deploy: like daily, but only /feed and the _astro
+//        assets it may need (new hashes only).
 //
 // Writes under --out:
 //   stage/{astro,html,json,xml,other}/   files to upload, by Cache-Control class
@@ -53,8 +55,11 @@ export function uploadClass(rel) {
  */
 export function selectPages(distFiles, mode) {
   const pages = distFiles.filter((rel) => !rel.startsWith('shell/'));
+  if (mode === 'feed') return pages.filter((rel) => rel === FEED_PAGE || rel.startsWith('_astro/'));
   return mode === 'full' ? pages : pages.filter((rel) => !rel.startsWith('projects/'));
 }
+
+export const FEED_PAGE = 'feed/index.html';
 
 /** The URL forms of an object: a directory index is served with and without its slash. */
 export function urlsFor(rel) {
@@ -90,7 +95,7 @@ export function diffAgainstRemote(files, remote, mode) {
 }
 
 export async function planDeploy({ dist, exportDir, mode, dates, remote }) {
-  if (mode !== 'daily' && mode !== 'full') throw new Error(`Unknown deploy mode ${mode}`);
+  if (mode !== 'daily' && mode !== 'full' && mode !== 'feed') throw new Error(`Unknown deploy mode ${mode}`);
   for (const d of dates) if (!DATE.test(d)) throw new Error(`Invalid date ${d}`);
   if (mode === 'daily' && dates.length === 0) throw new Error('A daily deploy needs its edition dates');
   const pages = selectPages(await listFiles(dist), mode);
@@ -98,6 +103,7 @@ export async function planDeploy({ dist, exportDir, mode, dates, remote }) {
     const missing = ['index.html', ...dates.map((d) => `daily/${d}/index.html`)].filter((rel) => !pages.includes(rel));
     if (missing.length > 0) throw new Error(`Daily deploy is missing built pages: ${missing.join(', ')}`);
   }
+  if (mode === 'feed' && !pages.includes(FEED_PAGE)) throw new Error(`Feed deploy is missing ${FEED_PAGE}`);
   const exported = await listFiles(exportDir);
   const overlap = exported.filter((rel) => pages.includes(rel));
   if (overlap.length > 0) throw new Error(`Built pages and exported files overlap: ${overlap.slice(0, 5).join(', ')}`);
@@ -123,7 +129,7 @@ async function main() {
     },
   });
   const dates = values.dates.split(',').map((d) => d.trim()).filter(Boolean);
-  if (values.mode === 'daily' && !values.inventory) throw new Error('A daily deploy needs --inventory to know what is already on OSS');
+  if (values.mode !== 'full' && !values.inventory) throw new Error(`A ${values.mode} deploy needs --inventory to know what is already on OSS`);
   const remote = values.inventory ? await readInventory(values.inventory) : new Map();
   const plan = await planDeploy({ dist: values.dist, exportDir: values.export, mode: values.mode, dates, remote });
 

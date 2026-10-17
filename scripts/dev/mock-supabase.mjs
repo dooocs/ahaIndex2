@@ -159,7 +159,37 @@ export function buildFixture() {
     });
   }
 
+  // 动态: timestamps relative to now, so the 24-hour window always has posts.
+  const hoursAgo = (h) => new Date(Date.now() - h * 3600_000).toISOString();
+  const media = (name, type = 'photo', width = 1200, height = 800) => ({ type, url: `https://www.amazingindex.com/media/x/mock-${name}.jpg`, width, height });
+  const avatar = (handle) => `https://www.amazingindex.com/media/x/avatars/mock-${handle}.jpg`;
+  const feedPosts = [
+    ['sama', 'Sam Altman', 0.5, 'Shipping a new model today. Details: https://openai.com/index/mock-launch and thanks @gdb!', '今天发布新模型。详情：https://openai.com/index/mock-launch，感谢 @gdb！', [media('sama-1')]],
+    ['karpathy', 'Andrej Karpathy', 2, '1/ A long thread on tokenizers.\n\nFirst, bytes are not characters <b>&</b> that matters.\n\n2/ Second part of the thread.', '1/ 关于分词器的长帖。\n\n首先，字节不是字符 <b>&</b> 这很重要。\n\n2/ 帖子的第二部分。', [media('karpathy-1'), media('karpathy-2')]],
+    ['sama', 'Sam Altman', 5, 'Good morning.', '早上好。', []],
+    ['svpino', 'Santiago', 7, 'A video walkthrough of building an agent.', '一段搭建智能体的视频讲解。', [media('svpino-1', 'video', 1280, 720)]],
+    ['kaifulee', '李开复', 9, '今天聊聊大模型的推理成本 https://example.com/cost', '', []],
+    ['noavatar', 'No Avatar', 12, 'Posting without a profile picture.', '没有头像的博主。', []],
+    ['ylecun', 'Yann LeCun', 30, 'Too old for the window.', '超出窗口。', []],
+  ];
+  const procFeedPosts = feedPosts.map(([handle, name, h, text, zh, list], i) => ({
+    id: `feed-${String(i + 1).padStart(2, '0')}`,
+    raw_item_ids: [`feed-${i + 1}`],
+    author: handle,
+    display_name: name,
+    avatar_url: handle === 'noavatar' ? null : avatar(handle),
+    published_at: hoursAgo(h + 0.1),
+    updated_at: hoursAgo(h),
+    url: `https://x.com/${handle}/status/${1000 + i}`,
+    text_original: text,
+    text_zh: zh,
+    media: list,
+    content_hash: `h${i}`,
+    prompt_version: 2,
+  }));
+
   return {
+    proc_feed_posts: procFeedPosts,
     display_items: displayItems,
     daily_archives: archives,
     tracks,

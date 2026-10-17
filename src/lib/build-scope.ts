@@ -2,14 +2,20 @@
 // site. BUILD_MODE=daily renders the homepage, the editions in BUILD_DATES
 // (comma-separated, from scripts/plan-build.ts) and their articles; pages
 // that are published from the export script or only rebuilt in full mode
-// render nothing.
+// render nothing. BUILD_MODE=feed (the hourly 动态 deploy) is a daily build
+// with no editions: the pages that need no edition list, of which only /feed
+// is uploaded.
 import { readFileSync } from 'node:fs';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const EDITION_KEY = /^daily\/(\d{4}-\d{2}-\d{2})\/index\.html$/;
 
 export function isDailyBuild(): boolean {
-  return process.env.BUILD_MODE === 'daily';
+  return process.env.BUILD_MODE === 'daily' || isFeedBuild();
+}
+
+export function isFeedBuild(): boolean {
+  return process.env.BUILD_MODE === 'feed';
 }
 
 /** Explicit daily edition dates, newest first. Empty = let the build choose. */

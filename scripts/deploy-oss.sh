@@ -7,7 +7,7 @@
 # CLEANUP=delete is asked for on a full run.
 #
 # Environment:
-#   BUILD_MODE      daily | full (required)
+#   BUILD_MODE      daily | full | feed (required; feed = only /feed and its assets)
 #   BUILD_DATES     daily mode: the edition dates that were built (comma-separated)
 #   INVENTORY       bucket listing from scripts/lib/inventory.mjs (default .deploy/remote.json; required for daily)
 #   DEPLOY_PREFIX   object key prefix, e.g. "__test__/" for staging (default: none)
@@ -18,7 +18,7 @@
 #   OSS_ACCESS_KEY_ID / OSS_ACCESS_KEY_SECRET   for DEPLOY_TARGET=oss
 set -euo pipefail
 
-MODE="${BUILD_MODE:?BUILD_MODE must be daily or full}"
+MODE="${BUILD_MODE:?BUILD_MODE must be daily, full or feed}"
 DATES="${BUILD_DATES:-}"
 PREFIX="${DEPLOY_PREFIX:-}"
 TARGET="${DEPLOY_TARGET:-oss}"

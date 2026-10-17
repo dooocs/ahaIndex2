@@ -25,6 +25,7 @@ export interface Shelf {
 /** Sections of the site, in the order they appear in navigation and on the homepage. */
 export const SHELVES: Shelf[] = [
   { href: '/daily', name: `${DAILY_NAME} 每日 AI 精选`, desc: '每天用算法从全网筛出最值得看的 AI 动态' },
+  { href: '/feed', name: '动态', desc: 'AI 圈博主最近 24 小时在 X 上说了什么，中英对照' },
   { href: '/subjects', name: '专题', desc: '值得长期关注的公司、人物与技术方向' },
   { href: '/meet', name: '相亲贴', desc: '给认真生活的开发者，认识一个对的人' },
 ];

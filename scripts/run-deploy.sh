@@ -4,8 +4,11 @@
 # .github/workflows/deploy.yml, and locally with DEPLOY_TARGET=local:/dir
 # (or a stand-in ossutil on PATH) to rehearse a run end to end.
 #
+# MODE=feed is the hourly 动态 deploy: no plan or export; it builds the pages
+# that need no edition list and uploads only /feed (plus new _astro assets).
+#
 # Environment:
-#   MODE            daily | full (required)
+#   MODE            daily | full | feed (required)
 #   BACKFILL        daily only: "" | missing | 2026-10-01,2026-10-02
 #   CLEANUP         full only: none | dry-run | delete (see deploy-oss.sh)
 #   DEPLOY_TARGET   oss (default) | local:/dir
@@ -13,7 +16,7 @@
 #   OSS_BUCKET, OSS_ACCESS_KEY_ID, OSS_ACCESS_KEY_SECRET, SUPABASE_URL, SUPABASE_BUILD_KEY
 set -euo pipefail
 
-MODE="${MODE:?MODE must be daily or full}"
+MODE="${MODE:?MODE must be daily, full or feed}"
 TARGET="${DEPLOY_TARGET:-oss}"
 BUCKET="${OSS_BUCKET:-amazingindex}"
 PREFIX="${DEPLOY_PREFIX:-}"
@@ -31,6 +34,16 @@ if [[ "$TARGET" == oss ]]; then
   node scripts/lib/inventory.mjs --oss-ls "$WORK/oss-ls.txt" --bucket "$BUCKET" --prefix "$PREFIX" --out "$WORK/remote.json"
 else
   node scripts/lib/inventory.mjs --local "${TARGET#local:}" --prefix "$PREFIX" --out "$WORK/remote.json"
+fi
+
+if [[ "$MODE" == feed ]]; then
+  export BUILD_MODE=feed BUILD_DATES=
+  DEPLOY_INVENTORY="$WORK/remote.json" npm run build
+  # The page is complete: rendered from the database, not an error page or a shell.
+  grep -q 'class="feed-page"' dist/feed/index.html || { echo "❌ dist/feed/index.html is not the feed page" >&2; exit 1; }
+  if grep -q '__SHELL_' dist/feed/index.html; then echo "❌ dist/feed/index.html has a shell token" >&2; exit 1; fi
+  INVENTORY="$WORK/remote.json" DEPLOY_TARGET="$TARGET" bash scripts/deploy-oss.sh
+  exit 0
 fi
 
 # 2. Which editions to build.
