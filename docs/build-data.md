@@ -17,6 +17,27 @@ bucket, plan, build, export, verify, upload.
 A daily run never turns into a full one. Pages it does not build stay on OSS
 exactly as they were last uploaded.
 
+### 动态 (/feed): the hourly feed deploy
+
+`/feed` is an ordinary Astro page (`src/pages/feed.astro`) rendered at build
+time from `proc_feed_posts`, which Octopus writes every hour (original X
+posts of the bloggers it follows, translated to Chinese). Daily and full runs
+rebuild it like any other page. In between, **Feed Deploy**
+(`feed-deploy.yml`) runs `scripts/run-deploy.sh` with `MODE=feed`: a
+`BUILD_MODE=feed` build renders no editions, articles or project pages, and
+the deploy uploads only `feed/index.html`, its bare-URL copy and any `_astro`
+file not yet on OSS, then refreshes the two `/feed` URLs. It is triggered by
+Octopus (`repository_dispatch: feed-updated`) with an hourly schedule as a
+fallback, and has its own concurrency group so it never displaces a waiting
+daily or full deploy.
+
+The page shows the 24 hours up to the newest post (not the build time, so a
+rebuild with no new posts is byte-identical and uploads nothing): one card per blogger
+(newest first), each post's original text with `text_zh` below it (an empty
+`text_zh` means none is needed). Only media archived on the site's OSS is
+shown. The build reads `proc_feed_posts` with `SUPABASE_BUILD_KEY`, so the
+table must be readable by that key (Octopus `sql/013` grants anon read).
+
 ### Deployed = on the bucket
 
 Each run starts with one listing of the bucket (`ossutil ls --recursive`,

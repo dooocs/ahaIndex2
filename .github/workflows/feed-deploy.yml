@@ -1,0 +1,61 @@
+name: Feed Deploy
+
+# The hourly 动态 deploy: builds the site in feed mode (no editions) and
+# uploads only /feed and any _astro asset it needs that is not on OSS yet,
+# then refreshes the two /feed URLs on the CDN. See docs/build-data.md.
+#
+# Octopus sends `feed-updated` after its Feed Collect run has written
+# proc_feed_posts; the schedule is a fallback in case that dispatch is missed
+# (06:00–01:00 Beijing time, like the collection). Daily and full deploys
+# also rebuild /feed.
+
+on:
+  repository_dispatch:
+    types: [feed-updated]
+  schedule:
+    - cron: "40 22,23,0-17 * * *" # UTC; :40 past each hour, 06:40–01:40 Asia/Shanghai
+  workflow_dispatch:
+
+# Its own group: an hourly run must never replace a waiting daily or full
+# deploy (production-build-deploy keeps one pending run). Only /feed and
+# immutable _astro files are written here, so overlapping a daily deploy is
+# harmless: both upload a fresh /feed.
+concurrency:
+  group: feed-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_BUILD_KEY: ${{ secrets.SUPABASE_BUILD_KEY || secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+      OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+      PUBLIC_COMMUNITY_ENABLED: ${{ vars.PUBLIC_COMMUNITY_ENABLED }}
+      PUBLIC_COMMUNITY_SUPABASE_URL: ${{ vars.PUBLIC_COMMUNITY_SUPABASE_URL }}
+      PUBLIC_COMMUNITY_SUPABASE_KEY: ${{ vars.PUBLIC_COMMUNITY_SUPABASE_KEY }}
+      PUBLIC_COMMUNITY_TURNSTILE_KEY: ${{ vars.PUBLIC_COMMUNITY_TURNSTILE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install ossutil and the CDN SDK
+        run: |
+          curl -Lo ossutil.zip https://gosspublic.alicdn.com/ossutil/v2/2.2.1/ossutil-2.2.1-linux-amd64.zip
+          unzip ossutil.zip
+          chmod +x ossutil-2.2.1-linux-amd64/ossutil
+          sudo mv ossutil-2.2.1-linux-amd64/ossutil /usr/local/bin/ossutil
+          pip install alibabacloud_cdn20180510 --quiet
+
+      - name: Build and deploy /feed
+        env:
+          MODE: feed
+        run: bash scripts/run-deploy.sh

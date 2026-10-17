@@ -2,6 +2,7 @@
 import { community } from '../lib/community-config';
 const pathname = Astro.url.pathname;
 const isSubjects = pathname.startsWith('/subjects');
+const isFeed = pathname.startsWith('/feed');
 const isMeet = pathname.startsWith('/meet');
 // Only the daily briefing's own pages light up the first tab; about/legal pages have no active tab.
 const isDaily = pathname === '/' || ['/daily', '/article', '/history', '/projects'].some((p) => pathname.startsWith(p));
@@ -11,6 +12,7 @@ const isDaily = pathname === '/' || ['/daily', '/article', '/history', '/project
   <div class="nav-inner">
     <div class="nav-tabs">
       <a href="/" class={`nav-tab ${isDaily ? 'active' : ''}`} data-astro-reload>AI 日报</a>
+      <a href="/feed" class={`nav-tab ${isFeed ? 'active' : ''}`} data-astro-reload>动态</a>
       <a href="/subjects" class={`nav-tab ${isSubjects ? 'active' : ''}`} data-astro-reload>专题<sup class="nav-beta">beta</sup></a>
       {community && <a href="/meet" class={`nav-tab ${isMeet ? 'active' : ''}`} data-astro-reload>相亲贴</a>}
     </div>

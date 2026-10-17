@@ -1,0 +1,109 @@
+---
+// 动态: the last 24 hours of original X posts by the bloggers Octopus follows,
+// grouped into one card per blogger (newest blogger first), each post with
+// its original text and the Chinese translation below it. Rendered at build
+// time from proc_feed_posts (src/lib/feed.ts); the hourly feed deploy
+// (.github/workflows/feed-deploy.yml) rebuilds and uploads only this page.
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Masthead from '../components/Masthead.astro';
+import Footer from '../components/Footer.astro';
+import { getFeed } from '../lib/data';
+import { FEED_PATH, FEED_WINDOW_HOURS, beijingTime, groupByAuthor, renderPostText } from '../lib/feed.ts';
+import { SITE_URL, siteTitle } from '../lib/site';
+import '../styles/feed.css';
+
+const posts = await getFeed();
+const authors = groupByAuthor(posts);
+// The newest post, not the build time: the page changes only when the data does.
+const latestAt = authors[0]?.latest_at;
+
+const pageTitle = siteTitle('动态 · AI 博主 24 小时');
+const pageDesc = `AI 圈 ${authors.length || ''} 位博主最近 ${FEED_WINDOW_HOURS} 小时在 X 上的原创动态，原文与中文翻译对照，每小时更新。`;
+const canonical = `${SITE_URL}${FEED_PATH}`;
+const xProfile = (handle: string) => `https://x.com/${encodeURIComponent(handle)}`;
+const initial = (name: string) => Array.from(name.trim())[0]?.toUpperCase() ?? '?';
+---
+
+<BaseLayout title={pageTitle} description={pageDesc} canonicalUrl={canonical} ogUrl={canonical}>
+  <Masthead showScore={false} />
+
+  <main class="feed-page">
+    <header class="feed-head">
+      <div class="feed-kicker">Feed · 最近 {FEED_WINDOW_HOURS} 小时</div>
+      <h1>动态</h1>
+      <p class="feed-intro">AI 圈博主在 X 上的原创帖子，原文在上、中文翻译在下。每小时更新，只看最近 {FEED_WINDOW_HOURS} 小时。</p>
+      <div class="feed-meta">
+        {latestAt && <span>最新 <time datetime={latestAt}>{beijingTime(latestAt)}</time>（北京时间）</span>}
+        <span>{authors.length} 位博主</span>
+        <span>{posts.length} 条</span>
+      </div>
+      {authors.length > 1 && (
+        <nav class="feed-jump" aria-label="博主">
+          {authors.map((a) => (
+            <a href={`#${a.handle.toLowerCase()}`}>{a.display_name}<span>{a.posts.length}</span></a>
+          ))}
+        </nav>
+      )}
+    </header>
+
+    {authors.length === 0 ? (
+      <p class="feed-empty">最近 {FEED_WINDOW_HOURS} 小时还没有新动态，晚点再来看看。</p>
+    ) : (
+      <div class="feed-list">
+        {authors.map((a) => (
+          <article class="feed-author" id={a.handle.toLowerCase()}>
+            <header class="feed-author-head">
+              <a class="feed-avatar" href={xProfile(a.handle)} target="_blank" rel="noopener nofollow" aria-hidden="true" tabindex="-1">
+                {a.avatar_url
+                  ? <img src={a.avatar_url} alt="" width="44" height="44" loading="lazy" decoding="async" />
+                  : <span>{initial(a.display_name)}</span>}
+              </a>
+              <div class="feed-author-name">
+                <a href={xProfile(a.handle)} target="_blank" rel="noopener nofollow">{a.display_name}</a>
+                <span>@{a.handle}</span>
+              </div>
+              <div class="feed-author-stat">
+                <span>{a.posts.length} 条</span>
+                <time datetime={a.latest_at}>{beijingTime(a.latest_at)}</time>
+              </div>
+            </header>
+
+            <ol class="feed-posts">
+              {a.posts.map((p) => (
+                <li class="feed-post">
+                  <div class="feed-post-meta">
+                    <time datetime={p.published_at}>{beijingTime(p.published_at)}</time>
+                    <a href={p.url} target="_blank" rel="noopener nofollow">在 X 查看 ↗</a>
+                  </div>
+                  {p.text_original && <div class="feed-text feed-original" set:html={renderPostText(p.text_original)} />}
+                  {p.text_zh && (
+                    <div class="feed-text feed-zh" lang="zh-CN">
+                      <span class="feed-zh-label" aria-label="中文翻译">译</span>
+                      <Fragment set:html={renderPostText(p.text_zh)} />
+                    </div>
+                  )}
+                  {p.media.length > 0 && (
+                    <div class={`feed-media feed-media-${Math.min(p.media.length, 4)}`}>
+                      {p.media.map((m) => m.type === 'photo' ? (
+                        <a href={m.url} target="_blank" rel="noopener">
+                          <img src={m.url} alt="" loading="lazy" decoding="async" width={m.width ?? undefined} height={m.height ?? undefined} />
+                        </a>
+                      ) : (
+                        <a href={p.url} target="_blank" rel="noopener nofollow" class="feed-video" aria-label="在 X 播放视频">
+                          <img src={m.url} alt="" loading="lazy" decoding="async" width={m.width ?? undefined} height={m.height ?? undefined} />
+                          <span class="feed-play" aria-hidden="true">▶</span>
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </article>
+        ))}
+      </div>
+    )}
+  </main>
+
+  <Footer />
+</BaseLayout>

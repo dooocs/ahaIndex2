@@ -98,3 +98,20 @@ test('built pages and exported files may not overlap', async (t) => {
   const exportDir = await tree(t, { 'daily/2026-01/index.html': 'm' });
   await assert.rejects(planDeploy({ dist, exportDir, mode: 'full', dates: [], remote: new Map() }), /overlap/);
 });
+
+test('a feed deploy takes only /feed and the assets it may need', () => {
+  assert.deepEqual(selectPages([...DIST, 'feed/index.html'], 'feed').sort(), ['_astro/a.css', 'feed/index.html']);
+});
+
+test('a feed deploy uploads /feed and new assets only, and refreshes both /feed URLs', async (t) => {
+  const dist = await tree(t, { 'index.html': 'h', 'feed/index.html': 'f2', '_astro/old.css': 'o', '_astro/new.css': 'n', 'about/index.html': 'a' });
+  const exportDir = path.join(dist, 'no-export');
+  await assert.rejects(planDeploy({ dist: await tree(t, { 'index.html': 'h' }), exportDir, mode: 'feed', dates: [], remote: new Map() }), /feed\/index\.html/);
+  const remote = new Map([['feed/index.html', md5('f1')], ['feed', md5('f1')], ['_astro/old.css', md5('o')]]);
+  const plan = await planDeploy({ dist, exportDir, mode: 'feed', dates: [], remote });
+  assert.deepEqual(plan.upload.sort(), ['_astro/new.css', 'feed/index.html']);
+  assert.deepEqual(plan.bare, [['feed/index.html', 'feed']]);
+  assert.deepEqual(plan.urls, ['https://www.amazingindex.com/feed/', 'https://www.amazingindex.com/feed']);
+  const unchanged = await planDeploy({ dist, exportDir, mode: 'feed', dates: [], remote: new Map([...remote, ['feed/index.html', md5('f2')], ['feed', md5('f2')], ['_astro/new.css', md5('n')]]) });
+  assert.deepEqual([unchanged.upload, unchanged.urls], [[], []]);
+});

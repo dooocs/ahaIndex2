@@ -1,10 +1,12 @@
 // Build-time data access for Astro pages: memoized wrappers around the shared
-// queries (queries.ts). Only the homepage, edition, article and project pages
-// read the database at build time; everything else is published by the export.
+// queries (queries.ts). Only the homepage, edition, article, project and
+// /feed pages read the database at build time; everything else is published
+// by the export.
 import { getSupabase } from './supabase';
-import { deployedEditionDates, isDailyBuild, scopeDatesFromEnv } from './build-scope';
+import { deployedEditionDates, isDailyBuild, isFeedBuild, scopeDatesFromEnv } from './build-scope';
 import * as q from './queries.ts';
 import { pickLatestRelatedData } from './project-heatmap';
+import { getFeedPosts } from './feed.ts';
 import type { DailyArchive, ProjectEntry, ProjectHeatmapRow, TimelineEntry } from './types';
 
 export type { ArticleRouteItem } from './queries.ts';
@@ -23,6 +25,11 @@ function memo<T>(key: string, fn: () => Promise<T>): Promise<T> {
 }
 
 const db = () => getSupabase();
+
+// ─── 动态 ───────────────────────────────────────────
+
+/** The 24 hours of the feed up to its newest post. */
+export const getFeed = () => memo('feed', () => getFeedPosts(db()));
 
 // ─── Daily editions ─────────────────────────────────
 
@@ -45,10 +52,12 @@ export const getDailyArchiveByDate = (date: string): Promise<DailyArchive | null
 
 /**
  * Edition dates this build renders pages for, newest first: every edition in
- * a full build; BUILD_DATES (or the newest two editions) in a daily build.
+ * a full build; BUILD_DATES (or the newest two editions) in a daily build;
+ * none in a feed build.
  */
 export const getBuildDates = () => memo('buildDates', async (): Promise<string[]> => {
   if (!isDailyBuild()) return getAllDates();
+  if (isFeedBuild()) return [];
   const explicit = scopeDatesFromEnv();
   if (explicit.length > 0) return explicit;
   const latest = await getLatestDate();

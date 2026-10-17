@@ -12,7 +12,7 @@ import { fetchAllRows } from '../src/lib/queries.ts';
 
 test('pages sitemap lists static pages, months, editions and subjects in order', () => {
   const urls = getPagesSitemapEntries(['2026-01-02', '2025-12-31'], [{ slug: 's', last_seen_at: '2026-01-02T10:00:00Z', first_seen_at: null }]).map((e) => e.url.replace('https://www.amazingindex.com', ''));
-  assert.deepEqual(urls, ['', '/about', '/contact', '/history', '/privacy', '/terms', '/daily', '/subjects', '/daily/2025-12', '/daily/2026-01', '/daily/2025-12-31', '/daily/2026-01-02', '/subjects/s']);
+  assert.deepEqual(urls, ['', '/about', '/contact', '/feed', '/history', '/privacy', '/terms', '/daily', '/subjects', '/daily/2025-12', '/daily/2026-01', '/daily/2025-12-31', '/daily/2026-01-02', '/subjects/s']);
 });
 
 test('an article is dated by the newest edition it appears in', () => {

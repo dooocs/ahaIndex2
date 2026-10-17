@@ -7,8 +7,11 @@
 //   SUPABASE_URL=http://127.0.0.1:54399 SUPABASE_BUILD_KEY=sb_publishable_mock npm run build
 //
 // MOCK_LATEST_DATE (YYYY-MM-DD) hides every row dated after it, which simulates
-// the pipeline adding a new edition between two builds.
+// the pipeline adding a new edition between two builds. MOCK_FEED_FILE (a JSON
+// array of proc_feed_posts rows, e.g. exported from production) replaces the
+// synthetic 动态 posts, to look at /feed with real text.
 import http from 'node:http';
+import { readFileSync } from 'node:fs';
 
 const PORT = Number(process.env.MOCK_SUPABASE_PORT || 54399);
 const MAX_ROWS = 1000;
@@ -159,7 +162,39 @@ export function buildFixture() {
     });
   }
 
+  // 动态: fixed timestamps (the page's window ends at the newest post), so
+  // repeated builds render the same /feed.
+  const feedEnd = Date.parse(`${dates.at(-1)}T12:00:00Z`);
+  const hoursAgo = (h) => new Date(feedEnd - h * 3600_000).toISOString();
+  const media = (name, type = 'photo', width = 1200, height = 800) => ({ type, url: `https://www.amazingindex.com/media/x/mock-${name}.jpg`, width, height });
+  const avatar = (handle) => `https://www.amazingindex.com/media/x/avatars/mock-${handle}.jpg`;
+  const feedPosts = [
+    ['sama', 'Sam Altman', 0.5, 'Shipping a new model today. Details: https://openai.com/index/mock-launch and thanks @gdb!', '今天发布新模型。详情：https://openai.com/index/mock-launch，感谢 @gdb！', [media('sama-1')]],
+    ['karpathy', 'Andrej Karpathy', 2, '1/ A long thread on tokenizers.\n\nFirst, bytes are not characters <b>&</b> that matters.\n\n2/ Second part of the thread.', '1/ 关于分词器的长帖。\n\n首先，字节不是字符 <b>&</b> 这很重要。\n\n2/ 帖子的第二部分。', [media('karpathy-1'), media('karpathy-2')]],
+    ['sama', 'Sam Altman', 5, 'Good morning.', '早上好。', []],
+    ['svpino', 'Santiago', 7, 'A video walkthrough of building an agent.', '一段搭建智能体的视频讲解。', [media('svpino-1', 'video', 1280, 720)]],
+    ['kaifulee', '李开复', 9, '今天聊聊大模型的推理成本 https://example.com/cost', '', []],
+    ['noavatar', 'No Avatar', 12, 'Posting without a profile picture.', '没有头像的博主。', []],
+    ['ylecun', 'Yann LeCun', 30, 'Too old for the window.', '超出窗口。', []],
+  ];
+  const procFeedPosts = feedPosts.map(([handle, name, h, text, zh, list], i) => ({
+    id: `feed-${String(i + 1).padStart(2, '0')}`,
+    raw_item_ids: [`feed-${i + 1}`],
+    author: handle,
+    display_name: name,
+    avatar_url: handle === 'noavatar' ? null : avatar(handle),
+    published_at: hoursAgo(h + 0.1),
+    updated_at: hoursAgo(h),
+    url: `https://x.com/${handle}/status/${1000 + i}`,
+    text_original: text,
+    text_zh: zh,
+    media: list,
+    content_hash: `h${i}`,
+    prompt_version: 2,
+  }));
+
   return {
+    proc_feed_posts: procFeedPosts,
     display_items: displayItems,
     daily_archives: archives,
     tracks,
@@ -270,6 +305,7 @@ function visibleTables(fixture, latestDate) {
 
 export function startMockSupabase({ port = PORT, latestDate = process.env.MOCK_LATEST_DATE } = {}) {
   const tables = visibleTables(buildFixture(), latestDate);
+  if (process.env.MOCK_FEED_FILE) tables.proc_feed_posts = JSON.parse(readFileSync(process.env.MOCK_FEED_FILE, 'utf8'));
   // Per-table request, row and byte counts since the last GET /__stats?reset=1.
   let stats = {};
   const server = http.createServer((req, res) => {
