@@ -31,7 +31,8 @@ Octopus (`repository_dispatch: feed-updated`) with an hourly schedule as a
 fallback, and has its own concurrency group so it never displaces a waiting
 daily or full deploy.
 
-The page shows the last 24 hours as of the build: one card per blogger
+The page shows the 24 hours up to the newest post (not the build time, so a
+rebuild with no new posts is byte-identical and uploads nothing): one card per blogger
 (newest first), each post's original text with `text_zh` below it (an empty
 `text_zh` means none is needed). Only media archived on the site's OSS is
 shown. The build reads `proc_feed_posts` with `SUPABASE_BUILD_KEY`, so the
