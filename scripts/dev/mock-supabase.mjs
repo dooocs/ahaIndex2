@@ -7,8 +7,11 @@
 //   SUPABASE_URL=http://127.0.0.1:54399 SUPABASE_BUILD_KEY=sb_publishable_mock npm run build
 //
 // MOCK_LATEST_DATE (YYYY-MM-DD) hides every row dated after it, which simulates
-// the pipeline adding a new edition between two builds.
+// the pipeline adding a new edition between two builds. MOCK_FEED_FILE (a JSON
+// array of proc_feed_posts rows, e.g. exported from production) replaces the
+// synthetic 动态 posts, to look at /feed with real text.
 import http from 'node:http';
+import { readFileSync } from 'node:fs';
 
 const PORT = Number(process.env.MOCK_SUPABASE_PORT || 54399);
 const MAX_ROWS = 1000;
@@ -300,6 +303,7 @@ function visibleTables(fixture, latestDate) {
 
 export function startMockSupabase({ port = PORT, latestDate = process.env.MOCK_LATEST_DATE } = {}) {
   const tables = visibleTables(buildFixture(), latestDate);
+  if (process.env.MOCK_FEED_FILE) tables.proc_feed_posts = JSON.parse(readFileSync(process.env.MOCK_FEED_FILE, 'utf8'));
   // Per-table request, row and byte counts since the last GET /__stats?reset=1.
   let stats = {};
   const server = http.createServer((req, res) => {

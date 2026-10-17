@@ -271,6 +271,11 @@
   object-fit: cover;
 }
 
+/* One image: shown whole, scaled down (tall photos are not cropped). */
+.feed-media-1 { justify-items: start; }
+.feed-media-1 img { width: auto; max-width: 100%; object-fit: contain; }
+
+/* Several: an even grid, cropped to the same shape. */
 .feed-media-2 img,
 .feed-media-3 img,
 .feed-media-4 img { aspect-ratio: 4 / 3; height: 100%; }
