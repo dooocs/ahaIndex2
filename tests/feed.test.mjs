@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { beijingTime, getFeedPosts, groupByAuthor, linkLabel, normalizePost, renderPostText } from '../src/lib/feed.ts';
+import { beijingTime, getFeedPosts, groupByAuthor, linkLabel, normalizePost, renderPostText, summarize, timeline } from '../src/lib/feed.ts';
 
 const post = (author, updated, extra = {}) => normalizePost({
   id: `${author}-${updated}`, author, display_name: author.toUpperCase(), avatar_url: null,
@@ -86,4 +86,40 @@ test('the query reads the 24 hours up to the newest post, newest first, and fail
   assert.deepEqual(await getFeedPosts(db({ data: [], error: null })), [], 'an empty table needs no second query');
   assert.equal(calls.filter((c) => c[0] === 'gte').length, 0);
   await assert.rejects(getFeedPosts(db({ data: null, error: { message: 'permission denied' } })), /proc_feed_posts: permission denied/);
+});
+
+test('the stream is ordered by when a post was sent, not when it was last updated', () => {
+  const posts = timeline([
+    post('a', '2026-10-17T09:00:00Z', { published_at: '2026-10-17T01:00:00Z' }),
+    post('b', '2026-10-17T02:00:00Z', { published_at: '2026-10-17T02:00:00Z' }),
+    post('c', '2026-10-17T03:00:00Z', { published_at: '2026-10-17T00:30:00Z' }),
+  ]);
+  assert.deepEqual(posts.map((p) => p.author), ['b', 'a', 'c']);
+});
+
+test('the side panel counts posts, bloggers, media, Beijing hours and the busiest bloggers', () => {
+  const s = summarize([
+    post('sama', '2026-10-17T01:00:00Z', { published_at: '2026-10-17T01:00:00Z', media: [{ type: 'photo', url: 'https://www.amazingindex.com/media/x/a.jpg' }] }),
+    post('Sama', '2026-10-17T02:10:00Z', { published_at: '2026-10-17T02:10:00Z', text_zh: '' }),
+    post('karpathy', '2026-10-17T05:00:00Z', { published_at: '2026-10-17T05:00:00Z' }),
+  ]);
+  assert.equal(s.posts, 3);
+  assert.equal(s.authors, 2);
+  assert.equal(s.with_media, 1);
+  assert.equal(s.translated, 2);
+  assert.equal(s.latest_at, '2026-10-17T05:00:00Z');
+  assert.equal(s.earliest_at, '2026-10-17T01:00:00Z');
+  assert.equal(s.by_hour[9], 1); // 01:00Z = 09:00 Beijing
+  assert.equal(s.by_hour[10], 1);
+  assert.equal(s.by_hour[13], 1);
+  assert.equal(s.by_hour.reduce((a, b) => a + b), 3);
+  assert.deepEqual(s.top_authors.map((a) => [a.handle.toLowerCase(), a.posts]), [['sama', 2], ['karpathy', 1]]);
+  assert.equal(s.top_authors[0].latest_at, '2026-10-17T02:10:00Z');
+});
+
+test('an empty window summarizes to zeros', () => {
+  const s = summarize([]);
+  assert.equal(s.posts, 0);
+  assert.equal(s.latest_at, '');
+  assert.deepEqual(s.top_authors, []);
 });

@@ -40,7 +40,7 @@ if [[ "$MODE" == feed ]]; then
   export BUILD_MODE=feed BUILD_DATES=
   DEPLOY_INVENTORY="$WORK/remote.json" npm run build
   # The page is complete: rendered from the database, not an error page or a shell.
-  grep -q 'class="feed-page"' dist/feed/index.html || { echo "❌ dist/feed/index.html is not the feed page" >&2; exit 1; }
+  grep -qE 'class="[^"]*\bfeed-page\b' dist/feed/index.html || { echo "❌ dist/feed/index.html is not the feed page" >&2; exit 1; }
   if grep -q '__SHELL_' dist/feed/index.html; then echo "❌ dist/feed/index.html has a shell token" >&2; exit 1; fi
   INVENTORY="$WORK/remote.json" DEPLOY_TARGET="$TARGET" bash scripts/deploy-oss.sh
   exit 0

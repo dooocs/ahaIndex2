@@ -1,120 +1,30 @@
-/* 动态 (/feed). Same paper column and header rhythm as the subject pages. */
+/* 动态 (/feed). The homepage frame (.layout / .main-col / .side-col in
+   global.css): a stream of posts on the left, a sticky summary panel on the
+   right. Only what differs from the homepage lives here. */
 
-.feed-page {
-  max-width: 1088px;
-  margin: 0 auto;
-  min-height: calc(100vh - 164px);
-  background: var(--paper);
-  box-shadow: 0 0 40px rgba(0, 0, 0, 0.05);
+/* ─── Stream (left) ─────────────────────────────────── */
+
+.feed-stream {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
-.feed-head {
-  padding: 44px 56px 28px;
-  border-bottom: 1px solid var(--border);
-}
-
-.feed-kicker {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--accent);
-  margin-bottom: 12px;
-}
-
-.feed-head h1 {
-  font-family: var(--fd);
-  font-size: clamp(36px, 5vw, 58px);
-  line-height: 1.03;
-  color: var(--ink);
-}
-
-.feed-intro {
-  margin-top: 14px;
-  max-width: 640px;
-  font-family: var(--fd);
-  font-size: 14px;
-  line-height: 1.7;
-  color: rgba(26, 22, 18, 0.72);
-}
-
-.feed-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 18px;
-}
-
-.feed-meta span {
-  display: inline-flex;
-  align-items: center;
-  min-height: 26px;
-  padding: 0 9px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--paper-warm);
-  color: rgba(26, 22, 18, 0.7);
-  font-family: var(--font-mono);
-  font-size: 10px;
-}
-
-.feed-jump {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 14px;
-  margin-top: 20px;
-  padding-top: 16px;
-  border-top: 1px dashed var(--border);
-}
-
-.feed-jump a {
-  font-family: var(--fd);
-  font-size: 12px;
-  color: var(--ink);
-  text-decoration: none;
-  border-bottom: 1px solid transparent;
-}
-
-.feed-jump a:hover { border-bottom-color: var(--ink); }
-
-.feed-jump a span {
-  margin-left: 4px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--muted);
-}
-
-.feed-empty {
-  padding: 64px 56px;
-  font-family: var(--fd);
-  font-size: 14px;
-  color: var(--muted);
-}
-
-.feed-list {
-  padding: 8px 56px 56px;
-}
-
-.feed-author {
-  padding: 28px 0 8px;
-  border-bottom: 1px solid var(--border);
-  scroll-margin-top: 16px;
-}
-
-.feed-author:last-child { border-bottom: 0; }
-
-.feed-author-head {
+.feed-post {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 6px;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 0 14px;
+  padding: 22px 0 20px;
+  border-bottom: 1px solid var(--border);
 }
+
+.feed-post:first-child { padding-top: 0; }
+.feed-post[hidden] { display: none; }
 
 .feed-avatar {
   display: block;
-  width: 44px;
-  height: 44px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   overflow: hidden;
   background: var(--paper-dark);
@@ -139,68 +49,39 @@
   color: var(--ink);
 }
 
-.feed-author-name { min-width: 0; }
+.feed-post-body { min-width: 0; }
 
-.feed-author-name a {
-  display: block;
+.feed-post-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 6px;
+  margin-bottom: 8px;
+  min-width: 0;
+}
+
+.feed-name {
   font-family: var(--fd);
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 800;
   color: var(--ink);
   text-decoration: none;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.feed-author-name a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.feed-name:hover { text-decoration: underline; text-underline-offset: 3px; }
 
-.feed-author-name span,
-.feed-author-stat {
+.feed-handle,
+.feed-dot,
+.feed-time {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--muted);
-}
-
-.feed-author-stat {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-  white-space: nowrap;
-}
-
-.feed-posts {
-  list-style: none;
-  margin-left: 56px;
-}
-
-.feed-post {
-  padding: 18px 0 20px;
-  border-top: 1px dashed var(--border);
-}
-
-.feed-author-head + .feed-posts .feed-post:first-child { border-top: 0; padding-top: 8px; }
-
-.feed-post-meta {
-  display: flex;
-  gap: 12px;
-  align-items: baseline;
-  margin-bottom: 10px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--muted);
-}
-
-.feed-post-meta a {
   color: var(--muted);
   text-decoration: none;
 }
 
-.feed-post-meta a:hover { color: var(--accent); }
+.feed-time:hover { color: var(--accent); }
 
 .feed-text {
-  max-width: 680px;
   overflow-wrap: anywhere;
 }
 
@@ -223,8 +104,8 @@
 
 .feed-zh {
   position: relative;
-  margin-top: 12px;
-  padding: 10px 14px 10px 40px;
+  margin-top: 10px;
+  padding: 9px 14px 9px 38px;
   border-left: 2px solid var(--gold);
   background: rgba(184, 150, 62, 0.07);
   font-family: var(--fd);
@@ -236,7 +117,7 @@
 .feed-zh-label {
   position: absolute;
   left: 12px;
-  top: 11px;
+  top: 10px;
   font-family: var(--fs);
   font-size: 12px;
   font-weight: 700;
@@ -246,8 +127,8 @@
 .feed-media {
   display: grid;
   gap: 6px;
-  max-width: 560px;
-  margin-top: 14px;
+  max-width: 520px;
+  margin-top: 12px;
 }
 
 .feed-media-2,
@@ -267,7 +148,7 @@
   display: block;
   width: 100%;
   height: auto;
-  max-height: 440px;
+  max-height: 420px;
   object-fit: cover;
 }
 
@@ -297,19 +178,269 @@
   padding-left: 3px;
 }
 
-@media (max-width: 960px) {
-  .feed-head { padding-left: 32px; padding-right: 32px; }
-  .feed-list, .feed-empty { padding-left: 32px; padding-right: 32px; }
+.feed-source {
+  display: inline-block;
+  margin-top: 10px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.feed-source:hover { color: var(--accent); }
+
+.feed-empty {
+  padding: 48px 0;
+  font-family: var(--fd);
+  font-size: 14px;
+  color: var(--muted);
+}
+
+/* Shown while a blogger is picked in the side panel. */
+.feed-filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 18px;
+  padding: 9px 12px;
+  background: var(--paper-dark);
+  font-family: var(--fs);
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+.feed-filter[hidden] { display: none; }
+
+.feed-filter button {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+/* Phones hide the side panel (as on the homepage); this line replaces it. */
+.feed-mobile-meta { display: none; }
+
+/* ─── Panel (right) ─────────────────────────────────── */
+
+.feed-panel {
+  position: sticky;
+  top: 24px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.feed-panel::-webkit-scrollbar { display: none; }
+
+.feed-panel .divider { margin: 22px 0 18px; }
+
+.feed-panel-kicker,
+.feed-panel-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 9px;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.feed-panel-kicker { margin-bottom: 14px; }
+.feed-panel-label { margin-bottom: 12px; }
+
+.feed-panel-kicker::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.feed-panel-title {
+  font-family: var(--fd);
+  font-size: 23px;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+  margin: 0 0 14px;
+}
+
+.feed-panel-title em {
+  font-style: italic;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: -0.01em;
+}
+
+.feed-panel-text {
+  font-family: var(--fs);
+  font-size: 13px;
+  line-height: 1.85;
+  color: rgba(26, 22, 18, 0.72);
+}
+
+.feed-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin: 20px 0 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.feed-stats div {
+  padding: 12px 0 10px;
+  text-align: center;
+}
+
+.feed-stats div + div { border-left: 1px solid var(--border); }
+
+.feed-stats dt {
+  font-family: var(--fs);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.feed-stats dd {
+  margin: 4px 0 0;
+  font-family: var(--fd);
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--ink);
+}
+
+.feed-updated {
+  margin: 12px 0 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.8;
+  color: rgba(26, 22, 18, 0.62);
+}
+
+.feed-updated time { color: var(--ink); }
+
+.feed-updated span {
+  margin-left: 6px;
+  color: var(--muted);
+}
+
+.feed-hours {
+  display: grid;
+  grid-template-columns: repeat(24, 1fr);
+  align-items: end;
+  gap: 2px;
+  height: 48px;
+}
+
+.feed-hours span {
+  height: max(2px, var(--h));
+  background: var(--border);
+}
+
+.feed-hours span.on { background: var(--accent); opacity: 0.75; }
+
+.feed-hours-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--muted);
+}
+
+.feed-hours-note,
+.feed-authors-note {
+  margin: 10px 0 0;
+  font-family: var(--fs);
+  font-size: 11.5px;
+  color: rgba(26, 22, 18, 0.55);
+}
+
+.feed-authors {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.feed-author-btn {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 0;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.feed-author-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--paper-dark);
+  font-family: var(--fd);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.feed-author-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.feed-author-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--fs);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.feed-author-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.feed-author-btn:hover .feed-author-name,
+.feed-author-btn[aria-pressed='true'] .feed-author-name,
+.feed-author-btn[aria-pressed='true'] .feed-author-count { color: var(--accent); }
+
+/* ─── Small screens ─────────────────────────────────── */
+
+@media (max-width: 768px) {
+  .feed-mobile-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    margin: 0 0 18px;
+    padding: 10px 12px;
+    background: var(--paper-dark);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: rgba(26, 22, 18, 0.7);
+  }
 }
 
 @media (max-width: 600px) {
-  .feed-head { padding: 32px 16px 22px; }
-  .feed-list { padding: 0 16px 40px; }
-  .feed-empty { padding: 48px 16px; }
-  .feed-author-head { grid-template-columns: 40px minmax(0, 1fr) auto; gap: 10px; }
-  .feed-avatar { width: 40px; height: 40px; }
-  .feed-posts { margin-left: 0; }
-  .feed-original { font-size: 15px; }
-  .feed-zh { padding-left: 34px; }
+  .feed-post { grid-template-columns: 34px minmax(0, 1fr); gap: 0 10px; }
+  .feed-avatar { width: 34px; height: 34px; }
+  .feed-zh { padding-left: 32px; }
   .feed-zh-label { left: 10px; }
 }
