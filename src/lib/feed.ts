@@ -1,8 +1,9 @@
 // 动态 (/feed): original X posts of the bloggers Octopus follows, with their
 // Chinese translation, from the 24 hours up to the newest post. Octopus writes
 // proc_feed_posts hourly (collect → translate); this module reads it at build
-// time and turns it into author cards. Pure functions apart from getFeedPosts,
-// so tests/feed.test.mjs covers grouping and text rendering.
+// time and turns it into a single stream ordered by send time (timeline) and
+// the numbers for the side panel (summarize). Pure functions apart from
+// getFeedPosts, so tests/feed.test.mjs covers ordering, summary and text.
 //
 // text_zh === '' means no translation is needed (already Chinese, or only
 // links/media): the page shows the original alone. Otherwise the original is
@@ -125,6 +126,63 @@ export function groupByAuthor(posts: FeedPost[]): FeedAuthor[] {
     });
   }
   return authors.sort((a, b) => time(b.latest_at) - time(a.latest_at) || a.handle.localeCompare(b.handle));
+}
+
+/**
+ * The stream on the left: every post on its own, ordered by when it was
+ * actually sent on X (published_at), newest first. updated_at only decides
+ * which posts are in the window.
+ */
+export function timeline(posts: FeedPost[]): FeedPost[] {
+  return [...posts].sort((a, b) => time(b.published_at) - time(a.published_at) || b.id.localeCompare(a.id));
+}
+
+export interface FeedSummary {
+  posts: number;
+  authors: number;
+  /** Newest send time in the window; '' when empty. */
+  latest_at: string;
+  /** Oldest send time in the window; '' when empty. */
+  earliest_at: string;
+  with_media: number;
+  translated: number;
+  /** Posts per Beijing hour of day (index 0 = 00:00–00:59). */
+  by_hour: number[];
+  /** Busiest authors first (ties: the one who posted last), every author included. */
+  top_authors: { handle: string; display_name: string; avatar_url: string | null; posts: number; latest_at: string }[];
+}
+
+const BEIJING_HOUR = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Shanghai', hour: '2-digit', hourCycle: 'h23' });
+
+/** The numbers in the right-hand panel, computed from the posts alone (no AI). */
+export function summarize(posts: FeedPost[]): FeedSummary {
+  const by_hour = new Array(24).fill(0);
+  let latest = '';
+  let earliest = '';
+  for (const p of posts) {
+    by_hour[Number(BEIJING_HOUR.format(new Date(p.published_at))) % 24]++;
+    if (!latest || time(p.published_at) > time(latest)) latest = p.published_at;
+    if (!earliest || time(p.published_at) < time(earliest)) earliest = p.published_at;
+  }
+  const top_authors = groupByAuthor(posts)
+    .map((a) => ({
+      handle: a.handle,
+      display_name: a.display_name,
+      avatar_url: a.avatar_url,
+      posts: a.posts.length,
+      latest_at: a.posts.reduce((m, p) => (time(p.published_at) > time(m) ? p.published_at : m), a.posts[0].published_at),
+    }))
+    .sort((a, b) => b.posts - a.posts || time(b.latest_at) - time(a.latest_at) || a.handle.localeCompare(b.handle));
+  return {
+    posts: posts.length,
+    authors: top_authors.length,
+    latest_at: latest,
+    earliest_at: earliest,
+    with_media: posts.filter((p) => p.media.length > 0).length,
+    translated: posts.filter((p) => p.text_zh).length,
+    by_hour,
+    top_authors,
+  };
 }
 
 const BEIJING = new Intl.DateTimeFormat('en-CA', {
