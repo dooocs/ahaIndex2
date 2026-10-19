@@ -1,0 +1,14 @@
+---
+// The overview column's body: stays in view while the content scrolls, and
+// scrolls on its own (without a visible bar) when it is taller than the window.
+interface Props {
+  class?: string;
+  [attr: `data-${string}`]: string | boolean | undefined;
+}
+
+const { class: extra = '', ...attrs } = Astro.props;
+---
+
+<div class={`side-panel ${extra}`.trim()} {...attrs}>
+  <slot />
+</div>

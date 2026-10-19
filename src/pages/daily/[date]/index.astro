@@ -1,5 +1,4 @@
 ---
-import BaseLayout from '../../../layouts/BaseLayout.astro';
 import DailyPage from '../../../components/DailyPage.astro';
 import { getBuildDates, getItemsByDate, getDailyArchiveByDate, getPreviousPublished } from '../../../lib/data';
 
@@ -17,7 +16,12 @@ const pageTitle = `${date} AI 行业精选简报 | AmazingIndex`;
 const pageDesc = `AmazingIndex ${date} 每日 AI 行业精选简报。基于多维度量化算法，为您筛选当日最具价值的 AI 行业动态与创新洞察。`;
 ---
 
-<BaseLayout
+<DailyPage
+  items={items}
+  dailyArchive={dailyArchive}
+  date={date}
+  prevDate={prev}
+  heading={`${date} AI 行业精选简报`}
   title={pageTitle}
   description={pageDesc}
   canonicalUrl={`https://www.amazingindex.com/daily/${date}`}
@@ -31,6 +35,4 @@ const pageDesc = `AmazingIndex ${date} 每日 AI 行业精选简报。基于多�
     "description": pageDesc,
     "url": `https://www.amazingindex.com/daily/${date}`
   }}
->
-  <DailyPage items={items} dailyArchive={dailyArchive} date={date} prevDate={prev} heading={`${date} AI 行业精选简报`} />
-</BaseLayout>
+/>

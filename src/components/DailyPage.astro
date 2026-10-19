@@ -1,12 +1,14 @@
 ---
-import Masthead from './Masthead.astro';
+import TabLayout from '../layouts/TabLayout.astro';
 import BriefingCard from './BriefingCard.astro';
 import Sidebar from './Sidebar.astro';
-import Footer from './Footer.astro';
 import type { ProcessedItem, DailyArchive } from '../lib/types';
 import { SITE_NAME, SITE_SLOGAN } from '../lib/site';
 
-interface Props {
+type LayoutProps = Omit<Parameters<typeof TabLayout>[0], 'tab' | 'items' | 'date' | 'showArchiveBanner'>;
+
+/** A daily edition (homepage or /daily/<date>); page metadata goes straight to TabLayout. */
+interface Props extends LayoutProps {
   items: ProcessedItem[];
   dailyArchive?: DailyArchive | null;
   date?: string;
@@ -30,42 +32,37 @@ const {
   showArchiveBanner = true,
   heading,
   sidebarMode = 'score',
+  ...layout
 } = Astro.props;
 
 const snapshotDate = date || (items.length > 0 ? items[0].snapshot_date : undefined);
 const isHome = sidebarMode === 'intro';
 ---
 
-<Masthead items={items} />
-
-<div class="layout">
-  <main class="main-col">
-    {heading && <h1 class="sr-only">{heading}</h1>}
-    {isHome && (
-      <a href="/about" class="home-intro-mobile" data-astro-reload>
-        <span class="home-intro-name">{SITE_NAME}</span>
-        <span class="home-intro-slogan">{SITE_SLOGAN}</span>
-        <span class="home-intro-more" aria-hidden="true">关于本站 →</span>
-      </a>
+<TabLayout {...layout} tab="daily" items={items} date={snapshotDate} showArchiveBanner={showArchiveBanner}>
+  {heading && <h1 class="sr-only">{heading}</h1>}
+  {isHome && (
+    <a href="/about" class="home-intro-mobile" slot="mobile-summary" data-astro-reload>
+      <span class="home-intro-name">{SITE_NAME}</span>
+      <span class="home-intro-slogan">{SITE_SLOGAN}</span>
+      <span class="home-intro-more" aria-hidden="true">关于本站 →</span>
+    </a>
+  )}
+  <div class="article-list" id="article-list">
+    {items.length > 0 ? (
+      items.map((item, index) => (
+        <BriefingCard item={item} index={index} date={snapshotDate} />
+      ))
+    ) : (
+      <div class="loading-state">今日暂无更新</div>
     )}
-    <div class="article-list" id="article-list">
-      {items.length > 0 ? (
-        items.map((item, index) => (
-          <BriefingCard item={item} index={index} date={snapshotDate} />
-        ))
-      ) : (
-        <div class="loading-state">今日暂无更新</div>
-      )}
-    </div>
-    <nav class="edition-nav" aria-label="往期导航" data-edition-nav hidden={!prevDate}>
-      {prevDate ? <a href={`/daily/${prevDate}`} rel="prev">← 上一期 · {prevDate}</a> : <span></span>}
-      <a data-next-edition rel="next" hidden></a>
-    </nav>
-  </main>
-  <Sidebar items={items} dailyArchive={dailyArchive} mode={sidebarMode} date={snapshotDate} />
-</div>
-
-<Footer showArchiveBanner={showArchiveBanner} date={snapshotDate} />
+  </div>
+  <nav class="edition-nav" aria-label="往期导航" data-edition-nav hidden={!prevDate}>
+    {prevDate ? <a href={`/daily/${prevDate}`} rel="prev">← 上一期 · {prevDate}</a> : <span></span>}
+    <a data-next-edition rel="next" hidden></a>
+  </nav>
+  <Sidebar slot="side" items={items} dailyArchive={dailyArchive} mode={sidebarMode} date={snapshotDate} />
+</TabLayout>
 
 <style>
   .edition-nav {
@@ -94,10 +91,7 @@ const isHome = sidebarMode === 'intro';
     color: var(--ink);
   }
 
-  .home-intro-mobile {
-    display: none;
-  }
-
+  /* Phones only: it sits in TabLayout's mobile-summary slot. */
   @media (max-width: 768px) {
     .home-intro-mobile {
       display: flex;

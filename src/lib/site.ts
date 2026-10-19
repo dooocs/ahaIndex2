@@ -16,16 +16,59 @@ export function siteTitle(page: string): string {
   return `${page} | ${SITE_NAME}`;
 }
 
+export type SectionId = 'daily' | 'feed' | 'subjects' | 'meet';
+
+/**
+ * One section of the site. The same list drives the tab bar (SiteNav) and the
+ * "店里有什么" shelf list (homepage sidebar, about page), so a new section is
+ * added here and nowhere else.
+ */
 export interface Shelf {
+  id: SectionId;
+  /** Where the shelf list links to. */
   href: string;
   name: string;
   desc: string;
+  /** The tab bar's label and link (the daily tab opens the homepage). */
+  tab: string;
+  tabHref: string;
+  /** Small "beta" mark after the tab label. */
+  beta?: boolean;
+  /** Shown only when the community (login) service is enabled. */
+  needsCommunity?: boolean;
+  /** Paths whose tab this is: exact for '/', otherwise the path and everything under it. */
+  paths: string[];
 }
 
 /** Sections of the site, in the order they appear in navigation and on the homepage. */
 export const SHELVES: Shelf[] = [
-  { href: '/daily', name: `${DAILY_NAME} 每日 AI 精选`, desc: '每天用算法从全网筛出最值得看的 AI 动态' },
-  { href: '/feed', name: '动态', desc: 'AI 圈博主最近 24 小时在 X 上说了什么，中英对照' },
-  { href: '/subjects', name: '专题', desc: '值得长期关注的公司、人物与技术方向' },
-  { href: '/meet', name: '相亲贴', desc: '给认真生活的开发者，认识一个对的人' },
+  {
+    id: 'daily', href: '/daily', name: `${DAILY_NAME} 每日 AI 精选`, desc: '每天用算法从全网筛出最值得看的 AI 动态',
+    tab: 'AI 日报', tabHref: '/', paths: ['/', '/daily', '/article', '/history', '/projects'],
+  },
+  {
+    id: 'feed', href: '/feed', name: '动态', desc: 'AI 圈博主最近 24 小时在 X 上说了什么，中英对照',
+    tab: '动态', tabHref: '/feed', paths: ['/feed'],
+  },
+  {
+    id: 'subjects', href: '/subjects', name: '专题', desc: '值得长期关注的公司、人物与技术方向',
+    tab: '专题', tabHref: '/subjects', beta: true, paths: ['/subjects'],
+  },
+  {
+    id: 'meet', href: '/meet', name: '相亲贴', desc: '给认真生活的开发者，认识一个对的人',
+    tab: '相亲贴', tabHref: '/meet', needsCommunity: true, paths: ['/meet'],
+  },
 ];
+
+/** The sections a visitor can see: community-only ones need the community service. */
+export function visibleShelves(communityEnabled: boolean): Shelf[] {
+  return SHELVES.filter((shelf) => !shelf.needsCommunity || communityEnabled);
+}
+
+const underPath = (pathname: string, base: string) =>
+  base === '/' ? pathname === '/' : pathname === base || pathname.startsWith(`${base}/`);
+
+/** The section a path belongs to, for the active tab; null for about, legal and other site pages. */
+export function sectionForPath(pathname: string): SectionId | null {
+  return SHELVES.find((shelf) => shelf.paths.some((base) => underPath(pathname, base)))?.id ?? null;
+}

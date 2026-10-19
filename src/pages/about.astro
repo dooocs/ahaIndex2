@@ -2,10 +2,10 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Masthead from '../components/Masthead.astro';
 import Footer from '../components/Footer.astro';
-import { SITE_NAME, SITE_SLOGAN, SITE_INTRO, SITE_DESCRIPTION, SHELVES, siteTitle } from '../lib/site';
+import { SITE_NAME, SITE_SLOGAN, SITE_INTRO, SITE_DESCRIPTION, visibleShelves, siteTitle } from '../lib/site';
 import { community } from '../lib/community-config';
 
-const shelves = SHELVES.filter((shelf) => shelf.href !== '/meet' || community);
+const shelves = visibleShelves(Boolean(community));
 ---
 
 <BaseLayout

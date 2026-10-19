@@ -1,20 +1,24 @@
 ---
+// The tab bar. Tabs come from SHELVES (src/lib/site.ts); the active one is the
+// `tab` prop when a page says which section it is (TabLayout does), otherwise
+// the section the URL belongs to. About and legal pages have no active tab.
 import { community } from '../lib/community-config';
-const pathname = Astro.url.pathname;
-const isSubjects = pathname.startsWith('/subjects');
-const isFeed = pathname.startsWith('/feed');
-const isMeet = pathname.startsWith('/meet');
-// Only the daily briefing's own pages light up the first tab; about/legal pages have no active tab.
-const isDaily = pathname === '/' || ['/daily', '/article', '/history', '/projects'].some((p) => pathname.startsWith(p));
+import { sectionForPath, visibleShelves, type SectionId } from '../lib/site';
+
+interface Props {
+  tab?: SectionId | null;
+}
+
+const active = Astro.props.tab ?? sectionForPath(Astro.url.pathname);
+const tabs = visibleShelves(Boolean(community));
 ---
 
 <nav class="nav-bar" aria-label="站点导航">
   <div class="nav-inner">
     <div class="nav-tabs">
-      <a href="/" class={`nav-tab ${isDaily ? 'active' : ''}`} data-astro-reload>AI 日报</a>
-      <a href="/feed" class={`nav-tab ${isFeed ? 'active' : ''}`} data-astro-reload>动态</a>
-      <a href="/subjects" class={`nav-tab ${isSubjects ? 'active' : ''}`} data-astro-reload>专题<sup class="nav-beta">beta</sup></a>
-      {community && <a href="/meet" class={`nav-tab ${isMeet ? 'active' : ''}`} data-astro-reload>相亲贴</a>}
+      {tabs.map((t) => (
+        <a href={t.tabHref} class={`nav-tab ${t.id === active ? 'active' : ''}`} data-astro-reload>{t.tab}{t.beta && <sup class="nav-beta">beta</sup>}</a>
+      ))}
     </div>
     {community && <a href="/login" class="community-nav" data-community-account data-astro-reload>登录 / 注册</a>}
   </div>

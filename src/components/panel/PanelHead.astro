@@ -1,0 +1,23 @@
+---
+// The top of an overview: a small kicker with a rule, a two-line title whose
+// second line is the accent, and one short paragraph.
+//   <PanelHead kicker="动态 / Feed" title="AI 博主" accent="最近 24 小时" text="…" />
+interface Props {
+  kicker: string;
+  title: string;
+  /** Second line of the title, in the accent style. */
+  accent?: string;
+  text?: string;
+}
+
+const { kicker, title, accent, text } = Astro.props;
+---
+
+<div class="panel-head">
+  <div class="panel-kicker">{kicker}</div>
+  <h2 class="panel-title">
+    {title}{accent && <><br /><em>{accent}</em></>}
+  </h2>
+  {text && <p class="panel-text">{text}</p>}
+  <slot />
+</div>
