@@ -8,8 +8,8 @@
 | `person_profiles` | 这个人的详情（`person_id` 对应 `people.id`） | 事件、成就、标签、立场、对照 |
 
 第一次使用：在 SQL 编辑器里依次执行 `sql/people/001_people.sql`（建表、
-权限）和 `sql/people/002_seed.sql`（动态里已知的博主，加一份 Sam Altman
-草稿）。两个文件都可以重复执行。
+权限）、`sql/people/002_seed.sql`（动态里已知的博主，加一份 Sam Altman
+草稿）、`sql/people/003_avatars.sql`（照片列）。都可以重复执行。
 
 之后在表编辑器里直接改。网址是 `/people/<slug>`。每小时的动态部署和每天的
 构建都会重新读这两张表，改完一小时内上线，不用提 PR。
@@ -39,7 +39,19 @@
 | `take_text`、`take_updated_at` | 蜗牛说和它的改写日期。整页唯一必须是你自己写的东西 |
 | `status` | `draft` / `published` |
 | `former_subjects` | 可空：这个人接手的旧专题地址，例如 `{person:lei-jun}`；`person:<slug>` 和 slug 一样时不用填 |
-| `added_at` | 收录日期；`updated_at` 自动更新 |
+| `avatar_url` | 照片，只能是 `https://www.amazingindex.com/…` 下的地址。每天的头像任务会自动填（`media/people/avatars/` 下）；你手动填别的地址，任务就不再覆盖 |
+| `github_handle` | 可空：GitHub 用户名，X 头像拿不到时用它的头像 |
+| `added_at` | 收录日期；`updated_at` 自动更新（只换照片不算更新） |
+
+## 照片
+
+GitHub Actions 的 **People Avatars** 每天 05:30（北京时间）跑一次，也可以手动触发
+（可选只看不改的 dry run）：给每个已发布、有 `x_handle` 或 `github_handle` 的人取照片，
+X 头像（unavatar.io）优先，其次 GitHub 头像，存到 OSS 的 `media/people/avatars/`，写进
+`avatar_url`。照片没变就什么都不做；某个人取不到就跳过并警告，保留原来的照片。它和动态
+完全分开，页面在下一次每小时部署时换上新照片。没有照片时显示名字首字母。
+
+需要的 secrets：`SUPABASE_URL`、`SUPABASE_SERVICE_ROLE_KEY`（写 `people`）、`OSS_ACCESS_KEY_ID`、`OSS_ACCESS_KEY_SECRET`。
 
 ## `person_profiles`（详情）
 

@@ -215,7 +215,14 @@ export async function getTracks(db: Db): Promise<TrackInfo[]> {
 
 // ─── People ─────────────────────────────────────────
 
-const PEOPLE_COLUMNS = 'id, slug, name, name_zh, x_handle, person_group, role, tier, take_text, take_updated_at, status, former_subjects, added_at, updated_at';
+const PEOPLE_BASE_COLUMNS = 'id, slug, name, name_zh, x_handle, person_group, role, tier, take_text, take_updated_at, status, former_subjects, added_at, updated_at';
+// Added by sql/people/003_avatars.sql; read only once the migration is in.
+const PEOPLE_COLUMNS = `${PEOPLE_BASE_COLUMNS}, avatar_url, github_handle`;
+
+function isMissingColumnError(error: unknown): boolean {
+  const err = error as { code?: string; message?: string } | null;
+  return Boolean(err && (err.code === '42703' || /column .* does not exist/i.test(err.message ?? '')));
+}
 const PROFILE_COLUMNS = 'person_id, born, fields, events, record, labels, stances, compare, updated_at';
 
 /**
@@ -224,9 +231,13 @@ const PROFILE_COLUMNS = 'person_id, born, fields, events, record, labels, stance
  */
 export async function getPeopleRows(db: Db): Promise<{ people: PersonRow[]; profiles: ProfileRow[] }> {
   try {
-    const people = await fetchAllRows<PersonRow>((from, to) =>
-      db.from('people').select(PEOPLE_COLUMNS).eq('status', 'published').order('slug', { ascending: true }).range(from, to),
+    const read = (columns: string) => fetchAllRows<PersonRow>((from, to) =>
+      db.from('people').select(columns).eq('status', 'published').order('slug', { ascending: true }).range(from, to) as unknown as PageResult<PersonRow>,
     );
+    const people = await read(PEOPLE_COLUMNS).catch((error) => {
+      if (isMissingColumnError(error)) return read(PEOPLE_BASE_COLUMNS);
+      throw error;
+    });
     const profiles: ProfileRow[] = [];
     for (const batch of chunkValues(people.map((p) => p.id), 100)) {
       profiles.push(...await fetchAllRows<ProfileRow>((from, to) =>

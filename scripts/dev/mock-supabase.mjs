@@ -205,7 +205,7 @@ export function buildFixture() {
   const people = [
     person('sam-altman', 'Sam Altman', 'sama', '掌舵人', 'OpenAI CEO', {
       name_zh: '萨姆·奥尔特曼', tier: '值得关注', take_text: '总在对的时候把东西推出去。', take_updated_at: day,
-      former_subjects: ['person:sam'],
+      former_subjects: ['person:sam'], avatar_url: 'https://www.amazingindex.com/media/people/avatars/mock-sam-altman.jpg',
     }),
     person('santiago', 'Santiago', 'svpino', '布道者', '机器学习工程博主'),
     person('andrej-karpathy', 'Andrej Karpathy', 'karpathy', '布道者', 'Eureka Labs', { status: 'draft', take_text: '草稿' }),
