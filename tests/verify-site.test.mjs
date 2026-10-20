@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { verifyDist, verifyExport } from '../scripts/lib/verify-site.mjs';
+import { retiredSubjectPage } from '../src/lib/site-export.ts';
 
 const SITE = 'https://www.amazingindex.com';
 const DATE = '2026-10-07';
@@ -28,23 +29,22 @@ async function fixture(t, mode = 'daily') {
   await d('index.html', '<div class="masthead-vol">VOL. 2026.10<br>2026.10.07</div><a class="article" href="/article/a">A</a>');
   await d('article/a/index.html');
   await d(`daily/${DATE}/index.html`);
-  for (const page of ['about', 'contact', 'history', 'privacy', 'terms', 'subjects']) await d(`${page}/index.html`);
+  for (const page of ['about', 'contact', 'history', 'privacy', 'terms', 'people', 'people/ada']) await d(`${page}/index.html`);
   await d('shell/daily-year/index.html', SHELL);
   await d('shell/daily-month/index.html', SHELL);
-  await d('shell/subject/index.html', SHELL);
   if (mode === 'full') await d('projects/example/index.html');
 
   await e('data/summary.json', data({ latest_date: DATE, editions: [{ date: DATE }, { date: OLD }] }));
   await e('data/archive/index.json', data({ years: [{ year: 2026, months: [{ month: '2026-10-01' }] }] }));
   await e('data/archive/2026-10.json', month([DATE, OLD]));
   await e('rss.xml', `<rss><channel><lastBuildDate>Wed, 07 Oct 2026 00:00:00 GMT</lastBuildDate><item><link>${SITE}/article/a</link></item></channel></rss>`);
-  for (const file of ['history.json', 'subjects/s.json']) await e(`data/${file}`, data());
-  await e('data/subjects/index.json', data({ sections: [{ subjects: [{ slug: 's' }] }] }));
+  await e('data/history.json', data());
   await e('daily/index.html', '<title>Archive</title><a href="/daily/2026-10">十月</a>');
   await e('daily/2026-10/index.html', `<title>October</title><a href="/daily/${DATE}">10.07</a><a href="/daily/${OLD}">10.06</a>`);
-  await e('subjects/s/index.html', '<title>S</title>');
+  await e('subjects/person:ada/index.html', retiredSubjectPage('/people/ada', SITE));
+  await e('subjects/index.html', retiredSubjectPage('/people', SITE));
   await e('sitemap.xml', `<sitemapindex><sitemap><loc>${SITE}/sitemap-pages.xml</loc></sitemap><sitemap><loc>${SITE}/sitemap-articles-2026.xml</loc></sitemap><sitemap><loc>${SITE}/sitemap-articles-2025.xml</loc></sitemap></sitemapindex>`);
-  await e('sitemap-pages.xml', urlset([['/'], ['/about'], ['/daily'], ['/daily/2026-10'], [`/daily/${OLD}`, OLD], [`/daily/${DATE}`, DATE], ['/subjects/s']]));
+  await e('sitemap-pages.xml', urlset([['/'], ['/about'], ['/daily'], ['/daily/2026-10'], [`/daily/${OLD}`, OLD], [`/daily/${DATE}`, DATE], ['/people/ada']]));
   await e('sitemap-articles-2026.xml', urlset([['/article/a', DATE], ['/article/older', OLD]]));
   const inventory = new Map([[`daily/${OLD}/index.html`, 'x'], ['article/older/index.html', 'x'], ['sitemap-articles-2025.xml', 'x']]);
   return { dist, exportDir, d, e, inventory };
@@ -115,8 +115,16 @@ test('rejects built articles missing from the sitemap and unfilled shell copies'
   await d('article/new/index.html');
   await assert.rejects(verifyExport(exportDir, dist, { latestDate: DATE, inventory }), /missing from the sitemap: new/);
   await rm(path.join(dist, 'article/new'), { recursive: true });
-  await e('subjects/s/index.html', SHELL);
+  await e('daily/2026-10/index.html', SHELL);
   await assert.rejects(verifyExport(exportDir, dist, { latestDate: DATE, inventory }), /still contains __SHELL_TITLE__/);
+});
+
+test('retired subject pages must be noindex and send readers to a deployed page', async (t) => {
+  const { dist, exportDir, e, inventory } = await fixture(t);
+  await e('subjects/person:ada/index.html', retiredSubjectPage('/people/nobody', SITE));
+  await assert.rejects(verifyExport(exportDir, dist, { latestDate: DATE, inventory }), /redirects to a page that is not deployed: \/people\/nobody/);
+  await e('subjects/person:ada/index.html', '<title>Old subject</title>');
+  await assert.rejects(verifyExport(exportDir, dist, { latestDate: DATE, inventory }), /not a noindex retired page/);
 });
 
 test('rejects 上一期 links to editions that are neither deployed nor built', async (t) => {

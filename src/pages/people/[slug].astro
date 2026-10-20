@@ -1,0 +1,246 @@
+---
+// One person (/people/<slug>), on the tab frame. Left: who they are, the
+// take (蜗牛说), the one moment to look at (如果只看一件事), every turning
+// point, controversy and low point in order, and their posts from the feed's
+// 24 hours. Right: counts, facts, record, the labels others give them (each
+// with who says so), where they stand on the field's arguments, and who to
+// read them against. The overview is part of the page, not a summary of it:
+// it scrolls with the page (no sticky panel), and on phones it follows the
+// content rather than being hidden.
+//
+// A person without a take yet gets a noindex page with their identity and
+// posts only, and no sitemap entry.
+import TabLayout from '../../layouts/TabLayout.astro';
+import PanelHead from '../../components/panel/PanelHead.astro';
+import StatRow from '../../components/panel/StatRow.astro';
+import PanelSection from '../../components/panel/PanelSection.astro';
+import { getPeople } from '../../lib/people-data';
+import { EVENT_TYPES, PEOPLE_PATH, dotDate, initialOf, isWritten, postsOf, sortedEvents, type Person, type Source } from '../../lib/people';
+import { beijingTime, renderPostText } from '../../lib/feed.ts';
+import { SITE_URL, siteTitle } from '../../lib/site';
+import '../../styles/feed.css';
+import '../../styles/people.css';
+
+export async function getStaticPaths() {
+  const { people } = await getPeople();
+  return people.map((person) => ({ params: { slug: person.slug }, props: { slug: person.slug } }));
+}
+
+const { slug } = Astro.props as { slug: string };
+const { people, byHandle } = await getPeople();
+const p = people.find((x) => x.slug === slug) as Person;
+const written = isWritten(p);
+const posts = postsOf(p, byHandle);
+const recent = posts.slice(0, 3);
+const avatar = posts.find((post) => post.avatar_url)?.avatar_url ?? null;
+const pinned = p.events.find((e) => e.pinned) ?? null;
+const events = sortedEvents(p);
+const types = EVENT_TYPES.map((t) => ({ type: t, count: events.filter((e) => e.type === t).length })).filter((t) => t.count > 0);
+const fights = events.filter((e) => e.type === '争议').length;
+const published = new Set(people.map((x) => x.slug));
+const tagClass = (type: string) => `ev-tag${type === '争议' ? ' is-fight' : type === '低谷' ? ' is-low' : ''}`;
+const sourceLabel = (s: Source) => s.title;
+const xProfile = (handle: string) => `https://x.com/${encodeURIComponent(handle)}`;
+
+const name = p.name_zh ? `${p.name}（${p.name_zh}）` : p.name;
+const pageTitle = siteTitle(`${name} · 人物`);
+const pageDesc = written
+  ? `${p.take!.text} ${p.name}：${p.role}。看他人生里的转折、争议和低谷。`
+  : `${p.name}：${p.role}。`;
+const canonical = `${SITE_URL}${PEOPLE_PATH}/${p.slug}`;
+const sideText = written
+  ? '疾风知劲草，大事上才看得清一个人。他的转折、争议和低谷在时间线里；这里是他做成过什么、别人给的标签和他的立场。'
+  : '这个人的评价还没写，这里先放他的公开身份和最近的动态。';
+const others = [...new Map(p.stances.flatMap((s) => s.others ?? []).map((o) => [o.name, o])).values()];
+---
+
+<TabLayout tab="people" showScore={false} mainClass="people-page person-page" sideClass="person-side" title={pageTitle} description={pageDesc} canonicalUrl={canonical} ogUrl={canonical} noindex={!written}>
+  <a class="person-back" href={PEOPLE_PATH}>← 人物 / People</a>
+
+  <header class="person-header">
+    <div class="people-avatar" aria-hidden="true">{avatar ? <img src={avatar} alt="" width="56" height="56" decoding="async" /> : initialOf(p.name)}</div>
+    <div style="min-width: 0;">
+      <div class="person-kicker">人物 · {p.group}</div>
+      <h1 class="person-title">{p.name}{p.name_zh && <> <small>{p.name_zh}</small></>}</h1>
+      <div class="person-sub">
+        <span>{p.role}</span>
+        {p.x_handle && <a href={xProfile(p.x_handle)} target="_blank" rel="noopener nofollow">@{p.x_handle} ↗</a>}
+      </div>
+    </div>
+  </header>
+
+  {written ? (
+    <section class="person-take" aria-label="蜗牛说">
+      <div class="people-k">蜗牛说 / My take</div>
+      <p>{p.take!.text}</p>
+      <div class="people-note">蜗牛 · 改写于 {dotDate(p.take!.updated_at)}{p.tier && <> · <b>关注建议：{p.tier}</b></>}</div>
+    </section>
+  ) : (
+    <p class="person-unwritten">评价待写。先看看他最近在说什么。</p>
+  )}
+
+  {pinned && (
+    <section class="person-one" aria-labelledby="person-one-h">
+      <div class="person-one-head">
+        <h2 id="person-one-h" class="people-k">如果只看一件事 / The one moment</h2>
+        <span class={tagClass(pinned.type)}>{pinned.type}</span>
+      </div>
+      <div class="person-one-date person-date">{pinned.date}</div>
+      <h3>{pinned.title}</h3>
+      {pinned.steps && pinned.steps.length > 0 ? (
+        <ol class="person-steps" aria-label="事件经过">
+          {pinned.steps.map((s) => <li><div>{s.date}</div><div>{s.text}</div></li>)}
+        </ol>
+      ) : (
+        <p class="person-body">{pinned.body}</p>
+      )}
+      {pinned.reading && <p class="person-reading"><span class="people-k">这说明</span>{pinned.reading}</p>}
+      {pinned.sides && pinned.sides.length > 0 && (
+        <div class="person-sides">
+          {pinned.sides.map((s) => <div><div class="people-k">{s.who}</div><p>{s.text}</p></div>)}
+        </div>
+      )}
+      <div class="people-note">来源 · {pinned.sources.map((s, i) => <>{i > 0 && ' · '}{s.url ? <a href={s.url} target="_blank" rel="noopener nofollow">{sourceLabel(s)} ↗</a> : sourceLabel(s)}</>)}</div>
+    </section>
+  )}
+
+  {events.length > 0 && (
+    <section class="person-section" aria-labelledby="person-events-h">
+      <h2 id="person-events-h">看清他的 {events.length} 个时刻</h2>
+      {types.length > 1 && (
+        <div class="person-tabs" role="group" aria-label="按事件类型筛选">
+          <button type="button" data-event-type="" aria-pressed="true">全部 {events.length}</button>
+          {types.map((t) => <button type="button" data-event-type={t.type} aria-pressed="false">{t.type} {t.count}</button>)}
+        </div>
+      )}
+      <ol class="person-events" data-person-events>
+        {events.map((e) => (
+          <li class="person-event-item" data-type={e.type}>
+            <div class="person-date">{e.date}</div>
+            <div style="min-width: 0;">
+              <span class={tagClass(e.type)}>{e.type}</span>
+              <h3>{e.title}</h3>
+              <p class="person-body">{e.pinned && e.steps?.length ? `${e.body}经过见上方「如果只看一件事」。` : e.body}</p>
+              {!e.pinned && e.sides && e.sides.length > 0 && (
+                <div class="person-sides">
+                  {e.sides.map((s) => <div><div class="people-k">{s.who}</div><p>{s.text}</p></div>)}
+                </div>
+              )}
+              {!e.pinned && e.reading && <p class="person-reading"><span class="people-k">这说明</span>{e.reading}</p>}
+              <div class="people-note">来源 · {e.sources.map((s, i) => <>{i > 0 && ' · '}{s.url ? <a href={s.url} target="_blank" rel="noopener nofollow">{sourceLabel(s)} ↗</a> : sourceLabel(s)}</>)}</div>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
+  )}
+
+  {p.x_handle && (
+    <section class="person-section person-posts" aria-labelledby="person-posts-h">
+      <div class="person-section-head">
+        <h2 id="person-posts-h">他最近在说</h2>
+        <a href="/feed">在动态里看全部 →</a>
+      </div>
+      {recent.length === 0 ? (
+        <p class="people-note">最近 24 小时没有在 X 上发原创帖。</p>
+      ) : (
+        <ol class="feed-stream">
+          {recent.map((post) => (
+            <li class="feed-post">
+              <span class="feed-avatar" aria-hidden="true">{post.avatar_url ? <img src={post.avatar_url} alt="" width="40" height="40" loading="lazy" decoding="async" /> : <span>{initialOf(post.display_name)}</span>}</span>
+              <div class="feed-post-body">
+                <header class="feed-post-head">
+                  <span class="feed-name">{post.display_name}</span>
+                  <span class="feed-handle">@{post.author}</span>
+                  <span class="feed-dot" aria-hidden="true">·</span>
+                  <a class="feed-time" href={post.url} target="_blank" rel="noopener nofollow" title="在 X 查看原帖"><time datetime={post.published_at}>{beijingTime(post.published_at)}</time></a>
+                </header>
+                {post.text_original && <div class="feed-text feed-original" set:html={renderPostText(post.text_original)} />}
+                {post.text_zh && (
+                  <div class="feed-text feed-zh" lang="zh-CN">
+                    <span class="feed-zh-label" aria-label="中文翻译">译</span>
+                    <Fragment set:html={renderPostText(post.text_zh)} />
+                  </div>
+                )}
+                <a class="feed-source" href={post.url} target="_blank" rel="noopener nofollow">在 X 查看 ↗</a>
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
+  )}
+
+  <div class="person-overview" slot="side">
+    <PanelHead kicker="人物档案 / Profile" text={sideText} />
+
+    <StatRow stats={[{ label: '时刻', value: events.length }, { label: '争议', value: fights }, { label: '24 小时动态', value: posts.length }]} />
+
+    {(p.born || (p.fields && p.fields.length > 0) || p.x_handle) && (
+      <PanelSection label="档案 / Facts">
+        <dl class="person-facts">
+          {p.born && <div><dt>出生</dt><dd>{p.born}</dd></div>}
+          {p.fields && p.fields.length > 0 && <div><dt>领域</dt><dd>{p.fields.join(' · ')}</dd></div>}
+          {p.x_handle && <div><dt>X</dt><dd><a href={xProfile(p.x_handle)} target="_blank" rel="noopener nofollow">@{p.x_handle} ↗</a></dd></div>}
+        </dl>
+      </PanelSection>
+    )}
+
+    {p.record.length > 0 && (
+      <PanelSection label="关键成就 / Record">
+        <ol class="person-record">
+          {p.record.map((r) => <li><span>{r.period}</span><span>{r.text}{r.note && <> <small>{r.note}</small></>}</span></li>)}
+        </ol>
+      </PanelSection>
+    )}
+
+    {p.labels.length > 0 && (
+      <PanelSection label="别人怎么叫他 / Labels">
+        <ul class="person-labels">
+          {p.labels.map((l) => <li><b>「{l.text}」</b><span>{l.by}{l.url && <> · <a href={l.url} target="_blank" rel="noopener nofollow">原文 ↗</a></>}</span></li>)}
+        </ul>
+      </PanelSection>
+    )}
+
+    {p.stances.length > 0 && (
+      <PanelSection label="他站在哪 / Stances">
+        {p.stances.map((s) => (
+          <div class="person-stance">
+            <div class="person-stance-ends"><span>{s.left}</span><span>{s.right}</span></div>
+            <div class="person-axis" role="img" aria-label={`${s.left}到${s.right}：他在 ${s.position}%${s.was !== undefined ? `，以前在 ${s.was}%` : ''}${(s.others ?? []).map((o) => `，${o.name}在 ${o.position}%`).join('')}`}>
+              {s.was !== undefined && <i class="is-move" style={`left:${Math.min(s.was, s.position)}%;right:${100 - Math.max(s.was, s.position)}%`}></i>}
+              {(s.others ?? []).map((o) => <i class="is-other" style={`left:${o.position}%`} title={o.name}>{o.initial ?? initialOf(o.name)}</i>)}
+              {s.was !== undefined && <i class="is-was" style={`left:${s.was}%`}></i>}
+              <i class="is-him" style={`left:${s.position}%`}></i>
+            </div>
+            <p>{s.note} {s.source.url ? <a href={s.source.url} target="_blank" rel="noopener nofollow">依据 ↗</a> : null}</p>
+          </div>
+        ))}
+        <p class="person-legend">● 他{p.stances.some((s) => s.was !== undefined) && ' · ◌ 他以前'}{others.map((o) => ` · ${o.initial ?? initialOf(o.name)} = ${o.name}`).join('')}</p>
+      </PanelSection>
+    )}
+
+    {p.compare.length > 0 && (
+      <PanelSection label="对照着看 / Compare">
+        <div class="person-compare">
+          {p.compare.map((c) => c.slug && published.has(c.slug)
+            ? <a href={`${PEOPLE_PATH}/${c.slug}`}><span>{c.name} →</span><small>{c.why}</small></a>
+            : <div><span>{c.name}</span><small>{c.why}</small></div>)}
+        </div>
+      </PanelSection>
+    )}
+
+    <p class="panel-note">收录 {dotDate(p.added_at)} · 更新 {dotDate(p.updated_at)}</p>
+  </div>
+</TabLayout>
+
+<script>
+  // Show one type of event; the pinned moment above stays.
+  const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-event-type]'));
+  const items = Array.from(document.querySelectorAll<HTMLElement>('[data-person-events] > li'));
+  buttons.forEach((b) => b.addEventListener('click', () => {
+    const type = b.dataset.eventType ?? '';
+    items.forEach((li) => { li.hidden = Boolean(type) && li.dataset.type !== type; });
+    buttons.forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+  }));
+</script>

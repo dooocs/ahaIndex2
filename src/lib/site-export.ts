@@ -10,17 +10,11 @@ import {
   type EditionSummary,
   type TopItem,
 } from './edition-ledger.ts';
-import { fallbackSignalStats } from './subject-data.ts';
 import type {
   DailyArchive,
   GlobalStats,
   MonthlyArchive,
   ProcessedItem,
-  SubjectCatalogEntry,
-  SubjectDirectorySection,
-  SubjectInsight,
-  SubjectSignal,
-  SubjectSignalStats,
   WeeklyArchive,
 } from './types.ts';
 
@@ -180,98 +174,6 @@ export function historyJson(itemsOfLatestFive: ProcessedItem[]): HistoryJson {
   return { v: DATA_VERSION, items: items.map(cardItem) };
 }
 
-export interface SubjectCard {
-  slug: string;
-  display_name: string;
-  type: string;
-  aliases: string[];
-  summary: string;
-  stats: SubjectSignalStats;
-}
-
-export interface SubjectIndexJson {
-  v: number;
-  latest_date: string | null;
-  subject_count: number;
-  sections: { slug: string; label: string; subjects: SubjectCard[] }[];
-}
-
-export function subjectIndexJson(
-  sections: SubjectDirectorySection[],
-  statsBySubject: Map<string, SubjectSignalStats>,
-  latestDate: string | null,
-): SubjectIndexJson {
-  const statsOf = (subject: SubjectCatalogEntry) => statsBySubject.get(subject.id) || fallbackSignalStats(subject);
-  const bySignal = (a: SubjectCatalogEntry, b: SubjectCatalogEntry) => {
-    const as = statsOf(a);
-    const bs = statsOf(b);
-    if (as.signal_count_30d !== bs.signal_count_30d) return bs.signal_count_30d - as.signal_count_30d;
-    if (as.trend_pct_30d !== bs.trend_pct_30d) return bs.trend_pct_30d - as.trend_pct_30d;
-    return (b.curation_priority || 0) - (a.curation_priority || 0);
-  };
-  return {
-    v: DATA_VERSION,
-    latest_date: latestDate,
-    subject_count: sections.reduce((n, s) => n + s.subjects.length, 0),
-    sections: sections.map((section) => ({
-      slug: section.slug,
-      label: section.label,
-      subjects: [...section.subjects].sort(bySignal).map((subject) => ({
-        slug: subject.slug,
-        display_name: subject.display_name,
-        type: subject.type,
-        aliases: (subject.aliases || []).slice(0, 2),
-        summary: subject.definition || subject.description || '',
-        stats: statsOf(subject),
-      })),
-    })),
-  };
-}
-
-export interface SubjectJson {
-  v: number;
-  subject: {
-    slug: string;
-    display_name: string;
-    type: string;
-    summary: string;
-    section_slug: string | null;
-    homepage_url: string | null;
-  };
-  stats: SubjectSignalStats;
-  signals: Pick<SubjectSignal, 'title' | 'url' | 'source_name' | 'snapshot_date' | 'score' | 'external'>[];
-  highlights: { summary: string | null; analysis: string | null; evidence_count: number }[];
-  related: { slug: string; display_name: string }[];
-}
-
-export function subjectJson(
-  subject: SubjectCatalogEntry,
-  stats: SubjectSignalStats | undefined,
-  signals: SubjectSignal[],
-  insights: SubjectInsight[],
-  related: SubjectCatalogEntry[],
-): SubjectJson {
-  return {
-    v: DATA_VERSION,
-    subject: {
-      slug: subject.slug,
-      display_name: subject.display_name,
-      type: subject.type,
-      summary: subject.definition || subject.description || '',
-      section_slug: subject.section_slug,
-      homepage_url: subject.homepage_url,
-    },
-    stats: stats || fallbackSignalStats(subject),
-    signals: signals.map(({ title, url, source_name, snapshot_date, score, external }) => ({ title, url, source_name, snapshot_date, score, external })),
-    highlights: insights.filter((i) => i.module_type === 'highlight').map((i) => ({
-      summary: i.summary,
-      analysis: i.analysis,
-      evidence_count: Array.isArray(i.evidence_item_ids) ? i.evidence_item_ids.length : 0,
-    })),
-    related: related.map((r) => ({ slug: r.slug, display_name: r.display_name })),
-  };
-}
-
 // ─── Shell pages ────────────────────────────────────
 
 /** Tokens a shell page is built with; replaced per URL by the export. */
@@ -334,10 +236,24 @@ export function monthShellMeta(month: string): ShellMeta {
   };
 }
 
-export function subjectShellMeta(subject: Pick<SubjectCatalogEntry, 'slug' | 'display_name' | 'definition' | 'description'>): ShellMeta {
-  return {
-    path: `/subjects/${subject.slug}`,
-    title: `${subject.display_name} · AI 专题 | 蜗牛杂货站`,
-    description: subject.definition || subject.description || `${subject.display_name} 的关键事件、突出点和横向对比。`,
-  };
+// ─── Retired 专题 pages ─────────────────────────────
+
+/**
+ * What a retired /subjects URL serves now: a page that search engines drop
+ * (noindex) and readers leave at once for `target` (the person who took the
+ * subject over, or the people directory). Static hosting has no 301, so the
+ * refresh and the canonical link carry the move.
+ */
+export function retiredSubjectPage(target: string, siteUrl: string): string {
+  const href = escapeHtml(target);
+  const absolute = escapeHtml(`${siteUrl}${target}`);
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">`
+    + `<meta name="viewport" content="width=device-width, initial-scale=1">`
+    + `<meta name="robots" content="noindex, follow">`
+    + `<title>专题已下线 | 蜗牛杂货站</title>`
+    + `<link rel="canonical" href="${absolute}">`
+    + `<meta http-equiv="refresh" content="0; url=${href}">`
+    + `</head><body style="margin:0;background:#f0ebe0;color:#1a1612;font:15px/1.8 'Noto Serif SC',serif">`
+    + `<p style="max-width:560px;margin:80px auto;padding:0 20px">专题已经下线，内容搬到了「人物」。正在前往 <a href="${href}" style="color:#c0392b">${href}</a>…</p>`
+    + `</body></html>`;
 }

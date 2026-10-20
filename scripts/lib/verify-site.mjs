@@ -81,7 +81,7 @@ export async function verifyDist(dist, { latestDate, mode, dates = [], inventory
       assert.ok(inventory.has(key) || await isFile(path.join(dist, key)), `${page} links 上一期 to a page that is not deployed: ${attr(link, 'href')}`);
     }
   }
-  for (const shell of ['shell/daily-year/index.html', 'shell/daily-month/index.html', 'shell/subject/index.html']) {
+  for (const shell of ['shell/daily-year/index.html', 'shell/daily-month/index.html']) {
     const html = await readFile(path.join(dist, shell), 'utf8');
     for (const token of SHELL_TOKENS) assert.ok(html.includes(token), `${shell} is missing ${token}`);
   }
@@ -128,11 +128,16 @@ export async function verifyExport(exportDir, dist, { latestDate, inventory = ne
   assert.equal(feedDate, latestDate, 'RSS is not using the latest database edition');
 
   await readJson(path.join(exportDir, 'data/history.json'));
-  // Every subject the index lists has its page and its data.
-  const subjectIndex = await readJson(path.join(exportDir, 'data/subjects/index.json'));
-  for (const { slug } of subjectIndex.sections.flatMap((section) => section.subjects)) {
-    assert.ok(await isFile(path.join(exportDir, 'subjects', slug, 'index.html')), `Subject ${slug} is listed but has no page`);
-    await readJson(path.join(exportDir, 'data/subjects', `${slug}.json`));
+  // Retired 专题 pages only send readers on, to a page that exists.
+  for (const name of ['', ...await listDirs(path.join(exportDir, 'subjects'))]) {
+    const file = path.join(exportDir, 'subjects', name, 'index.html');
+    if (!(await isFile(file))) continue;
+    const html = await readFile(file, 'utf8');
+    assert.ok(html.includes('content="noindex'), `subjects/${name} is not a noindex retired page`);
+    const target = html.match(/http-equiv="refresh" content="0; url=([^"]+)"/)?.[1];
+    assert.ok(target, `subjects/${name} has no redirect`);
+    const key = target === '/people' ? 'people/index.html' : `${target.slice(1)}/index.html`;
+    assert.ok(await deployed(key), `subjects/${name} redirects to a page that is not deployed: ${target}`);
   }
   for (const file of await readdir(path.join(exportDir, 'data/archive'))) {
     if (file === 'index.json') continue;
@@ -166,8 +171,6 @@ export async function verifyExport(exportDir, dist, { latestDate, inventory = ne
       // A month file is only rewritten when its editions change.
       if (!inventory.has(`data/archive/${month[1]}.json`)) throw error;
     });
-    const subject = route.match(/^\/subjects\/([^/]+)$/);
-    if (subject) await readJson(path.join(exportDir, `data/subjects/${subject[1]}.json`));
     const article = route.match(/^\/article\/([^/]+)$/);
     if (article) sitemapArticles.add(article[1]);
   }

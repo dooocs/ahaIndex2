@@ -10,7 +10,7 @@ import {
   monthShellMeta,
   parseDataFile,
   planDaily,
-  subjectShellMeta,
+  retiredSubjectPage,
   summaryJson,
 } from '../src/lib/site-export.ts';
 import { editionRecord, monthlyArchive } from '../src/lib/edition-ledger.ts';
@@ -86,7 +86,13 @@ test('shell metadata matches the former page titles', () => {
     title: '历史归档 - 2026年一月 | AmazingIndex',
     description: '在 AmazingIndex 探索 2026年一月 的 AI 行业动态与突破。',
   });
-  assert.equal(subjectShellMeta({ slug: 'x', display_name: 'X', definition: null, description: null }).description, 'X 的关键事件、突出点和横向对比。');
+});
+
+test('a retired subject page is noindex and sends readers on', () => {
+  const html = retiredSubjectPage('/people/elon-musk', 'https://www.amazingindex.com');
+  assert.match(html, /<meta name="robots" content="noindex, follow">/);
+  assert.match(html, /<link rel="canonical" href="https:\/\/www\.amazingindex\.com\/people\/elon-musk">/);
+  assert.match(html, /<meta http-equiv="refresh" content="0; url=\/people\/elon-musk">/);
 });
 
 test('published pages missing from the listing stop the export instead of being dropped', () => {

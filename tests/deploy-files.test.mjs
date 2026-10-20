@@ -99,8 +99,8 @@ test('built pages and exported files may not overlap', async (t) => {
   await assert.rejects(planDeploy({ dist, exportDir, mode: 'full', dates: [], remote: new Map() }), /overlap/);
 });
 
-test('a feed deploy takes only /feed and the assets it may need', () => {
-  assert.deepEqual(selectPages([...DIST, 'feed/index.html'], 'feed').sort(), ['_astro/a.css', 'feed/index.html']);
+test('a feed deploy takes only /feed, the people pages and the assets they may need', () => {
+  assert.deepEqual(selectPages([...DIST, 'feed/index.html', 'people/index.html', 'people/ada/index.html'], 'feed').sort(), ['_astro/a.css', 'feed/index.html', 'people/ada/index.html', 'people/index.html']);
 });
 
 test('a feed deploy uploads /feed and new assets only, and refreshes both /feed URLs', async (t) => {

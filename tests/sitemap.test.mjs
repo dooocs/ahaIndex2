@@ -10,9 +10,12 @@ import {
 } from '../src/lib/sitemap.ts';
 import { fetchAllRows } from '../src/lib/queries.ts';
 
-test('pages sitemap lists static pages, months, editions and subjects in order', () => {
-  const urls = getPagesSitemapEntries(['2026-01-02', '2025-12-31'], [{ slug: 's', last_seen_at: '2026-01-02T10:00:00Z', first_seen_at: null }]).map((e) => e.url.replace('https://www.amazingindex.com', ''));
-  assert.deepEqual(urls, ['', '/about', '/contact', '/feed', '/history', '/privacy', '/terms', '/daily', '/subjects', '/daily/2025-12', '/daily/2026-01', '/daily/2025-12-31', '/daily/2026-01-02', '/subjects/s']);
+test('pages sitemap lists static pages, months, editions and written people in order', () => {
+  const entries = getPagesSitemapEntries(['2026-01-02', '2025-12-31'], [{ slug: 'zed', updated_at: '2026-01-01' }, { slug: 'ada', updated_at: '2026-01-03' }]);
+  const urls = entries.map((e) => e.url.replace('https://www.amazingindex.com', ''));
+  assert.deepEqual(urls, ['', '/about', '/contact', '/feed', '/history', '/privacy', '/terms', '/daily', '/people', '/daily/2025-12', '/daily/2026-01', '/daily/2025-12-31', '/daily/2026-01-02', '/people/ada', '/people/zed']);
+  assert.equal(entries.find((e) => e.url.endsWith('/people')).lastmod, '2026-01-03');
+  assert.equal(entries.find((e) => e.url.endsWith('/people/zed')).lastmod, '2026-01-01');
 });
 
 test('an article is dated by the newest edition it appears in', () => {
