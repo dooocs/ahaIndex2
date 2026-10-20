@@ -68,7 +68,7 @@
   text-decoration: none;
 }
 
-.feed-name:hover { text-decoration: underline; text-underline-offset: 3px; }
+a.feed-name:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 .feed-handle,
 .feed-dot,
@@ -79,7 +79,6 @@
   text-decoration: none;
 }
 
-.feed-time:hover { color: var(--accent); }
 
 .feed-text {
   overflow-wrap: anywhere;
@@ -135,7 +134,8 @@
 .feed-media-3,
 .feed-media-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
-.feed-media a {
+.feed-media > a,
+.feed-media > .feed-video {
   position: relative;
   display: block;
   overflow: hidden;
@@ -144,7 +144,8 @@
   background: var(--paper-dark);
 }
 
-.feed-media img {
+.feed-media img,
+.feed-media video {
   display: block;
   width: 100%;
   height: auto;
@@ -155,40 +156,50 @@
 /* One image: shown whole, scaled down (tall photos are not cropped). */
 .feed-media-1 { justify-items: start; }
 .feed-media-1 img { width: auto; max-width: 100%; object-fit: contain; }
+.feed-media-1 video { width: auto; max-width: 100%; }
 
 /* Several: an even grid, cropped to the same shape. */
 .feed-media-2 img,
 .feed-media-3 img,
-.feed-media-4 img { aspect-ratio: 4 / 3; height: 100%; }
+.feed-media-4 img,
+.feed-media-2 video,
+.feed-media-3 video,
+.feed-media-4 video { aspect-ratio: 4 / 3; height: 100%; width: 100%; object-fit: cover; }
 
-.feed-play {
+.feed-media video { background: #000; }
+
+/* Videos and GIFs play inline from the site's own copy. */
+.feed-video-tag {
   position: absolute;
-  left: 50%;
-  top: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 52px;
-  height: 52px;
-  margin: -26px 0 0 -26px;
-  border-radius: 50%;
+  left: 8px;
+  top: 8px;
+  padding: 1px 6px;
+  border-radius: 4px;
   background: rgba(26, 22, 18, 0.72);
-  color: var(--paper);
-  font-size: 18px;
-  padding-left: 3px;
-}
-
-.feed-source {
-  display: inline-block;
-  margin-top: 10px;
+  color: #fff;
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.04em;
-  color: var(--muted);
-  text-decoration: none;
+  pointer-events: none;
 }
 
-.feed-source:hover { color: var(--accent); }
+/* A video that was not archived: its cover, with a note. */
+.feed-video.is-unavailable img { opacity: 0.55; }
+.feed-video-note {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(26, 22, 18, 0.78);
+  color: #fff;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.feed-mention,
+.feed-xlink { color: var(--muted); }
 
 .feed-empty {
   padding: 48px 0;

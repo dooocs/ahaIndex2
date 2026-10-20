@@ -16,7 +16,7 @@ import StatRow from '../../components/panel/StatRow.astro';
 import PanelSection from '../../components/panel/PanelSection.astro';
 import { getPeople } from '../../lib/people-data';
 import { EVENT_TYPES, PEOPLE_PATH, avatarOf, dotDate, initialOf, isWritten, postsOf, sortedEvents, type Person, type Source } from '../../lib/people';
-import { beijingTime, renderPostText } from '../../lib/feed.ts';
+import FeedPost from '../../components/feed/FeedPost.astro';
 import { SITE_URL, siteTitle } from '../../lib/site';
 import '../../styles/feed.css';
 import '../../styles/people.css';
@@ -40,7 +40,6 @@ const fights = events.filter((e) => e.type === '争议').length;
 const published = new Set(people.map((x) => x.slug));
 const tagClass = (type: string) => `ev-tag${type === '争议' ? ' is-fight' : type === '低谷' ? ' is-low' : ''}`;
 const sourceLabel = (s: Source) => s.title;
-const xProfile = (handle: string) => `https://x.com/${encodeURIComponent(handle)}`;
 
 const name = p.name_zh ? `${p.name}（${p.name_zh}）` : p.name;
 const pageTitle = siteTitle(`${name} · 人物`);
@@ -64,7 +63,7 @@ const others = [...new Map(p.stances.flatMap((s) => s.others ?? []).map((o) => [
       <h1 class="person-title">{p.name}{p.name_zh && <> <small>{p.name_zh}</small></>}</h1>
       <div class="person-sub">
         <span>{p.role}</span>
-        {p.x_handle && <a href={xProfile(p.x_handle)} target="_blank" rel="noopener nofollow">@{p.x_handle} ↗</a>}
+        {p.x_handle && <span>X @{p.x_handle}</span>}
       </div>
     </div>
   </header>
@@ -145,27 +144,7 @@ const others = [...new Map(p.stances.flatMap((s) => s.others ?? []).map((o) => [
         <p class="people-note">最近 24 小时没有在 X 上发原创帖。</p>
       ) : (
         <ol class="feed-stream">
-          {recent.map((post) => (
-            <li class="feed-post">
-              <span class="feed-avatar" aria-hidden="true">{post.avatar_url ? <img src={post.avatar_url} alt="" width="40" height="40" loading="lazy" decoding="async" /> : <span>{initialOf(post.display_name)}</span>}</span>
-              <div class="feed-post-body">
-                <header class="feed-post-head">
-                  <span class="feed-name">{post.display_name}</span>
-                  <span class="feed-handle">@{post.author}</span>
-                  <span class="feed-dot" aria-hidden="true">·</span>
-                  <a class="feed-time" href={post.url} target="_blank" rel="noopener nofollow" title="在 X 查看原帖"><time datetime={post.published_at}>{beijingTime(post.published_at)}</time></a>
-                </header>
-                {post.text_original && <div class="feed-text feed-original" set:html={renderPostText(post.text_original)} />}
-                {post.text_zh && (
-                  <div class="feed-text feed-zh" lang="zh-CN">
-                    <span class="feed-zh-label" aria-label="中文翻译">译</span>
-                    <Fragment set:html={renderPostText(post.text_zh)} />
-                  </div>
-                )}
-                <a class="feed-source" href={post.url} target="_blank" rel="noopener nofollow">在 X 查看 ↗</a>
-              </div>
-            </li>
-          ))}
+          {recent.map((post) => <FeedPost post={post} />)}
         </ol>
       )}
     </section>
@@ -181,7 +160,7 @@ const others = [...new Map(p.stances.flatMap((s) => s.others ?? []).map((o) => [
         <dl class="person-facts">
           {p.born && <div><dt>出生</dt><dd>{p.born}</dd></div>}
           {p.fields && p.fields.length > 0 && <div><dt>领域</dt><dd>{p.fields.join(' · ')}</dd></div>}
-          {p.x_handle && <div><dt>X</dt><dd><a href={xProfile(p.x_handle)} target="_blank" rel="noopener nofollow">@{p.x_handle} ↗</a></dd></div>}
+          {p.x_handle && <div><dt>X</dt><dd>@{p.x_handle}</dd></div>}
         </dl>
       </PanelSection>
     )}

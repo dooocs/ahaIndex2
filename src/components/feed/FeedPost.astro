@@ -1,0 +1,72 @@
+---
+// One 动态 post in a .feed-stream list (the /feed stream and a person's
+// "他最近在说"). Original text, translation below it, media from the site's
+// own OSS only: photos open the full image, videos and GIFs play inline.
+// Nothing links to X: the time is plain text, @mentions and x.com links in
+// the text are not linked (renderPostText). The avatar and name link to the
+// author's 人物 page when `href` is given, otherwise they are plain.
+import { beijingTime, durationLabel, renderPostText, type FeedPost } from '../../lib/feed.ts';
+
+interface Props {
+  post: FeedPost;
+  /** The author's /people/<slug> page, when there is a published one. */
+  href?: string | null;
+  /** Adds data-author for the side panel's "only this blogger" filter. */
+  filterable?: boolean;
+}
+
+const { post: p, href = null, filterable = false } = Astro.props;
+const initial = Array.from(p.display_name.trim())[0]?.toUpperCase() ?? '?';
+const unavailable = (tooLarge: boolean) => (tooLarge ? '视频较长，未收录' : '视频暂未收录');
+---
+
+<li class="feed-post" data-author={filterable ? p.author.toLowerCase() : undefined}>
+  {href ? (
+    <a class="feed-avatar" href={href} aria-hidden="true" tabindex="-1">
+      {p.avatar_url ? <img src={p.avatar_url} alt="" width="40" height="40" loading="lazy" decoding="async" /> : <span>{initial}</span>}
+    </a>
+  ) : (
+    <span class="feed-avatar" aria-hidden="true">
+      {p.avatar_url ? <img src={p.avatar_url} alt="" width="40" height="40" loading="lazy" decoding="async" /> : <span>{initial}</span>}
+    </span>
+  )}
+  <div class="feed-post-body">
+    <header class="feed-post-head">
+      {href ? <a class="feed-name" href={href} title={`${p.display_name} 的人物页`}>{p.display_name}</a> : <span class="feed-name">{p.display_name}</span>}
+      <span class="feed-handle">@{p.author}</span>
+      <span class="feed-dot" aria-hidden="true">·</span>
+      <time class="feed-time" datetime={p.published_at}>{beijingTime(p.published_at)}</time>
+    </header>
+    {p.text_original && <div class="feed-text feed-original" set:html={renderPostText(p.text_original)} />}
+    {p.text_zh && (
+      <div class="feed-text feed-zh" lang="zh-CN">
+        <span class="feed-zh-label" aria-label="中文翻译">译</span>
+        <Fragment set:html={renderPostText(p.text_zh)} />
+      </div>
+    )}
+    {p.media.length > 0 && (
+      <div class={`feed-media feed-media-${Math.min(p.media.length, 4)}`}>
+        {p.media.map((m) => m.type === 'photo' ? (
+          <a href={m.url} target="_blank" rel="noopener">
+            <img src={m.url} alt="" loading="lazy" decoding="async" width={m.width ?? undefined} height={m.height ?? undefined} />
+          </a>
+        ) : m.video_url && m.type === 'animated_gif' ? (
+          <div class="feed-video is-gif">
+            <video src={m.video_url} poster={m.url} autoplay loop muted playsinline preload="metadata" width={m.width ?? undefined} height={m.height ?? undefined}></video>
+            <span class="feed-video-tag" aria-hidden="true">GIF</span>
+          </div>
+        ) : m.video_url ? (
+          <div class="feed-video">
+            <video src={m.video_url} poster={m.url} controls playsinline preload="none" width={m.width ?? undefined} height={m.height ?? undefined}></video>
+            {durationLabel(m.duration_ms) && <span class="feed-video-tag" aria-hidden="true">{durationLabel(m.duration_ms)}</span>}
+          </div>
+        ) : (
+          <div class="feed-video is-unavailable">
+            <img src={m.url} alt="" loading="lazy" decoding="async" width={m.width ?? undefined} height={m.height ?? undefined} />
+            <span class="feed-video-note">{unavailable(m.video_too_large)}</span>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+</li>

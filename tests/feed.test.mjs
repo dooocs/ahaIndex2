@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { beijingTime, getFeedPosts, groupByAuthor, linkLabel, normalizePost, renderPostText, summarize, timeline } from '../src/lib/feed.ts';
+import { beijingTime, durationLabel, getFeedPosts, groupByAuthor, isXUrl, linkLabel, normalizePost, renderPostText, summarize, timeline } from '../src/lib/feed.ts';
 
 const post = (author, updated, extra = {}) => normalizePost({
   id: `${author}-${updated}`, author, display_name: author.toUpperCase(), avatar_url: null,
@@ -31,13 +31,43 @@ test('only media and avatars archived on the site are shown', () => {
     ],
   });
   assert.equal(p.avatar_url, null);
-  assert.deepEqual(p.media, [{ type: 'photo', url: 'https://www.amazingindex.com/media/x/a.jpg', width: 1200, height: 800 }]);
+  assert.deepEqual(p.media, [{ type: 'photo', url: 'https://www.amazingindex.com/media/x/a.jpg', width: 1200, height: 800, video_url: null, video_too_large: false, duration_ms: null }]);
+});
+
+test('a video keeps its mp4 only when it is on the site', () => {
+  const p = post('sama', '2026-10-17T01:00:00Z', {
+    media: [
+      { type: 'video', url: 'https://www.amazingindex.com/media/x/c.jpg', video_url: 'https://www.amazingindex.com/media/x/video/13_1.mp4', duration_ms: 65000 },
+      { type: 'video', url: 'https://www.amazingindex.com/media/x/d.jpg', video_url: 'https://video.twimg.com/v.mp4' },
+      { type: 'video', url: 'https://www.amazingindex.com/media/x/e.jpg', video_too_large: true },
+    ],
+  });
+  assert.deepEqual(p.media.map((m) => [m.video_url, m.video_too_large, m.duration_ms]), [
+    ['https://www.amazingindex.com/media/x/video/13_1.mp4', false, 65000],
+    [null, false, null],
+    [null, true, null],
+  ]);
+  assert.equal(durationLabel(65000), '1:05');
+  assert.equal(durationLabel(3725000), '1:02:05');
+  assert.equal(durationLabel(null), '');
+});
+
+test('links to X are never linked: @mentions and x.com / t.co URLs stay text', () => {
+  const html = renderPostText('cc @sama https://x.com/sama/status/1 https://twitter.com/a https://t.co/abc https://xyz.com/ok');
+  assert.ok(!html.includes('href="https://x.com'), html);
+  assert.ok(!html.includes('href="https://twitter.com'), html);
+  assert.ok(!html.includes('href="https://t.co'), html);
+  assert.ok(html.includes('<span class="feed-mention">@sama</span>'), html);
+  assert.ok(html.includes('<span class="feed-xlink">x.com/sama/status/1</span>'), html);
+  assert.ok(html.includes('<a href="https://xyz.com/ok" '), html);
+  assert.equal(isXUrl('https://mobile.x.com/a'), true);
+  assert.equal(isXUrl('https://x.company.com/a'), false);
 });
 
 test('text is escaped, linked and split into paragraphs', () => {
   const html = renderPostText('Hi <b>&</b> @sama see https://example.com/a?x=1&y=2.\n\nline1\nline2 (https://en.wikipedia.org/wiki/Foo_(bar)) mail a@b.co');
   assert.equal(html,
-    '<p>Hi &lt;b&gt;&amp;&lt;/b&gt; <a href="https://x.com/sama" target="_blank" rel="noopener nofollow">@sama</a> see '
+    '<p>Hi &lt;b&gt;&amp;&lt;/b&gt; <span class="feed-mention">@sama</span> see '
     + '<a href="https://example.com/a?x=1&amp;y=2" target="_blank" rel="noopener nofollow ugc">example.com/a?x=1&amp;y=2</a>.</p>'
     + '<p>line1<br>line2 (<a href="https://en.wikipedia.org/wiki/Foo_(bar)" target="_blank" rel="noopener nofollow ugc">en.wikipedia.org/wiki/Foo_(bar)</a>) mail a@b.co</p>');
 });
