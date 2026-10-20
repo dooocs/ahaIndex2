@@ -7,7 +7,7 @@
 # CLEANUP=delete is asked for on a full run.
 #
 # Environment:
-#   BUILD_MODE      daily | full | feed (required; feed = only /feed and its assets)
+#   BUILD_MODE      daily | full | feed (required; feed = only /feed, /people and their assets)
 #   BUILD_DATES     daily mode: the edition dates that were built (comma-separated)
 #   INVENTORY       bucket listing from scripts/lib/inventory.mjs (default .deploy/remote.json; required for daily)
 #   DEPLOY_PREFIX   object key prefix, e.g. "__test__/" for staging (default: none)
@@ -121,7 +121,7 @@ if [[ "$MODE" == full && "$CLEANUP" != none ]]; then
   [[ -f "$INVENTORY" ]] || { echo "Cleanup needs the bucket inventory ($INVENTORY)" >&2; exit 1; }
   node -e '
     const keys = Object.keys(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).objects);
-    const prefixes = ["_astro/", "article/", "daily/", "data/", "projects/", "subjects/"];
+    const prefixes = ["_astro/", "article/", "daily/", "data/", "people/", "projects/", "subjects/"];
     console.log(keys.filter((k) => prefixes.some((p) => k.startsWith(p))).join("\n"));
   ' "$INVENTORY" > "$WORK/remote.txt"
   sort -u "$WORK/remote.txt" -o "$WORK/remote.txt"

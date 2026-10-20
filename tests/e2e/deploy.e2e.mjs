@@ -4,8 +4,9 @@
 // `npm run test:e2e`, not part of `npm test`.
 //
 // After every successful run the bucket must be self-consistent: every
-// internal link in every page resolves, and every edition, article, month and
-// subject that data or sitemaps reference exists.
+// internal link in every page resolves, every edition, article and month
+// that data or sitemaps reference exists, and retired 专题 pages redirect to
+// pages that exist.
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { spawn } from 'node:child_process';
@@ -91,8 +92,11 @@ function assertConsistent(bucket) {
       assert.ok(page(route), `${key} links to ${href}, which is not on the bucket`);
     }
   }
-  for (const { slug } of JSON.parse(read(bucket, 'data/subjects/index.json')).sections.flatMap((x) => x.subjects)) {
-    assert.ok(page(`/subjects/${slug}`) && keys.has(`data/subjects/${slug}.json`), `subject ${slug} is listed but its page or data is missing`);
+  assert.ok(page('/people'), 'the people directory is not on the bucket');
+  for (const key of keys.keys()) {
+    if (!/^subjects\/(?:[^/]+\/)?index\.html$/.test(key)) continue;
+    const target = read(bucket, key).match(/http-equiv="refresh" content="0; url=([^"]+)"/)?.[1];
+    assert.ok(target && page(target), `${key} is not a retired page sending readers to a page on the bucket`);
   }
   const summary = JSON.parse(read(bucket, 'data/summary.json'));
   for (const { date } of summary.editions) assert.ok(page(`/daily/${date}`), `summary.json lists ${date}, which is not on the bucket`);

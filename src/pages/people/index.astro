@@ -1,0 +1,185 @@
+---
+// 人物: every published person (the people tables, src/lib/people.ts), on
+// the tab frame. Left: search and one row per person, led by the event that
+// shows who they are (看清他的那件事); people without a take yet show their
+// public identity only. Right: counts, a type filter (click to show one
+// type, as the 动态 page filters by blogger), who posted in the feed's 24
+// hours, and the latest rewrites. Rebuilt with the hourly feed deploy so the
+// post counts follow the feed.
+import TabLayout from '../../layouts/TabLayout.astro';
+import SidePanel from '../../components/panel/SidePanel.astro';
+import PanelHead from '../../components/panel/PanelHead.astro';
+import StatRow from '../../components/panel/StatRow.astro';
+import PanelSection from '../../components/panel/PanelSection.astro';
+import { getPeople } from '../../lib/people-data';
+import { GROUPS, PEOPLE_PATH, definingEvent, dotDate, initialOf, isWritten, postsOf } from '../../lib/people';
+import { SITE_URL, siteTitle } from '../../lib/site';
+import '../../styles/people.css';
+
+const { people, byHandle } = await getPeople();
+const rows = people.map((p, i) => {
+  const posts = postsOf(p, byHandle);
+  return {
+    p,
+    no: String(i + 1).padStart(3, '0'),
+    event: isWritten(p) ? definingEvent(p) : null,
+    posts: posts.length,
+    avatar: posts.find((post) => post.avatar_url)?.avatar_url ?? null,
+    search: [p.name, p.name_zh, p.x_handle, p.x_handle && `@${p.x_handle}`].filter(Boolean).join(' ').toLowerCase(),
+  };
+});
+const written = people.filter(isWritten);
+const active = rows.filter((r) => r.posts > 0).sort((a, b) => b.posts - a.posts || a.p.name.localeCompare(b.p.name, 'en'));
+const types = GROUPS.map((g) => ({ group: g, count: people.filter((p) => p.group === g).length })).filter((t) => t.count > 0);
+const revised = [...written].sort((a, b) => b.take!.updated_at.localeCompare(a.take!.updated_at)).slice(0, 5);
+const tagClass = (type: string) => `ev-tag${type === '争议' ? ' is-fight' : type === '低谷' ? ' is-low' : ''}`;
+
+const intro = '以人为镜，可以明得失。看他们做成了什么，也看他们在风口浪尖上怎么选择。';
+const pageTitle = siteTitle('人物 · 以人为镜');
+const pageDesc = `${intro}AI 圈值得看的 ${people.length} 个人：他们人生里的转折、争议和低谷，做成过什么，别人怎么评价他们。`;
+const canonical = `${SITE_URL}${PEOPLE_PATH}`;
+---
+
+<TabLayout tab="people" showScore={false} mainClass="people-page" title={pageTitle} description={pageDesc} canonicalUrl={canonical} ogUrl={canonical}>
+  <h1 class="sr-only">人物 · 以人为镜，可以明得失</h1>
+
+  <p class="people-mobile-meta" slot="mobile-summary">
+    <span>{people.length} 位人物</span>
+    <span>已写 {written.length}</span>
+    <span>今日发帖 {active.length}</span>
+  </p>
+
+  <div class="people-search">
+    <label for="people-q" class="people-k">找人</label>
+    <input id="people-q" type="search" placeholder="名字、中文名或 @handle" autocomplete="off" data-people-search />
+  </div>
+
+  <div class="people-filter" data-people-filter hidden>
+    <span>只看 <b data-people-filter-name></b></span>
+    <button type="button" data-people-filter-clear>看全部 ×</button>
+  </div>
+
+  {people.length === 0 ? (
+    <p class="people-empty">还没有收录人物。</p>
+  ) : (
+    <ol class="people-list" data-people-list>
+      {rows.map(({ p, no, event, posts, avatar, search }) => (
+        <li data-group={p.group} data-search={search}>
+          <a class="person-row" href={`${PEOPLE_PATH}/${p.slug}`}>
+            <div class="person-no">{no}</div>
+            <div style="min-width: 0;">
+              <div class="person-head">
+                <div class="person-id">
+                  <span class="person-name">{p.name}</span>
+                  {p.name_zh && <span class="person-handle">{p.name_zh}</span>}
+                  {p.x_handle && <span class="person-handle">@{p.x_handle}</span>}
+                </div>
+                {posts > 0 && <span class="person-today">今日动态 {posts} →</span>}
+              </div>
+              <div class="person-role">{p.role}</div>
+              {event ? (
+                <>
+                  <h2 class="person-event">{event.title}</h2>
+                  <div class="person-meta">
+                    <span class="person-date">{event.date}</span>
+                    <span class={tagClass(event.type)}>{event.type}</span>
+                    {p.labels.slice(0, 2).map((l) => <span class="person-label">「{l.text}」</span>)}
+                  </div>
+                </>
+              ) : (
+                <div class="person-pending"><span class="ev-tag">评价待写 · 先看他的动态</span></div>
+              )}
+            </div>
+          </a>
+        </li>
+      ))}
+    </ol>
+  )}
+  <p class="people-empty" data-people-none hidden>没有找到这个人。</p>
+
+  <SidePanel slot="side">
+    <PanelHead kicker="人物 / People" text={intro} />
+
+    <StatRow stats={[{ label: '收录', value: people.length }, { label: '已写', value: written.length }, { label: '今日发帖', value: active.length }]} />
+
+    {types.length > 1 && (
+      <PanelSection label="按类型 / By type">
+        <ol class="people-types">
+          {types.map((t) => (
+            <li>
+              <button type="button" class="people-type-btn" data-people-type={t.group} aria-pressed="false">
+                <span>{t.group}</span><span>{t.count}</span>
+              </button>
+            </li>
+          ))}
+        </ol>
+        <p class="panel-note">点类型只看这一类，再点一次看全部。</p>
+      </PanelSection>
+    )}
+
+    {active.length > 0 && (
+      <PanelSection label="今天在说话 / Active">
+        <ol class="people-active">
+          {active.map(({ p, posts, avatar }) => (
+            <li>
+              <a href={`${PEOPLE_PATH}/${p.slug}`}>
+                <span class="people-avatar" aria-hidden="true">{avatar ? <img src={avatar} alt="" width="22" height="22" loading="lazy" decoding="async" /> : initialOf(p.name)}</span>
+                <span>{p.name}</span>
+                <span>{posts}</span>
+              </a>
+            </li>
+          ))}
+        </ol>
+        <p class="panel-note">数字是最近 24 小时在 X 上的原创帖数。<a href="/feed" style="color: var(--accent); text-decoration: none;">去动态 →</a></p>
+      </PanelSection>
+    )}
+
+    {revised.length > 0 && (
+      <PanelSection label="最近改写 / Revised">
+        <ol class="people-revised">
+          {revised.map((p) => (
+            <li><a href={`${PEOPLE_PATH}/${p.slug}`}>{p.name}</a><time datetime={p.take!.updated_at}>{dotDate(p.take!.updated_at)}</time></li>
+          ))}
+        </ol>
+      </PanelSection>
+    )}
+  </SidePanel>
+</TabLayout>
+
+<script>
+  // Search by name or handle, and the type filter in the overview. Both only
+  // hide rows: every person is in the HTML for crawlers and readers without
+  // JavaScript.
+  const list = document.querySelector<HTMLElement>('[data-people-list]');
+  const rows = Array.from(list?.querySelectorAll<HTMLElement>(':scope > li') ?? []);
+  const input = document.querySelector<HTMLInputElement>('[data-people-search]');
+  const bar = document.querySelector<HTMLElement>('[data-people-filter]');
+  const barName = document.querySelector<HTMLElement>('[data-people-filter-name]');
+  const none = document.querySelector<HTMLElement>('[data-people-none]');
+  const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-people-type]'));
+  let group = '';
+
+  function apply() {
+    const q = (input?.value ?? '').trim().toLowerCase();
+    let shown = 0;
+    for (const li of rows) {
+      const hide = (Boolean(group) && li.dataset.group !== group) || (Boolean(q) && !(li.dataset.search ?? '').includes(q));
+      li.hidden = hide;
+      if (!hide) shown += 1;
+    }
+    buttons.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.peopleType === group)));
+    if (bar && barName) {
+      bar.hidden = !group;
+      barName.textContent = group;
+    }
+    if (none) none.hidden = shown > 0 || rows.length === 0;
+  }
+
+  buttons.forEach((b) => b.addEventListener('click', () => {
+    group = group === b.dataset.peopleType ? '' : b.dataset.peopleType ?? '';
+    apply();
+    if (group) list?.closest('main')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }));
+  document.querySelector('[data-people-filter-clear]')?.addEventListener('click', () => { group = ''; apply(); });
+  input?.addEventListener('input', apply);
+</script>

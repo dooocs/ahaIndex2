@@ -10,7 +10,9 @@ test('every path lights the tab of its section', () => {
   assert.equal(sectionForPath('/projects/x'), 'daily');
   assert.equal(sectionForPath('/feed'), 'feed');
   assert.equal(sectionForPath('/feed/'), 'feed');
-  assert.equal(sectionForPath('/subjects/people/sama'), 'subjects');
+  assert.equal(sectionForPath('/people'), 'people');
+  assert.equal(sectionForPath('/people/sam-altman'), 'people');
+  assert.equal(sectionForPath('/subjects/company:xiaomi'), null);
   assert.equal(sectionForPath('/meet/new'), 'meet');
 });
 
@@ -19,7 +21,7 @@ test('site pages outside a section have no active tab', () => {
 });
 
 test('community-only sections are hidden until community is enabled', () => {
-  assert.deepEqual(visibleShelves(false).map((s) => s.id), ['daily', 'feed', 'subjects']);
+  assert.deepEqual(visibleShelves(false).map((s) => s.id), ['daily', 'feed', 'people']);
   assert.deepEqual(visibleShelves(true).map((s) => s.id), SHELVES.map((s) => s.id));
 });
 

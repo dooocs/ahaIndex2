@@ -1,9 +1,9 @@
 // Generates everything the site serves besides the Astro-built pages:
-//   data/*.json        archive, history, subject and sidebar data for client-rendered pages
+//   data/*.json        archive, history and sidebar data for client-rendered pages
 //   sitemap*.xml       database data, limited to pages that are deployed
 //   rss.xml            the homepage's edition
 //   daily/, daily/<YYYY-MM>/   the archive pages, rendered from the archive data
-//   subjects/<slug>/   per-URL copies of the built subject shell
+//   subjects/…         noindex pages that send readers of the retired 专题 URLs on to 人物
 //
 // node --experimental-strip-types scripts/export-site-data.ts --dist dist --out export \
 //   --mode daily|full --inventory .deploy/remote.json [--previous .deploy/previous]
@@ -17,8 +17,7 @@
 // editions this run built and merges them into the published summary.json,
 // archive/index.json and the affected month files (--previous holds copies
 // of those, fetched from OSS). Only when there is no previous summary does it
-// read every edition once (bootstrap). Subject statistics read the 60-day
-// window they cover; article sitemaps are regenerated for the years of the
+// read every edition once (bootstrap). Article sitemaps are regenerated for the years of the
 // built editions only. A full export recomputes everything from the database.
 // Writes only to --out.
 import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
@@ -28,15 +27,7 @@ import { createBuildClient } from '../src/lib/supabase.ts';
 import * as q from '../src/lib/queries.ts';
 import { indexScoreRows } from '../src/lib/archive.ts';
 import { editionRecord, mergeRecords, monthlyArchive, type EditionRecord } from '../src/lib/edition-ledger.ts';
-import {
-  buildDirectorySections,
-  buildSignals,
-  computeSignalStats,
-  mergeSubjectStats,
-  relatedSubjects,
-  signalWindowStart,
-  sortSignalMentions,
-} from '../src/lib/subject-data.ts';
+import { isWritten, peopleFromRows, retiredSubjectTarget } from '../src/lib/people.ts';
 import {
   getArticleSitemapEntriesForYear,
   getArticleSitemapPath,
@@ -60,9 +51,7 @@ import {
   historyJson,
   monthShellMeta,
   parseDataFile,
-  subjectIndexJson,
-  subjectJson,
-  subjectShellMeta,
+  retiredSubjectPage,
   summaryJson,
   type ArchiveIndexJson,
   type ArchiveMonthJson,
@@ -84,11 +73,6 @@ import {
 import type { MonthlyArchive } from '../src/lib/types.ts';
 import { readInventory } from './lib/inventory.mjs';
 
-const SIGNAL_LIMIT = 12;
-const RELATED_LIMIT = 8;
-// One URL path segment and one OSS key segment: production slugs look like
-// "company:xiaomi". Anything that would change the path is refused.
-const SAFE_SEGMENT = /^(?!\.{1,2}$)[^/\\?#%\s\u0000-\u001f]+$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 const { values: args } = parseArgs({
@@ -215,56 +199,27 @@ for (const { date } of summary.editions.slice(0, 5)) historyItems.push(...await 
 await write('data/history.json', json(historyJson(historyItems)));
 await write('rss.xml', renderRss(await itemsOf(homeDate), homeDate));
 
-// ─── Subjects ───────────────────────────────────────
-const [subjectRows, subjectStats] = await Promise.all([q.getDirectorySubjectRows(db), q.getSubjectStats(db)]);
-// A slug that is not a safe path segment gets no page, so it is left out everywhere.
-const sections = buildDirectorySections(mergeSubjectStats(subjectRows, subjectStats))
-  .map((section) => ({
-    ...section,
-    subjects: section.subjects.filter((subject) => {
-      if (SAFE_SEGMENT.test(subject.slug)) return true;
-      const message = `subject ${JSON.stringify(subject.slug)} has a slug that is not a single URL path segment; it gets no page`;
-      console.log(process.env.GITHUB_ACTIONS ? `::warning::${message}` : `[export] warning: ${message}`);
-      return false;
-    }),
-  }))
-  .filter((section) => section.subjects.length > 0);
-const publicSubjects = sections.flatMap((s) => s.subjects);
-const subjectIds = publicSubjects.map((s) => s.id);
-// Every subject's 30-day window ends at the newest published edition.
-const anchor = summary.latest_date!;
-const since = signalWindowStart(anchor);
-const mentions = await q.fetchSubjectMentions(db, subjectIds, since);
-const lastSeen = new Map(publicSubjects.map((s) => [s.id, s.last_seen_at]));
-const stats = computeSignalStats(subjectIds, mentions, anchor, lastSeen);
-await write('data/subjects/index.json', json(subjectIndexJson(sections, stats, anchor)));
-
-const mentionsBySubject = new Map<string, typeof mentions>();
-for (const m of mentions) {
-  const list = mentionsBySubject.get(m.subject_id);
-  if (list) list.push(m);
-  else mentionsBySubject.set(m.subject_id, [m]);
+// ─── People, and the retired 专题 pages ─────────────
+// Astro builds the people pages from the people tables; here the written
+// ones (the others are noindex) go into the sitemap, and every /subjects page
+// still on the bucket is replaced by a noindex page that sends readers to the
+// person who took the subject over, or to the people directory.
+const peopleTables = await q.getPeopleRows(db);
+// Problems are reported by the build, which reads the same rows.
+const people = peopleFromRows(peopleTables.people, peopleTables.profiles);
+const indexedPeople: typeof people = [];
+for (const person of people.filter(isWritten)) {
+  const key = `people/${person.slug}/index.html`;
+  if (inventory.has(key) || await isFile(path.join(dist, key))) indexedPeople.push(person);
 }
-const signalMentions = new Map<string, typeof mentions>();
-for (const subject of publicSubjects) {
-  let sorted = sortSignalMentions(mentionsBySubject.get(subject.id) || []);
-  // Quiet subjects: the newest signals may predate the window.
-  if (sorted.length < SIGNAL_LIMIT) sorted = [...sorted, ...sortSignalMentions(await q.fetchMentionsBefore(db, subject.id, since, SIGNAL_LIMIT - sorted.length))];
-  signalMentions.set(subject.id, sorted);
+let retired = 0;
+for (const key of inventory.keys()) {
+  const match = key.match(/^subjects\/(?:([^/]+)\/)?index\.html$/);
+  if (!match) continue;
+  await write(key, retiredSubjectPage(retiredSubjectTarget(match[1] ?? null, people), SITE_URL));
+  retired += 1;
 }
-const signalItemIds = [...signalMentions.values()].flatMap((rows) => rows.slice(0, SIGNAL_LIMIT).map((r) => r.item_id)).filter(Boolean);
-const [displayItems, rawItems, insights] = await Promise.all([
-  q.loadDisplaySignalItems(db, signalItemIds),
-  q.loadRawSnapshotSignalItems(db, signalItemIds),
-  q.getSubjectInsightsFor(db, subjectIds),
-]);
-const subjectShell = await readFile(path.join(dist, 'shell/subject/index.html'), 'utf8');
-for (const subject of publicSubjects) {
-  const signals = buildSignals(signalMentions.get(subject.id) || [], displayItems, rawItems, SIGNAL_LIMIT);
-  const related = relatedSubjects(publicSubjects, subject, RELATED_LIMIT);
-  await write(`data/subjects/${subject.slug}.json`, json(subjectJson(subject, stats.get(subject.id), signals, insights.get(subject.id) || [], related)));
-  await write(`subjects/${subject.slug}/index.html`, fillShell(subjectShell, subjectShellMeta(subject)));
-}
+log(`people: ${people.length} published, ${indexedPeople.length} in the sitemap; ${retired} retired subject page(s) redirected`);
 
 // ─── Archive pages, rendered into the HTML ──────────
 // /daily and every /daily/<YYYY-MM> are written on every run, daily and full,
@@ -368,6 +323,6 @@ for (const [year, entries] of articleYears) {
   await write(getArticleSitemapPath(year), renderUrlset(getArticleSitemapEntriesForYear(items, year)));
 }
 await write('sitemap.xml', renderSitemapIndex(getSitemapIndexEntries(publishedDates, [...allYears].sort())));
-await write('sitemap-pages.xml', renderUrlset(getPagesSitemapEntries(publishedDates, publicSubjects)));
+await write('sitemap-pages.xml', renderUrlset(getPagesSitemapEntries(publishedDates, indexedPeople)));
 
-log(`mode=${mode} built=${built.length} published_editions=${publishedDates.length} months_written=${monthsToWrite.length} subjects=${publicSubjects.length} mentions=${mentions.length} article_years=${[...articleYears.keys()].join(',')} articles=${articleCount} in ${Math.round(performance.now() - started)}ms`);
+log(`mode=${mode} built=${built.length} published_editions=${publishedDates.length} months_written=${monthsToWrite.length} people=${indexedPeople.length} retired_subjects=${retired} article_years=${[...articleYears.keys()].join(',')} articles=${articleCount} in ${Math.round(performance.now() - started)}ms`);

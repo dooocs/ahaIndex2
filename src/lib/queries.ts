@@ -4,13 +4,11 @@
 // (`node --experimental-strip-types`) alike.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { fetchProjectHeatmapData } from './project-heatmap.ts';
+import type { PersonRow, ProfileRow } from './people.ts';
 import type {
   DailyArchive,
   ProcessedItem,
   ProjectHeatmapRow,
-  SubjectCatalogEntry,
-  SubjectInsight,
-  SubjectStatsRow,
   TrackInfo,
 } from './types.ts';
 
@@ -215,205 +213,29 @@ export async function getTracks(db: Db): Promise<TrackInfo[]> {
   return (data as TrackInfo[]) ?? [];
 }
 
-// ─── Subjects ───────────────────────────────────────
+// ─── People ─────────────────────────────────────────
 
-export async function getSubjectStats(db: Db): Promise<SubjectStatsRow[]> {
-  try {
-    return await fetchAllRows<SubjectStatsRow>((from, to) =>
-      db.from('subject_stats')
-        .select('subject_id, mention_count, first_seen_at, last_seen_at, item_count')
-        .order('subject_id', { ascending: true })
-        .range(from, to),
-    );
-  } catch (error) {
-    if (isMissingRelationError(error)) return [];
-    throw error;
-  }
-}
-
-export async function getDirectorySubjectRows(db: Db): Promise<SubjectCatalogEntry[]> {
-  try {
-    return await fetchAllRows<SubjectCatalogEntry>((from, to) =>
-      db.from('subjects')
-        .select('id, slug, type, display_name, aliases, description, definition, homepage_url, metadata, first_seen_at, last_seen_at, mention_count, status, directory_visible, section_slug, curation_priority, created_by')
-        .eq('status', 'active')
-        .eq('directory_visible', true)
-        .neq('type', 'project')
-        .order('curation_priority', { ascending: false })
-        .order('display_name', { ascending: true })
-        .order('id', { ascending: true })
-        .range(from, to),
-    );
-  } catch (error) {
-    if (isMissingRelationError(error)) return [];
-    throw error;
-  }
-}
-
-export async function getSubjectInsights(db: Db, subjectId: string): Promise<SubjectInsight[]> {
-  const { data, error } = await db
-    .from('subject_insights')
-    .select('id, subject_id, snapshot_date, module_type, insight_key, title, summary, analysis, event_date, comparison_subject_ids, dimensions_json, importance_score, confidence, evidence_item_ids, evidence_refs_json, related_subject_ids, generated_by, generator_version, status, published_at')
-    .eq('subject_id', subjectId)
-    .eq('status', 'published')
-    .order('module_type', { ascending: true })
-    .order('event_date', { ascending: false, nullsFirst: false })
-    .order('importance_score', { ascending: false, nullsFirst: false });
-  if (error) {
-    if (isMissingRelationError(error)) return [];
-    throw error;
-  }
-  return (data as SubjectInsight[]) ?? [];
-}
-
-/** Published insights of many subjects in one paginated read. */
-export async function getSubjectInsightsFor(db: Db, subjectIds: string[]): Promise<Map<string, SubjectInsight[]>> {
-  const bySubject = new Map<string, SubjectInsight[]>();
-  try {
-    for (const batch of chunkValues([...new Set(subjectIds)], 100)) {
-      const rows = await fetchAllRows<SubjectInsight>((from, to) =>
-        db.from('subject_insights')
-          .select('id, subject_id, snapshot_date, module_type, insight_key, title, summary, analysis, event_date, comparison_subject_ids, dimensions_json, importance_score, confidence, evidence_item_ids, evidence_refs_json, related_subject_ids, generated_by, generator_version, status, published_at')
-          .in('subject_id', batch)
-          .eq('status', 'published')
-          .order('subject_id', { ascending: true })
-          .order('module_type', { ascending: true })
-          .order('event_date', { ascending: false, nullsFirst: false })
-          .order('importance_score', { ascending: false, nullsFirst: false })
-          .order('id', { ascending: true })
-          .range(from, to),
-      );
-      for (const row of rows) {
-        const list = bySubject.get(row.subject_id);
-        if (list) list.push(row);
-        else bySubject.set(row.subject_id, [row]);
-      }
-    }
-  } catch (error) {
-    if (isMissingRelationError(error)) return bySubject;
-    throw error;
-  }
-  return bySubject;
-}
-
-export interface SubjectMentionRow {
-  subject_id: string;
-  item_id: string;
-  snapshot_date: string;
-  source_name: string | null;
-  score: number | null;
-  context: string | null;
-  created_at: string | null;
-  detected_by?: string | null;
-  confidence?: number | null;
-  evidence?: Record<string, any> | null;
-}
-
-const MENTION_COLUMNS = 'subject_id, item_id, snapshot_date, source_name, score, context, created_at, detected_by, confidence, evidence';
+const PEOPLE_COLUMNS = 'id, slug, name, name_zh, x_handle, person_group, role, tier, take_text, take_updated_at, status, former_subjects, added_at, updated_at';
+const PROFILE_COLUMNS = 'person_id, born, fields, events, record, labels, stances, compare, updated_at';
 
 /**
- * Mentions of the given subjects, newest first, from `since` (inclusive) when
- * given, else all of them. Paginated: no silent cap.
+ * Published people and their profiles (sql/people/). Before the tables exist
+ * both are empty, so deploys keep working until the migration is applied.
  */
-export async function fetchSubjectMentions(db: Db, subjectIds: string[], since?: string): Promise<SubjectMentionRow[]> {
-  const ids = [...new Set(subjectIds.filter(Boolean))];
-  const rows: SubjectMentionRow[] = [];
+export async function getPeopleRows(db: Db): Promise<{ people: PersonRow[]; profiles: ProfileRow[] }> {
   try {
-    for (const batch of chunkValues(ids, 100)) {
-      rows.push(...await fetchAllRows<SubjectMentionRow>((from, to) =>
-        (since
-          ? db.from('subject_mentions').select(MENTION_COLUMNS).in('subject_id', batch).gte('snapshot_date', since)
-          : db.from('subject_mentions').select(MENTION_COLUMNS).in('subject_id', batch))
-          .order('snapshot_date', { ascending: false })
-          .order('created_at', { ascending: false })
-          .order('subject_id', { ascending: true })
-          .order('item_id', { ascending: true })
-          .range(from, to),
+    const people = await fetchAllRows<PersonRow>((from, to) =>
+      db.from('people').select(PEOPLE_COLUMNS).eq('status', 'published').order('slug', { ascending: true }).range(from, to),
+    );
+    const profiles: ProfileRow[] = [];
+    for (const batch of chunkValues(people.map((p) => p.id), 100)) {
+      profiles.push(...await fetchAllRows<ProfileRow>((from, to) =>
+        db.from('person_profiles').select(PROFILE_COLUMNS).in('person_id', batch).order('person_id', { ascending: true }).range(from, to),
       ));
     }
+    return { people, profiles };
   } catch (error) {
-    if (isMissingRelationError(error)) return [];
+    if (isMissingRelationError(error)) return { people: [], profiles: [] };
     throw error;
   }
-  return rows;
-}
-
-/** The newest `limit` mentions of one subject before `before` (exclusive). */
-export async function fetchMentionsBefore(db: Db, subjectId: string, before: string, limit: number): Promise<SubjectMentionRow[]> {
-  const { data, error } = await db.from('subject_mentions').select(MENTION_COLUMNS)
-    .eq('subject_id', subjectId)
-    .lt('snapshot_date', before)
-    .order('snapshot_date', { ascending: false })
-    .order('created_at', { ascending: false })
-    .order('item_id', { ascending: true })
-    .limit(limit);
-  if (error) {
-    if (isMissingRelationError(error)) return [];
-    throw error;
-  }
-  return (data as SubjectMentionRow[]) ?? [];
-}
-
-export interface DisplaySignalItem {
-  processed_item_id: string;
-  snapshot_date: string;
-  source_name: string | null;
-  processed_title: string | null;
-  summary: string | null;
-  original_url: string | null;
-  aha_index: number | null;
-  rank: number | null;
-}
-
-export interface RawSnapshotSignalItem {
-  id: string;
-  snapshot_date: string;
-  sub_source_type: string | null;
-  title: string | null;
-  content: string | null;
-  url: string | null;
-}
-
-const dateOnly = (value: string | null | undefined): string => String(value || '').slice(0, 10);
-
-export async function loadDisplaySignalItems(db: Db, itemIds: string[]): Promise<Map<string, DisplaySignalItem>> {
-  const map = new Map<string, DisplaySignalItem>();
-  try {
-    for (const batch of chunkValues([...new Set(itemIds)], 100)) {
-      const rows = await fetchAllRows<DisplaySignalItem>((from, to) =>
-        db.from('display_items')
-          .select('processed_item_id, snapshot_date, source_name, processed_title, summary, original_url, aha_index, rank')
-          .in('processed_item_id', batch)
-          .order('processed_item_id', { ascending: true })
-          .order('snapshot_date', { ascending: true })
-          .range(from, to),
-      );
-      for (const item of rows) map.set(`${item.processed_item_id}:${dateOnly(item.snapshot_date)}`, item);
-    }
-  } catch (error) {
-    if (isMissingRelationError(error)) return map;
-    throw error;
-  }
-  return map;
-}
-
-export async function loadRawSnapshotSignalItems(db: Db, itemIds: string[]): Promise<Map<string, RawSnapshotSignalItem>> {
-  const map = new Map<string, RawSnapshotSignalItem>();
-  try {
-    for (const batch of chunkValues([...new Set(itemIds)], 100)) {
-      const rows = await fetchAllRows<RawSnapshotSignalItem>((from, to) =>
-        db.from('octp_snapshot_raw_items')
-          .select('id, snapshot_date, sub_source_type, title, content, url')
-          .in('id', batch)
-          .order('id', { ascending: true })
-          .order('snapshot_date', { ascending: true })
-          .range(from, to),
-      );
-      for (const item of rows) map.set(`${item.id}:${dateOnly(item.snapshot_date)}`, item);
-    }
-  } catch (error) {
-    if (isMissingRelationError(error)) return map;
-    throw error;
-  }
-  return map;
 }

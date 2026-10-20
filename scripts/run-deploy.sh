@@ -5,7 +5,7 @@
 # (or a stand-in ossutil on PATH) to rehearse a run end to end.
 #
 # MODE=feed is the hourly 动态 deploy: no plan or export; it builds the pages
-# that need no edition list and uploads only /feed (plus new _astro assets).
+# that need no edition list and uploads only /feed and /people (plus new _astro assets).
 #
 # Environment:
 #   MODE            daily | full | feed (required)

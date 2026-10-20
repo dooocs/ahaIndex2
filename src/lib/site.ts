@@ -16,7 +16,7 @@ export function siteTitle(page: string): string {
   return `${page} | ${SITE_NAME}`;
 }
 
-export type SectionId = 'daily' | 'feed' | 'subjects' | 'meet';
+export type SectionId = 'daily' | 'feed' | 'people' | 'meet';
 
 /**
  * One section of the site. The same list drives the tab bar (SiteNav) and the
@@ -51,8 +51,8 @@ export const SHELVES: Shelf[] = [
     tab: '动态', tabHref: '/feed', paths: ['/feed'],
   },
   {
-    id: 'subjects', href: '/subjects', name: '专题', desc: '值得长期关注的公司、人物与技术方向',
-    tab: '专题', tabHref: '/subjects', beta: true, paths: ['/subjects'],
+    id: 'people', href: '/people', name: '人物', desc: '以人为镜：他们做成了什么，在风口浪尖上怎么选择',
+    tab: '人物', tabHref: '/people', paths: ['/people'],
   },
   {
     id: 'meet', href: '/meet', name: '相亲贴', desc: '给认真生活的开发者，认识一个对的人',

@@ -9,7 +9,7 @@ bucket, plan, build, export, verify, upload.
 | --- | --- | --- |
 | Trigger | every `repository_dispatch` (`pipeline-done` etc.), push to `main`, manual | manual only |
 | Astro renders | the newest edition and the one before it, articles whose newest edition is one of them, and the pages that need no data | every page |
-| Database | 2 small queries to plan; the built editions; the 60-day subject window | every edition, every article, all subject mentions |
+| Database | 2 small queries to plan; the built editions; the feed | every edition, every article; the feed |
 | Export | merges the built editions into the published data and sitemaps | recomputes all data and sitemaps |
 | Uploads | only files whose MD5 differs from the object on OSS; nothing deleted | everything; optional cleanup |
 | CDN | refreshes the uploaded URLs | refreshes the whole site |
@@ -25,8 +25,9 @@ posts of the bloggers it follows, translated to Chinese). Daily and full runs
 rebuild it like any other page. In between, **Feed Deploy**
 (`feed-deploy.yml`) runs `scripts/run-deploy.sh` with `MODE=feed`: a
 `BUILD_MODE=feed` build renders no editions, articles or project pages, and
-the deploy uploads only `feed/index.html`, its bare-URL copy and any `_astro`
-file not yet on OSS, then refreshes the two `/feed` URLs. It is triggered by
+the deploy uploads only `feed/index.html`, the 人物 pages under `people/`
+(they show the feed's post counts and recent posts), their bare-URL copies
+and any `_astro` file not yet on OSS, then refreshes the URLs that changed. It is triggered by
 Octopus (`repository_dispatch: feed-updated`) with an hourly schedule as a
 fallback, and has its own concurrency group so it never displaces a waiting
 daily or full deploy.
@@ -66,8 +67,7 @@ article sitemaps of the built editions (fetched from OSS into
 `.deploy/previous/`), recomputes the built editions' records from the
 database, and merges them in. A file it cannot fetch is recomputed from the
 database instead; with no published `summary.json` at all (the first run), it
-reads every edition once. Subject statistics anchor their 30-day window at the
-newest edition and read only the mentions of the last 60 days.
+reads every edition once.
 
 ### Missed builds
 
@@ -124,14 +124,32 @@ full build if a daily run displaced it.
   month page misses one of its editions. In the browser,
   `src/scripts/archive-pages.ts` only renders when a page still shows its
   loading state (the dev server) or another year is asked for (`?year=`).
-- **Shells + data:** `/history`, `/subjects`, `/subjects/<slug>`, the sidebar
+- **Shells + data:** `/history`, the sidebar
   calendar/chart and 下一期 on edition pages are rendered in the browser from
   `/data/*.json` (`src/scripts/*-pages.ts`, `src/scripts/sidebar.ts`). The
   browser never reads the database.
 - **Export (`scripts/export-site-data.ts`):** `data/*.json`, `sitemap*.xml`,
-  `rss.xml`, the archive pages above, and per-URL copies of the subject shell
-  (each subject URL is a real object with its own title, description and
-  canonical URL).
+  `rss.xml`, the archive pages above, and the retired 专题 pages (below).
+
+### 人物 (/people) and the retired 专题
+
+People pages are ordinary Astro pages (`src/pages/people/`) rendered from
+the news database's `people` and `person_profiles` tables (`sql/people/`,
+edited by hand: `docs/people.md`) and the feed's posts. Every mode builds
+them, and the hourly feed deploy uploads them too, so an edit in the table
+editor is live within the hour. A person with a take (蜗牛说) is indexed and
+listed in `sitemap-pages.xml`; one without is `noindex` and left out; a
+`draft` row is never read. A row that breaks the rules in `src/lib/people.ts`
+is left out with a build warning instead of failing the deploy. Until the
+tables exist the directory is simply empty.
+
+专题 (`/subjects`) is retired. The export no longer writes subject data or
+pages; instead every `subjects/…/index.html` still on the bucket is replaced
+by a `noindex` page whose canonical link and refresh point at the person who
+took the subject over (`former_subjects` in a person file, or a
+`person:<slug>` subject whose slug matches), else at `/people`.
+`verify-site.mjs` checks each one redirects to a deployed page. The old
+`data/subjects/*.json` stay until a full run with `CLEANUP=delete`.
 
 ### Local development
 
@@ -145,7 +163,7 @@ npm run build && npm run export:data -- --dist dist --out export   # once, for /
 npm run dev
 ```
 
-The dev server maps `/daily/<YYYY-MM>` and `/subjects/<slug>` to their shell
+The dev server maps `/daily/<YYYY-MM>` to its shell
 routes and serves `/data/*.json` from `./export`. A daily build is
 `BUILD_MODE=daily BUILD_DATES=2026-02-20,2026-02-19 npm run build`.
 
@@ -215,7 +233,7 @@ Any failed upload stops the deploy before the indexes change; the next run
 retries, since it compares against the bucket again.
 
 A full run can list (`dry-run`, the default) or delete objects under
-`_astro/ article/ daily/ data/ projects/ subjects/` that no deploy writes any
+`_astro/ article/ daily/ data/ people/ projects/ subjects/` that no deploy writes any
 more. Deletion refuses to remove more than 30% of them. Objects outside those
 prefixes (for example `og/`) are never touched.
 

@@ -7,8 +7,9 @@
 // daily: uploads only files whose content is not already on OSS (by MD5), and
 //        refreshes only their URLs. Nothing on OSS is deleted.
 // full:  uploads everything (a repair), refreshes the whole site.
-// feed:  the hourly 动态 deploy: like daily, but only /feed and the _astro
-//        assets it may need (new hashes only).
+// feed:  the hourly 动态 deploy: like daily, but only /feed, the 人物 pages
+//        (they show the feed's posts) and the _astro assets they may need
+//        (new hashes only).
 //
 // Writes under --out:
 //   stage/{astro,html,json,xml,other}/   files to upload, by Cache-Control class
@@ -55,7 +56,7 @@ export function uploadClass(rel) {
  */
 export function selectPages(distFiles, mode) {
   const pages = distFiles.filter((rel) => !rel.startsWith('shell/'));
-  if (mode === 'feed') return pages.filter((rel) => rel === FEED_PAGE || rel.startsWith('_astro/'));
+  if (mode === 'feed') return pages.filter((rel) => rel === FEED_PAGE || rel.startsWith('people/') || rel.startsWith('_astro/'));
   return mode === 'full' ? pages : pages.filter((rel) => !rel.startsWith('projects/'));
 }
 

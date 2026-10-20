@@ -1,6 +1,6 @@
 // Sitemap and RSS rendering. Pure functions over data already read: the
 // export script feeds them the editions that are actually deployed.
-import type { ProcessedItem, SubjectCatalogEntry } from './types.ts';
+import type { ProcessedItem } from './types.ts';
 import type { ArticleRouteItem } from './queries.ts';
 
 export const SITE_URL = 'https://www.amazingindex.com';
@@ -8,7 +8,8 @@ export const STATIC_PATHS = ['/', '/about', '/contact', '/feed', '/history', '/p
 
 export type SitemapEntry = { url: string; lastmod?: string };
 export type SitemapIndexEntry = { url: string; lastmod?: string };
-type SubjectDates = Pick<SubjectCatalogEntry, 'slug' | 'last_seen_at' | 'first_seen_at'>;
+/** A written person: their page is indexed, dated by the file's last update. */
+type PersonDates = { slug: string; updated_at: string };
 
 function stripTrailingSlash(url: string): string {
   return url.endsWith('/') ? url.slice(0, -1) : url;
@@ -62,27 +63,19 @@ export function renderSitemapIndex(entries: SitemapIndexEntry[]): string {
   ].join('');
 }
 
-const dateOf = (value: string | null | undefined): string | undefined => value ? value.slice(0, 10) : undefined;
-
-/** `dates`: deployed edition dates, any order. `subjects`: public directory subjects. */
-export function getPagesSitemapEntries(dates: string[], subjects: SubjectDates[]): SitemapEntry[] {
+/** `dates`: deployed edition dates, any order. `people`: written people (unwritten pages are noindex). */
+export function getPagesSitemapEntries(dates: string[], people: PersonDates[]): SitemapEntry[] {
   const sortedDates = [...dates].sort();
   const months = [...new Set(sortedDates.map((date) => date.slice(0, 7)))].sort();
-  let latestSubject: string | undefined;
-  for (const subject of subjects) {
-    const candidate = dateOf(subject.last_seen_at) ?? dateOf(subject.first_seen_at);
-    if (candidate && (!latestSubject || candidate > latestSubject)) latestSubject = candidate;
-  }
+  const sortedPeople = [...people].sort((a, b) => a.slug.localeCompare(b.slug));
+  const latestPerson = sortedPeople.map((p) => p.updated_at).sort().at(-1);
   return [
     ...STATIC_PATHS.map((path) => ({ url: absoluteUrl(path) })),
     { url: absoluteUrl('/daily') },
-    { url: absoluteUrl('/subjects'), lastmod: latestSubject },
+    { url: absoluteUrl('/people'), lastmod: latestPerson },
     ...months.map((month) => ({ url: absoluteUrl(`/daily/${month}`) })),
     ...sortedDates.map((date) => ({ url: absoluteUrl(`/daily/${date}`), lastmod: date })),
-    ...subjects.map((subject) => ({
-      url: absoluteUrl(`/subjects/${subject.slug}`),
-      lastmod: dateOf(subject.last_seen_at) ?? dateOf(subject.first_seen_at),
-    })),
+    ...sortedPeople.map((p) => ({ url: absoluteUrl(`/people/${p.slug}`), lastmod: p.updated_at })),
   ];
 }
 

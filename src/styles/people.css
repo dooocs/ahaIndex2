@@ -1,0 +1,628 @@
+/* 人物 (/people, /people/<slug>). The frame and the overview's building
+   blocks come from TabLayout and panel.css; type, rules and tags follow the
+   homepage's article list. Only what is particular to these pages lives here. */
+
+/* ─── Shared ────────────────────────────────────────── */
+
+.people-k {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.ev-tag {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  padding: 4px 10px;
+  border: 1px solid var(--border-strong);
+  color: var(--ink);
+  line-height: 1.2;
+}
+
+.ev-tag.is-fight {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-muted);
+}
+
+.ev-tag.is-low {
+  border-style: dashed;
+  color: rgba(26, 23, 20, 0.65);
+}
+
+.people-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--paper-dark);
+  border: 1px solid var(--border);
+  font-family: var(--fd);
+  font-weight: 800;
+  color: #6b6560;
+  flex-shrink: 0;
+}
+
+.people-avatar img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+.people-note {
+  margin-top: 12px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+.people-note a { color: var(--accent); text-decoration: none; }
+.people-note a:hover { text-decoration: underline; }
+
+/* ─── Directory (left) ──────────────────────────────── */
+
+.people-search {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.people-search label { flex: 0 0 auto; }
+
+.people-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 36px;
+  padding: 0 2px;
+  border: 0;
+  border-bottom: 1px solid rgba(26, 22, 18, 0.4);
+  border-radius: 0;
+  background: transparent;
+  font-family: var(--fs);
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.people-search input:focus { outline: none; border-bottom: 2px solid var(--ink); }
+
+.people-filter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 16px 0 0;
+  padding: 9px 12px;
+  background: var(--paper-dark);
+  font-family: var(--fs);
+  font-size: 12.5px;
+  color: var(--ink);
+}
+
+.people-filter[hidden] { display: none; }
+
+.people-filter button {
+  border: 0;
+  background: none;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.people-list { list-style: none; margin: 0; padding: 0; }
+.people-list > li[hidden] { display: none; }
+
+.person-row {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 8px 24px;
+  padding: 28px 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.person-no {
+  padding-top: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  font-weight: 300;
+}
+
+.person-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 16px;
+}
+
+.person-id { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; min-width: 0; }
+
+.person-name {
+  font-family: var(--fd);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.person-handle {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.person-today {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--accent);
+}
+
+.person-role {
+  margin-top: 2px;
+  font-family: var(--fs);
+  font-size: 12px;
+  color: rgba(26, 23, 20, 0.65);
+}
+
+.person-event {
+  margin-top: 12px;
+  font-family: var(--fs);
+  font-size: 20px;
+  line-height: 1.4;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  transition: color 0.2s;
+}
+
+.person-row:hover .person-event { color: var(--accent); }
+
+.person-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.person-date {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+
+.person-label {
+  font-family: var(--fs);
+  font-size: 12px;
+  color: rgba(26, 23, 20, 0.65);
+}
+
+.person-pending { margin-top: 12px; }
+.person-pending .ev-tag { color: var(--muted); border-style: dashed; }
+
+.people-empty {
+  padding: 48px 0;
+  font-family: var(--fd);
+  font-size: 14px;
+  color: var(--muted);
+}
+
+/* ─── Directory overview (right) ────────────────────── */
+
+.people-types,
+.people-active,
+.people-revised { list-style: none; margin: 0; padding: 0; }
+
+.people-type-btn {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  cursor: pointer;
+  font-family: var(--fs);
+  font-size: 13px;
+  color: var(--ink);
+  text-align: left;
+}
+
+.people-type-btn span:last-child { font-family: var(--font-mono); font-size: 11px; color: var(--muted); }
+.people-type-btn:hover,
+.people-type-btn[aria-pressed='true'] { color: var(--accent); }
+.people-type-btn[aria-pressed='true'] { font-weight: 700; }
+.people-type-btn[aria-pressed='true'] span:last-child { color: var(--accent); }
+
+.people-active a {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.people-active .people-avatar { width: 22px; height: 22px; font-size: 10px; }
+.people-active a span:nth-child(2) { font-family: var(--fd); font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.people-active a span:last-child { font-family: var(--font-mono); font-size: 11px; color: var(--accent); }
+.people-active a:hover span:nth-child(2) { color: var(--accent); }
+
+.people-revised li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  font-family: var(--fs);
+  font-size: 13px;
+}
+
+.people-revised a { color: var(--ink); text-decoration: none; }
+.people-revised a:hover { color: var(--accent); }
+.people-revised time { font-family: var(--font-mono); font-size: 10px; color: var(--muted); }
+
+/* ─── Person (left) ─────────────────────────────────── */
+
+.person-back {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.person-back:hover { color: var(--accent); }
+
+.person-header {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 0 18px;
+  align-items: center;
+  margin-top: 22px;
+}
+
+.person-header .people-avatar { width: 56px; height: 56px; font-size: 22px; }
+
+.person-kicker {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+  font-weight: 300;
+}
+
+.person-title {
+  margin: 4px 0 0;
+  font-family: var(--fs);
+  font-size: 28px;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.person-title small {
+  white-space: nowrap;
+  font-size: 16px;
+  font-weight: 400;
+  color: rgba(26, 23, 20, 0.65);
+}
+
+.person-sub {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 4px;
+  font-family: var(--fs);
+  font-size: 13px;
+  color: rgba(26, 23, 20, 0.65);
+}
+
+.person-sub a { font-family: var(--font-mono); font-size: 11px; color: var(--accent); text-decoration: none; }
+
+.person-take {
+  margin-top: 24px;
+  padding: 20px 0;
+  border-top: 2px solid var(--ink);
+  border-bottom: 1px solid var(--border);
+}
+
+.person-take p {
+  margin-top: 12px;
+  font-family: var(--fs);
+  font-size: 20px;
+  line-height: 1.6;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.person-take .people-note { margin-top: 10px; }
+.person-take .people-note b { color: var(--ink); font-weight: 400; }
+
+.person-unwritten {
+  margin-top: 24px;
+  padding: 16px 0;
+  border-top: 2px solid var(--ink);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--fs);
+  font-size: 13px;
+  color: rgba(26, 23, 20, 0.65);
+}
+
+.person-one {
+  margin-top: 28px;
+  padding: 22px 22px 20px;
+  background: var(--paper-warm);
+}
+
+.person-one-head { display: flex; justify-content: space-between; gap: 12px; }
+.person-one-head .people-k { color: var(--accent); }
+
+.person-one-date { margin-top: 12px; }
+
+.person-one h3 {
+  margin-top: 4px;
+  font-family: var(--fs);
+  font-size: 24px;
+  line-height: 1.35;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.person-steps {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  border-top: 1px solid var(--border-strong);
+}
+
+.person-steps li { padding: 10px 12px 10px 0; }
+.person-steps li:last-child div:last-child { font-weight: 700; }
+.person-steps div:first-child { font-family: var(--font-mono); font-size: 10px; color: var(--accent); }
+.person-steps div:last-child { margin-top: 4px; font-family: var(--fs); font-size: 13px; line-height: 1.7; color: var(--ink); }
+
+.person-body {
+  margin-top: 8px;
+  font-family: var(--fs);
+  font-size: 13px;
+  line-height: 1.75;
+  letter-spacing: 0.02em;
+  color: rgba(26, 23, 20, 0.65);
+}
+
+.person-reading {
+  margin-top: 14px;
+  font-family: var(--fs);
+  font-size: 14px;
+  line-height: 1.8;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.person-reading .people-k { display: inline; margin-right: 10px; color: var(--accent); }
+.person-one .person-reading { font-size: 15px; }
+
+.person-sides {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 10px 24px;
+  margin-top: 14px;
+}
+
+.person-sides > div { padding-top: 8px; border-top: 1px solid var(--border); }
+
+.person-sides p {
+  margin-top: 5px;
+  font-family: var(--fs);
+  font-size: 13px;
+  line-height: 1.75;
+  color: rgba(26, 23, 20, 0.75);
+}
+
+.person-section { margin-top: 36px; }
+
+.person-section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.person-section h2 {
+  font-family: var(--fs);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.person-section-head a { font-family: var(--font-mono); font-size: 10px; letter-spacing: 1px; color: var(--accent); text-decoration: none; }
+
+.person-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  box-shadow: inset 0 -1px 0 var(--border);
+}
+
+.person-tabs button {
+  height: 40px;
+  padding: 0 20px 0 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.person-tabs button:hover { color: var(--ink); }
+.person-tabs button[aria-pressed='true'] { color: var(--ink); font-weight: 500; border-bottom-color: var(--accent); }
+
+.person-events { list-style: none; margin: 0; padding: 0; }
+.person-events > li[hidden] { display: none; }
+
+.person-event-item {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 6px 24px;
+  padding: 28px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.person-event-item .person-date { padding-top: 6px; font-size: 11px; font-weight: 300; }
+
+.person-event-item h3 {
+  margin-top: 12px;
+  font-family: var(--fs);
+  font-size: 20px;
+  line-height: 1.4;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.person-posts .feed-post:first-child { padding-top: 22px; }
+
+/* ─── Person overview (right) ───────────────────────── */
+
+/* Not a SidePanel: a person's overview is long and scrolls with the page. */
+.person-overview .divider { margin: 22px 0 18px; }
+
+.person-facts { margin: 0; }
+
+.person-facts div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+  font-family: var(--fs);
+  font-size: 13px;
+}
+
+.person-facts dt { color: var(--muted); font-size: 12px; }
+.person-facts dd { margin: 0; text-align: right; color: var(--ink); }
+.person-facts a { font-family: var(--font-mono); font-size: 11px; color: var(--accent); text-decoration: none; }
+
+.person-record { list-style: none; margin: 0; padding: 0; }
+
+.person-record li {
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.person-record li > span:first-child { padding-top: 3px; font-family: var(--font-mono); font-size: 10px; color: var(--accent); }
+.person-record li > span:last-child { font-family: var(--fs); font-size: 13px; line-height: 1.7; color: var(--ink); }
+.person-record small { font-size: 11px; color: var(--muted); }
+
+.person-labels { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.person-labels b { font-family: var(--fs); font-size: 14px; font-weight: 700; color: var(--ink); }
+.person-labels span { display: block; margin-top: 2px; font-family: var(--font-mono); font-size: 10px; color: var(--muted); }
+.person-labels a { color: var(--accent); text-decoration: none; }
+
+.person-stance { padding: 12px 0; border-top: 1px solid var(--border); }
+.person-stance:first-child { padding-top: 4px; border-top: 0; }
+
+.person-stance-ends {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--fs);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.person-axis { position: relative; height: 20px; margin-top: 4px; }
+.person-axis::before { content: ''; position: absolute; left: 0; right: 0; top: 9px; height: 1px; background: var(--border-strong); }
+
+.person-axis i {
+  position: absolute;
+  top: 3px;
+  width: 13px;
+  height: 13px;
+  margin-left: -7px;
+  border-radius: 50%;
+  box-sizing: border-box;
+  font-style: normal;
+}
+
+.person-axis .is-him { background: var(--accent); }
+.person-axis .is-was { top: 4px; width: 11px; height: 11px; margin-left: -6px; border: 1px dashed var(--accent); background: var(--paper); }
+.person-axis .is-move { top: 8px; height: 3px; width: auto; margin: 0; border-radius: 0; background: rgba(192, 57, 43, 0.25); }
+
+.person-axis .is-other {
+  border: 1px solid rgba(26, 22, 18, 0.4);
+  background: var(--paper);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  line-height: 11px;
+  text-align: center;
+  color: #6b6560;
+}
+
+.person-stance p { margin-top: 4px; font-family: var(--fs); font-size: 11.5px; line-height: 1.7; color: rgba(26, 22, 18, 0.55); }
+.person-stance p a { color: var(--accent); text-decoration: none; }
+
+.person-legend { margin-top: 10px; font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.05em; color: var(--muted); }
+
+.person-compare a { display: block; padding: 6px 0; color: var(--ink); text-decoration: none; }
+.person-compare a > span,
+.person-compare div > span { display: block; font-family: var(--fd); font-size: 13px; font-weight: 800; }
+.person-compare small { display: block; font-family: var(--fs); font-size: 12px; line-height: 1.7; color: rgba(26, 22, 18, 0.6); }
+.person-compare a:hover > span { color: var(--accent); }
+.person-compare div { padding: 6px 0; }
+
+/* ─── Small screens ─────────────────────────────────── */
+
+@media (max-width: 768px) {
+  /* Phones only: it sits in TabLayout's mobile-summary slot. */
+  .people-mobile-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    margin: 0 0 18px;
+    padding: 10px 12px;
+    background: var(--paper-dark);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    color: rgba(26, 22, 18, 0.7);
+  }
+
+  /* A person's overview is part of the page: on phones it follows the content instead of being hidden. */
+  .side-col.person-side {
+    display: block;
+    padding: 20px 0 32px;
+    border-top: 2px solid var(--ink);
+  }
+
+
+  .person-row,
+  .person-event-item { grid-template-columns: minmax(0, 1fr); }
+
+  .person-no { display: none; }
+  .person-event-item .person-date { padding-top: 0; }
+  .person-take p { font-size: 18px; }
+  .person-one { padding: 18px 16px; }
+}
