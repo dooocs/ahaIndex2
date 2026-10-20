@@ -1,0 +1,17 @@
+---
+// One block of an overview: a divider, a small uppercase label, then anything
+// (a chart, a ranked list, a calendar).
+interface Props {
+  label: string;
+  /** Leave out the divider above (for the first block under a PanelHead that already ends with a rule). */
+  divider?: boolean;
+}
+
+const { label, divider = true } = Astro.props;
+---
+
+{divider && <div class="divider"></div>}
+<section class="panel-section">
+  <div class="panel-label">{label}</div>
+  <slot />
+</section>

@@ -1,14 +1,16 @@
 ---
 import type { ProcessedItem } from '../lib/types';
 import SiteNav from './SiteNav.astro';
-import { SITE_SLOGAN } from '../lib/site';
+import { SITE_SLOGAN, type SectionId } from '../lib/site';
 
 interface Props {
   items?: ProcessedItem[];
   showScore?: boolean;
+  /** The section whose tab is lit; defaults to the one the URL belongs to. */
+  tab?: SectionId | null;
 }
 
-const { items = [], showScore = true } = Astro.props;
+const { items = [], showScore = true, tab } = Astro.props;
 
 const displayDate = items.length > 0 && items[0].snapshot_date
   ? new Date(items[0].snapshot_date + 'T00:00:00')
@@ -54,5 +56,5 @@ const ahaScore = items.length > 0
       </div>
     </div>
   </div>
-  <SiteNav />
+  <SiteNav tab={tab} />
 </header>

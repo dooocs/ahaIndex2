@@ -1,12 +1,11 @@
 ---
 // Static shell: the stories are rendered in the browser from /data/history.json.
-import BaseLayout from '../layouts/BaseLayout.astro';
-import Masthead from '../components/Masthead.astro';
+import TabLayout from '../layouts/TabLayout.astro';
 import Sidebar from '../components/Sidebar.astro';
-import Footer from '../components/Footer.astro';
 ---
 
-<BaseLayout
+<TabLayout
+  tab="daily"
   title="历史精选 | AmazingIndex"
   description="AmazingIndex 历史精选：回顾过往最具价值的 AI 行业动态与创新洞察。"
   canonicalUrl="https://www.amazingindex.com/history"
@@ -14,20 +13,12 @@ import Footer from '../components/Footer.astro';
   ogDescription="AmazingIndex 历史精选：回顾过往最具价值的 AI 行业动态与创新洞察。"
   ogUrl="https://www.amazingindex.com/history"
 >
-  <Masthead />
-
-  <div class="layout">
-    <main class="main-col">
-      <h1 class="sr-only">历史精选</h1>
-      <div class="section-label">历史精选 · History</div>
-      <div class="article-list" id="article-list" data-history-list>
-        <div class="loading-state" data-loading>正在加载历史精选…</div>
-      </div>
-    </main>
-    <Sidebar />
+  <h1 class="sr-only">历史精选</h1>
+  <div class="section-label">历史精选 · History</div>
+  <div class="article-list" id="article-list" data-history-list>
+    <div class="loading-state" data-loading>正在加载历史精选…</div>
   </div>
-
-  <Footer />
-</BaseLayout>
+  <Sidebar slot="side" />
+</TabLayout>
 
 <script src="../scripts/archive-pages.ts"></script>

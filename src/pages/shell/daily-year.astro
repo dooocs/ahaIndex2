@@ -5,14 +5,14 @@
 // (fillSlots in src/lib/site-export.ts). Each data-ssr-slot element's default
 // content is what the dev server shows until src/scripts/archive-pages.ts
 // renders it; it must not contain an element of the slot's own tag.
-import BaseLayout from '../../layouts/BaseLayout.astro';
-import Masthead from '../../components/Masthead.astro';
-import Footer from '../../components/Footer.astro';
+import TabLayout from '../../layouts/TabLayout.astro';
 import { SITE_URL } from '../../lib/site';
 import { SHELL_TOKENS } from '../../lib/site-export';
 ---
 
-<BaseLayout
+<TabLayout
+  tab="daily"
+  wrap={{ class: 'archive-page', 'data-archive-year': '' }}
   title={SHELL_TOKENS.title}
   description={SHELL_TOKENS.description}
   canonicalUrl={`${SITE_URL}${SHELL_TOKENS.path}`}
@@ -27,58 +27,48 @@ import { SHELL_TOKENS } from '../../lib/site-export';
     "url": `${SITE_URL}${SHELL_TOKENS.path}`
   }}
 >
-  <div class="archive-page" data-archive-year>
-    <Masthead />
-
-    <div class="layout">
-      <div class="main-col">
-        <div class="breadcrumb">
-          <a href="/" data-astro-reload>首页</a><span class="sep">/</span>历史归档
-        </div>
-
-        <div class="page-header page-header--archive-year">
-          <h1>历史归档</h1>
-        </div>
-
-        <div class="archive-year-rail" data-year-rail data-ssr-slot="year-rail"></div>
-
-        <div class="month-grid" data-month-grid data-ssr-slot="month-grid">
-          <p class="loading-state" data-loading>正在加载归档…</p>
-        </div>
-
-        <section class="month-index">
-          <h2 class="month-index-title">全部月份</h2>
-          <div class="month-index-list" data-month-index data-ssr-slot="month-index"></div>
-        </section>
-      </div>
-
-      <div class="side-col">
-        <div class="side-section">
-          <div class="side-title">全局统计</div>
-          <div class="side-stats" data-global-stats data-ssr-slot="global-stats"></div>
-        </div>
-
-        <div class="side-section">
-          <div class="side-title">分数分布</div>
-          <div data-distribution data-ssr-slot="distribution"></div>
-        </div>
-
-        <div class="side-section">
-          <div class="side-title">关于归档</div>
-          <div class="about-box">
-            AmazingIndex 历史归档保存了 AI 行业的每日演进。
-            每一期都是最具影响力新闻的快照，由我们的 <strong>Aha Index</strong> 算法进行评分，以在噪音中凸显真正的突破。
-          </div>
-        </div>
-
-        <div class="side-footer">
-          <span>AmazingIndex</span>
-          <span>始于 2024</span>
-        </div>
-      </div>
-    </div>
-    <Footer />
+  <div class="breadcrumb">
+    <a href="/" data-astro-reload>首页</a><span class="sep">/</span>历史归档
   </div>
-</BaseLayout>
+
+  <div class="page-header page-header--archive-year">
+    <h1>历史归档</h1>
+  </div>
+
+  <div class="archive-year-rail" data-year-rail data-ssr-slot="year-rail"></div>
+
+  <div class="month-grid" data-month-grid data-ssr-slot="month-grid">
+    <p class="loading-state" data-loading>正在加载归档…</p>
+  </div>
+
+  <section class="month-index">
+    <h2 class="month-index-title">全部月份</h2>
+    <div class="month-index-list" data-month-index data-ssr-slot="month-index"></div>
+  </section>
+<Fragment slot="side">
+  <div class="side-section">
+    <div class="side-title">全局统计</div>
+    <div class="side-stats" data-global-stats data-ssr-slot="global-stats"></div>
+  </div>
+
+  <div class="side-section">
+    <div class="side-title">分数分布</div>
+    <div data-distribution data-ssr-slot="distribution"></div>
+  </div>
+
+  <div class="side-section">
+    <div class="side-title">关于归档</div>
+    <div class="about-box">
+      AmazingIndex 历史归档保存了 AI 行业的每日演进。
+      每一期都是最具影响力新闻的快照，由我们的 <strong>Aha Index</strong> 算法进行评分，以在噪音中凸显真正的突破。
+    </div>
+  </div>
+
+  <div class="side-footer">
+    <span>AmazingIndex</span>
+    <span>始于 2024</span>
+  </div>
+</Fragment>
+</TabLayout>
 
 <script src="../../scripts/archive-pages.ts"></script>

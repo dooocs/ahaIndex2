@@ -1,0 +1,14 @@
+---
+// A row of big numbers with small labels above them, e.g. 博主 5 · 帖子 6 · 带图 3.
+interface Props {
+  stats: { label: string; value: string | number }[];
+}
+
+const { stats } = Astro.props;
+---
+
+<dl class="panel-stats" style={`--cols:${stats.length}`}>
+  {stats.map((s) => (
+    <div><dt>{s.label}</dt><dd>{s.value}</dd></div>
+  ))}
+</dl>

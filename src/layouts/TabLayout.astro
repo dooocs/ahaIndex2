@@ -1,0 +1,76 @@
+---
+// The frame shared by every tab page: masthead with the tab bar on top, the
+// page's own content on the left, an overview column on the right, footer.
+//
+//   <TabLayout tab="feed" title=… description=…>
+//     …left column: anything the page wants…
+//     <Fragment slot="side">…overview: SidePanel / PanelHead / StatRow / PanelSection…</Fragment>
+//     <Fragment slot="mobile-summary">…shown above the content on phones, where the side column is hidden…</Fragment>
+//   </TabLayout>
+//
+// The left column has no rules of its own; the right column only gets the
+// column itself. Each page builds its overview from the primitives in
+// src/components/panel/ rather than from a shared data shape: overviews
+// differ too much between tabs (score and calendar vs counts and rankings).
+// Every BaseLayout prop (title, description, canonical, OG, JSON-LD) passes through.
+import BaseLayout from './BaseLayout.astro';
+import Masthead from '../components/Masthead.astro';
+import Footer from '../components/Footer.astro';
+import type { ProcessedItem } from '../lib/types';
+import type { SectionId } from '../lib/site';
+import '../styles/panel.css';
+
+type BaseProps = Parameters<typeof BaseLayout>[0];
+
+interface Props extends BaseProps {
+  /** Which tab is lit. */
+  tab: SectionId;
+  /** Masthead: the edition's items (for the date and mobile score) and whether to show the score. */
+  items?: ProcessedItem[];
+  showScore?: boolean;
+  /** Footer: the "往期" banner and the edition date it shows. */
+  showArchiveBanner?: boolean;
+  date?: string;
+  /** Extra classes on the left column (e.g. a page marker scripts or checks look for). */
+  mainClass?: string;
+  /** Extra classes on the right column. */
+  sideClass?: string;
+  /**
+   * A wrapper around the whole frame, for pages whose styles and scripts are
+   * scoped to it (the archive shells: class "archive-page", data-archive-month).
+   */
+  wrap?: { class?: string; [attr: `data-${string}`]: string | boolean | undefined };
+}
+
+const {
+  tab,
+  items,
+  showScore,
+  showArchiveBanner,
+  date,
+  mainClass = '',
+  sideClass = '',
+  wrap,
+  ...base
+} = Astro.props;
+
+const Wrap = wrap ? 'div' : Fragment;
+const hasSide = Astro.slots.has('side');
+const hasMobileSummary = Astro.slots.has('mobile-summary');
+---
+
+<BaseLayout {...base}>
+  <Wrap {...(wrap ?? {})}>
+    <Masthead items={items} showScore={showScore} tab={tab} />
+
+    <div class="layout">
+      <main class={`main-col ${mainClass}`.trim()}>
+        {hasMobileSummary && <div class="tab-mobile-summary"><slot name="mobile-summary" /></div>}
+        <slot />
+      </main>
+      {hasSide && <aside class={`side-col ${sideClass}`.trim()}><slot name="side" /></aside>}
+    </div>
+
+    <Footer showArchiveBanner={showArchiveBanner} date={date} />
+  </Wrap>
+</BaseLayout>

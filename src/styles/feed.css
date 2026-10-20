@@ -1,6 +1,6 @@
-/* 动态 (/feed). The homepage frame (.layout / .main-col / .side-col in
-   global.css): a stream of posts on the left, a sticky summary panel on the
-   right. Only what differs from the homepage lives here. */
+/* 动态 (/feed). The frame and the overview's building blocks (SidePanel,
+   PanelHead, StatRow, PanelSection) come from TabLayout and panel.css; only
+   what is particular to this page lives here. */
 
 /* ─── Stream (left) ─────────────────────────────────── */
 
@@ -223,97 +223,8 @@
   cursor: pointer;
 }
 
-/* Phones hide the side panel (as on the homepage); this line replaces it. */
-.feed-mobile-meta { display: none; }
 
-/* ─── Panel (right) ─────────────────────────────────── */
-
-.feed-panel {
-  position: sticky;
-  top: 24px;
-  max-height: calc(100vh - 48px);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: none;
-}
-
-.feed-panel::-webkit-scrollbar { display: none; }
-
-.feed-panel .divider { margin: 22px 0 18px; }
-
-.feed-panel-kicker,
-.feed-panel-label {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 9px;
-  letter-spacing: 0.25em;
-  text-transform: uppercase;
-  color: var(--muted);
-}
-
-.feed-panel-kicker { margin-bottom: 14px; }
-.feed-panel-label { margin-bottom: 12px; }
-
-.feed-panel-kicker::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--border);
-}
-
-.feed-panel-title {
-  font-family: var(--fd);
-  font-size: 23px;
-  line-height: 1.15;
-  letter-spacing: -0.03em;
-  color: var(--ink);
-  margin: 0 0 14px;
-}
-
-.feed-panel-title em {
-  font-style: italic;
-  font-weight: 700;
-  color: var(--accent);
-  letter-spacing: -0.01em;
-}
-
-.feed-panel-text {
-  font-family: var(--fs);
-  font-size: 13px;
-  line-height: 1.85;
-  color: rgba(26, 22, 18, 0.72);
-}
-
-.feed-stats {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  margin: 20px 0 0;
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
-}
-
-.feed-stats div {
-  padding: 12px 0 10px;
-  text-align: center;
-}
-
-.feed-stats div + div { border-left: 1px solid var(--border); }
-
-.feed-stats dt {
-  font-family: var(--fs);
-  font-size: 11px;
-  color: var(--muted);
-}
-
-.feed-stats dd {
-  margin: 4px 0 0;
-  font-family: var(--fd);
-  font-size: 26px;
-  font-weight: 800;
-  line-height: 1;
-  color: var(--ink);
-}
+/* ─── Overview (right) ─────────────────────────────── */
 
 .feed-updated {
   margin: 12px 0 0;
@@ -352,14 +263,6 @@
   font-family: var(--font-mono);
   font-size: 9px;
   color: var(--muted);
-}
-
-.feed-hours-note,
-.feed-authors-note {
-  margin: 10px 0 0;
-  font-family: var(--fs);
-  font-size: 11.5px;
-  color: rgba(26, 22, 18, 0.55);
 }
 
 .feed-authors {
@@ -424,6 +327,7 @@
 
 /* ─── Small screens ─────────────────────────────────── */
 
+/* Phones only: it sits in TabLayout's mobile-summary slot. */
 @media (max-width: 768px) {
   .feed-mobile-meta {
     display: flex;

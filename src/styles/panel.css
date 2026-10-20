@@ -1,0 +1,118 @@
+/* The overview column of a tab page (TabLayout) and its building blocks in
+   src/components/panel/. Values follow the homepage sidebar, where the style
+   started. The column itself (.layout / .main-col / .side-col) stays in
+   global.css. */
+
+/* Phones hide the side column; a page's mobile summary takes its place. */
+.tab-mobile-summary { display: none; }
+
+@media (max-width: 768px) {
+  .tab-mobile-summary { display: contents; }
+}
+
+/* ─── SidePanel ─────────────────────────────────────── */
+
+.side-panel {
+  position: sticky;
+  top: 24px;
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.side-panel::-webkit-scrollbar { display: none; }
+
+.side-panel .divider { margin: 22px 0 18px; }
+
+/* ─── PanelHead ─────────────────────────────────────── */
+
+.panel-head { padding-right: 4px; }
+
+.panel-kicker,
+.panel-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 9px;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.panel-kicker { margin-bottom: 14px; }
+
+.panel-kicker::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.panel-title {
+  font-family: var(--fd);
+  font-size: 23px;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+  margin: 0 0 16px;
+}
+
+.panel-title em {
+  font-family: var(--fd);
+  font-style: italic;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: -0.01em;
+}
+
+.panel-text {
+  font-family: var(--fs);
+  font-size: 13px;
+  line-height: 1.9;
+  color: rgba(26, 22, 18, 0.72);
+}
+
+/* ─── PanelSection ──────────────────────────────────── */
+
+.panel-label { margin-bottom: 12px; }
+
+/* Small grey note under a block. */
+.panel-note {
+  margin: 10px 0 0;
+  font-family: var(--fs);
+  font-size: 11.5px;
+  color: rgba(26, 22, 18, 0.55);
+}
+
+/* ─── StatRow ───────────────────────────────────────── */
+
+.panel-stats {
+  display: grid;
+  grid-template-columns: repeat(var(--cols, 3), 1fr);
+  margin: 20px 0 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.panel-stats div {
+  padding: 12px 0 10px;
+  text-align: center;
+}
+
+.panel-stats div + div { border-left: 1px solid var(--border); }
+
+.panel-stats dt {
+  font-family: var(--fs);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.panel-stats dd {
+  margin: 4px 0 0;
+  font-family: var(--fd);
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--ink);
+}
