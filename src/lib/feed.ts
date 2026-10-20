@@ -16,10 +16,16 @@ const MAX_POSTS = 500;
 const MEDIA_ORIGIN = 'https://www.amazingindex.com/';
 
 export interface FeedMedia {
-  type: string; // photo | video | animated_gif (video: the cover image)
+  type: string; // photo | video | animated_gif
+  /** The photo, or a video's / GIF's cover image (its poster). */
   url: string;
   width: number | null;
   height: number | null;
+  /** Videos and GIFs: the mp4 on the site's OSS; null when it was not archived. */
+  video_url: string | null;
+  /** The video was over Octopus's size cap: only the cover exists. */
+  video_too_large: boolean;
+  duration_ms: number | null;
 }
 
 export interface FeedPost {
@@ -73,18 +79,43 @@ function int(value: unknown): number | null {
   return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
 }
 
-/** Only media archived to the site's own OSS is shown: X's CDN is not reachable for every reader. */
+const onSite = (value: unknown): value is string => typeof value === 'string' && value.startsWith(MEDIA_ORIGIN);
+
+/** Only media archived to the site's own OSS is shown: X's CDN is not reachable for every reader, and never linked. */
 function normalizeMedia(value: unknown): FeedMedia[] {
   if (!Array.isArray(value)) return [];
   return value
     .filter((m): m is Record<string, unknown> => Boolean(m) && typeof m === 'object')
-    .filter((m) => typeof m.url === 'string' && m.url.startsWith(MEDIA_ORIGIN))
-    .map((m) => ({ type: String(m.type || 'photo'), url: String(m.url), width: int(m.width), height: int(m.height) }));
+    .filter((m) => onSite(m.url))
+    .map((m) => ({
+      type: String(m.type || 'photo'),
+      url: String(m.url),
+      width: int(m.width),
+      height: int(m.height),
+      video_url: onSite(m.video_url) ? m.video_url : null,
+      video_too_large: m.video_too_large === true,
+      duration_ms: int(m.duration_ms),
+    }));
+}
+
+/** True for links to X itself (x.com, twitter.com, t.co): shown as text, never linked. */
+export function isXUrl(url: string): boolean {
+  return /^https?:\/\/((www|mobile)\.)?(x\.com|twitter\.com|t\.co)(\/|$|[?#])/i.test(url);
+}
+
+/** "1:05" for 65 000 ms; '' when unknown. */
+export function durationLabel(ms: number | null): string {
+  if (!ms) return '';
+  const total = Math.round(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = String(total % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
 }
 
 export function normalizePost(row: Record<string, any>): FeedPost {
   const author = String(row.author ?? '');
-  const avatar = typeof row.avatar_url === 'string' && row.avatar_url.startsWith(MEDIA_ORIGIN) ? row.avatar_url : null;
+  const avatar = onSite(row.avatar_url) ? row.avatar_url : null;
   return {
     id: String(row.id),
     author,
@@ -241,17 +272,22 @@ function linkifyLine(line: string): string {
     let tail = '';
     if (match[1]) [token, tail] = trimUrl(token);
     out += esc(line.slice(last, match.index));
-    if (match[1]) {
+    if (match[1] && isXUrl(token)) {
+      out += `<span class="feed-xlink">${esc(linkLabel(token))}</span>${esc(tail)}`;
+    } else if (match[1]) {
       out += `<a href="${esc(token)}" target="_blank" rel="noopener nofollow ugc">${esc(linkLabel(token))}</a>${esc(tail)}`;
     } else {
-      out += `<a href="https://x.com/${esc(token.slice(1))}" target="_blank" rel="noopener nofollow">${esc(token)}</a>`;
+      out += `<span class="feed-mention">${esc(token)}</span>`;
     }
     last = match.index! + match[0].length;
   }
   return out + esc(line.slice(last));
 }
 
-/** Post text as HTML: escaped, links and @mentions linked, blank lines as paragraphs, single newlines kept. */
+/**
+ * Post text as HTML: escaped, links linked (except links to X itself, kept as
+ * text), @mentions as text, blank lines as paragraphs, single newlines kept.
+ */
 export function renderPostText(text: string): string {
   return text
     .trim()

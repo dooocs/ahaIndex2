@@ -4,7 +4,8 @@
 // sent on X, each with its original text and the Chinese translation below
 // it; on the right an overview of the window built from the panel primitives
 // (counts, when people posted, who posted most — click a name to see only
-// their posts). Rendered at build time from proc_feed_posts (src/lib/feed.ts);
+// their posts). In the stream, a blogger's avatar and name open their 人物
+// page; nothing on the page links to X. Rendered at build time from proc_feed_posts (src/lib/feed.ts);
 // the hourly feed deploy (.github/workflows/feed-deploy.yml) rebuilds and
 // uploads only this page.
 import TabLayout from '../layouts/TabLayout.astro';
@@ -13,7 +14,10 @@ import PanelHead from '../components/panel/PanelHead.astro';
 import StatRow from '../components/panel/StatRow.astro';
 import PanelSection from '../components/panel/PanelSection.astro';
 import { getFeed } from '../lib/data';
-import { FEED_PATH, FEED_WINDOW_HOURS, beijingTime, renderPostText, summarize, timeline } from '../lib/feed.ts';
+import FeedPost from '../components/feed/FeedPost.astro';
+import { getPeople } from '../lib/people-data';
+import { PEOPLE_PATH } from '../lib/people';
+import { FEED_PATH, FEED_WINDOW_HOURS, beijingTime, summarize, timeline } from '../lib/feed.ts';
 import { SITE_URL, siteTitle } from '../lib/site';
 import '../styles/feed.css';
 
@@ -26,7 +30,10 @@ const busiestHour = Math.max(...sum.by_hour) >= 2 ? sum.by_hour.indexOf(Math.max
 const pageTitle = siteTitle('动态 · AI 博主 24 小时');
 const pageDesc = `AI 圈 ${sum.authors || ''} 位博主最近 ${FEED_WINDOW_HOURS} 小时在 X 上的原创动态，原文与中文翻译对照，每小时更新。`;
 const canonical = `${SITE_URL}${FEED_PATH}`;
-const xProfile = (handle: string) => `https://x.com/${encodeURIComponent(handle)}`;
+// Avatar and name link to the blogger's 人物 page (every followed account has one; older posts by
+// accounts no longer followed may not, and stay plain).
+const { people } = await getPeople();
+const personHref = new Map(people.filter((x) => x.x_handle).map((x) => [x.x_handle!.toLowerCase(), `${PEOPLE_PATH}/${x.slug}`]));
 const initial = (name: string) => Array.from(name.trim())[0]?.toUpperCase() ?? '?';
 const hh = (h: number) => String(h).padStart(2, '0');
 ---
@@ -50,47 +57,7 @@ const hh = (h: number) => String(h).padStart(2, '0');
     <p class="feed-empty">最近 {FEED_WINDOW_HOURS} 小时还没有新动态，晚点再来看看。</p>
   ) : (
     <ol class="feed-stream" data-feed-stream>
-      {posts.map((p) => (
-        <li class="feed-post" data-author={p.author.toLowerCase()}>
-          <a class="feed-avatar" href={xProfile(p.author)} target="_blank" rel="noopener nofollow" aria-hidden="true" tabindex="-1">
-            {p.avatar_url
-              ? <img src={p.avatar_url} alt="" width="40" height="40" loading="lazy" decoding="async" />
-              : <span>{initial(p.display_name)}</span>}
-          </a>
-          <div class="feed-post-body">
-            <header class="feed-post-head">
-              <a class="feed-name" href={xProfile(p.author)} target="_blank" rel="noopener nofollow">{p.display_name}</a>
-              <span class="feed-handle">@{p.author}</span>
-              <span class="feed-dot" aria-hidden="true">·</span>
-              <a class="feed-time" href={p.url} target="_blank" rel="noopener nofollow" title="在 X 查看原帖">
-                <time datetime={p.published_at}>{beijingTime(p.published_at)}</time>
-              </a>
-            </header>
-            {p.text_original && <div class="feed-text feed-original" set:html={renderPostText(p.text_original)} />}
-            {p.text_zh && (
-              <div class="feed-text feed-zh" lang="zh-CN">
-                <span class="feed-zh-label" aria-label="中文翻译">译</span>
-                <Fragment set:html={renderPostText(p.text_zh)} />
-              </div>
-            )}
-            {p.media.length > 0 && (
-              <div class={`feed-media feed-media-${Math.min(p.media.length, 4)}`}>
-                {p.media.map((m) => m.type === 'photo' ? (
-                  <a href={m.url} target="_blank" rel="noopener">
-                    <img src={m.url} alt="" loading="lazy" decoding="async" width={m.width ?? undefined} height={m.height ?? undefined} />
-                  </a>
-                ) : (
-                  <a href={p.url} target="_blank" rel="noopener nofollow" class="feed-video" aria-label="在 X 播放视频">
-                    <img src={m.url} alt="" loading="lazy" decoding="async" width={m.width ?? undefined} height={m.height ?? undefined} />
-                    <span class="feed-play" aria-hidden="true">▶</span>
-                  </a>
-                ))}
-              </div>
-            )}
-            <a class="feed-source" href={p.url} target="_blank" rel="noopener nofollow">在 X 查看 ↗</a>
-          </div>
-        </li>
-      ))}
+      {posts.map((p) => <FeedPost post={p} href={personHref.get(p.author.toLowerCase()) ?? null} filterable />)}
     </ol>
   )}
 
