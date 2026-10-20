@@ -4,6 +4,7 @@
 // (`node --experimental-strip-types`) alike.
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { fetchProjectHeatmapData } from './project-heatmap.ts';
+import type { PersonRow, ProfileRow } from './people.ts';
 import type {
   DailyArchive,
   ProcessedItem,
@@ -210,4 +211,31 @@ export async function getTracks(db: Db): Promise<TrackInfo[]> {
   const { data, error } = await db.from('tracks').select('*').eq('status', 'active').order('display_order');
   if (error) throw error;
   return (data as TrackInfo[]) ?? [];
+}
+
+// ─── People ─────────────────────────────────────────
+
+const PEOPLE_COLUMNS = 'id, slug, name, name_zh, x_handle, person_group, role, tier, take_text, take_updated_at, status, former_subjects, added_at, updated_at';
+const PROFILE_COLUMNS = 'person_id, born, fields, events, record, labels, stances, compare, updated_at';
+
+/**
+ * Published people and their profiles (sql/people/). Before the tables exist
+ * both are empty, so deploys keep working until the migration is applied.
+ */
+export async function getPeopleRows(db: Db): Promise<{ people: PersonRow[]; profiles: ProfileRow[] }> {
+  try {
+    const people = await fetchAllRows<PersonRow>((from, to) =>
+      db.from('people').select(PEOPLE_COLUMNS).eq('status', 'published').order('slug', { ascending: true }).range(from, to),
+    );
+    const profiles: ProfileRow[] = [];
+    for (const batch of chunkValues(people.map((p) => p.id), 100)) {
+      profiles.push(...await fetchAllRows<ProfileRow>((from, to) =>
+        db.from('person_profiles').select(PROFILE_COLUMNS).in('person_id', batch).order('person_id', { ascending: true }).range(from, to),
+      ));
+    }
+    return { people, profiles };
+  } catch (error) {
+    if (isMissingRelationError(error)) return { people: [], profiles: [] };
+    throw error;
+  }
 }

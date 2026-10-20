@@ -27,7 +27,7 @@ import { createBuildClient } from '../src/lib/supabase.ts';
 import * as q from '../src/lib/queries.ts';
 import { indexScoreRows } from '../src/lib/archive.ts';
 import { editionRecord, mergeRecords, monthlyArchive, type EditionRecord } from '../src/lib/edition-ledger.ts';
-import { isWritten, loadPeople, retiredSubjectTarget } from '../src/lib/people.ts';
+import { isWritten, peopleFromRows, retiredSubjectTarget } from '../src/lib/people.ts';
 import {
   getArticleSitemapEntriesForYear,
   getArticleSitemapPath,
@@ -200,16 +200,13 @@ await write('data/history.json', json(historyJson(historyItems)));
 await write('rss.xml', renderRss(await itemsOf(homeDate), homeDate));
 
 // ─── People, and the retired 专题 pages ─────────────
-// Astro builds the people pages from src/content/people; here the written
+// Astro builds the people pages from the people tables; here the written
 // ones (the others are noindex) go into the sitemap, and every /subjects page
 // still on the bucket is replaced by a noindex page that sends readers to the
 // person who took the subject over, or to the people directory.
-const peopleDir = path.resolve('src/content/people');
-const peopleFiles: Record<string, unknown> = {};
-for (const name of (await readdir(peopleDir)).filter((f) => f.endsWith('.json')).sort()) {
-  peopleFiles[name.slice(0, -'.json'.length)] = JSON.parse(await readFile(path.join(peopleDir, name), 'utf8'));
-}
-const people = loadPeople(peopleFiles);
+const peopleTables = await q.getPeopleRows(db);
+// Problems are reported by the build, which reads the same rows.
+const people = peopleFromRows(peopleTables.people, peopleTables.profiles);
 const indexedPeople: typeof people = [];
 for (const person of people.filter(isWritten)) {
   const key = `people/${person.slug}/index.html`;

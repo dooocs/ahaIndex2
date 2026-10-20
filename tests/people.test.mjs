@@ -1,22 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readdir, readFile } from 'node:fs/promises';
-import path from 'node:path';
 import {
-  definingEvent, directoryOrder, isWritten, loadPeople, missingFromPeople, postsByHandle,
+  definingEvent, directoryOrder, isWritten, missingFromPeople, peopleFromRows, personFromRows, postsByHandle,
   retiredSubjectTarget, sortedEvents, validatePerson,
 } from '../src/lib/people.ts';
 import { normalizePost } from '../src/lib/feed.ts';
-
-const DIR = path.join(import.meta.dirname, '../src/content/people');
-
-async function committedFiles() {
-  const files = {};
-  for (const name of (await readdir(DIR)).filter((f) => f.endsWith('.json'))) {
-    files[name.slice(0, -5)] = JSON.parse(await readFile(path.join(DIR, name), 'utf8'));
-  }
-  return files;
-}
+import { buildFixture } from '../scripts/dev/mock-supabase.mjs';
 
 const base = (extra = {}) => ({
   slug: 'ada', name: 'Ada', group: '研究者', role: 'Researcher', x_handle: 'ada',
@@ -24,66 +13,87 @@ const base = (extra = {}) => ({
   added_at: '2026-10-20', updated_at: '2026-10-20', ...extra,
 });
 const src = { title: 'Blog', url: 'https://example.com/a' };
+const row = (extra = {}) => ({
+  id: 'p1', slug: 'ada', name: 'Ada', name_zh: null, x_handle: 'ada', person_group: '研究者', role: 'Researcher',
+  tier: null, take_text: null, take_updated_at: null, status: 'published', former_subjects: [],
+  added_at: '2026-10-01', updated_at: '2026-10-05T08:00:00+00:00', ...extra,
+});
 
-test('every committed person file passes the build rules', async () => {
-  const files = await committedFiles();
-  assert.ok(Object.keys(files).length > 0);
-  const people = loadPeople(files, { includeDrafts: true });
-  assert.equal(people.length, Object.keys(files).length);
+test('a row and its profile become one person, dated by the later edit', () => {
+  const profile = { person_id: 'p1', born: null, fields: [], events: [], record: [{ period: '2020', text: 'x' }], labels: [], stances: [], compare: [], updated_at: '2026-10-09T00:00:00Z' };
+  const p = personFromRows(row({ take_text: '一句话', take_updated_at: '2026-10-07' }), profile);
+  assert.equal(p.group, '研究者');
+  assert.deepEqual(p.take, { text: '一句话', updated_at: '2026-10-07' });
+  assert.equal(p.updated_at, '2026-10-09');
+  assert.equal(p.record.length, 1);
+  assert.equal('name_zh' in p, false);
+  const bare = personFromRows(row(), undefined);
+  assert.deepEqual([bare.events, bare.updated_at, isWritten(bare)], [[], '2026-10-05', false]);
+});
+
+test('invalid or duplicate rows are left out with a warning; drafts are never shown', () => {
+  const problems = [];
+  const people = peopleFromRows([
+    row(),
+    row({ id: 'p2', slug: 'bob', x_handle: 'ADA' }),
+    row({ id: 'p3', slug: 'cy', x_handle: 'cy', person_group: '别的' }),
+    row({ id: 'p4', slug: 'di', x_handle: 'di', status: 'draft' }),
+  ], [], (m) => problems.push(m));
+  assert.deepEqual(people.map((p) => p.slug), ['ada']);
+  assert.equal(problems.length, 2);
+  assert.match(problems.join(), /also used by ada/);
+  assert.match(problems.join(), /group must be one of/);
+});
+
+test('a compare link to someone not shown becomes plain text', () => {
+  const profile = { person_id: 'p1', events: [], record: [], labels: [], stances: [], compare: [{ name: 'Di', slug: 'di', why: 'w' }], updated_at: '2026-10-05T00:00:00Z' };
+  const [ada] = peopleFromRows([row(), row({ id: 'p4', slug: 'di', x_handle: 'di', status: 'draft' })], [profile]);
+  assert.equal(ada.compare[0].slug, undefined);
+});
+
+test('the mock database people are valid, so local builds and e2e show them', () => {
+  const { people, person_profiles } = buildFixture();
+  const problems = [];
+  const shown = peopleFromRows(people, person_profiles, (m) => problems.push(m));
+  assert.deepEqual(problems, []);
+  assert.deepEqual(shown.map((p) => [p.slug, isWritten(p)]), [['sam-altman', true], ['santiago', false]]);
 });
 
 test('an unwritten person needs only a public identity', () => {
-  assert.deepEqual(validatePerson(base(), 'ada'), []);
+  assert.deepEqual(validatePerson(base()), []);
   assert.equal(isWritten(base()), false);
   assert.equal(isWritten(base({ take: { text: '一句话', updated_at: '2026-10-20' } })), true);
 });
 
-test('the slug must match the file name and be URL-safe', () => {
-  assert.match(validatePerson(base(), 'bob').join(), /must match the file name/);
-  assert.match(validatePerson(base({ slug: 'Ada Lovelace' }), 'Ada Lovelace').join(), /lowercase/);
+test('the slug must be URL-safe', () => {
+  assert.match(validatePerson(base({ slug: 'Ada Lovelace' })).join(), /lowercase/);
 });
 
 test('a 争议 event needs two sides and every event needs a source', () => {
   const fight = { date: '2024.05', type: '争议', title: 'T', body: 'B', sources: [src], sides: [{ who: 'A', text: 'a' }] };
-  assert.match(validatePerson(base({ events: [fight] }), 'ada').join(), /at least two sides/);
+  assert.match(validatePerson(base({ events: [fight] })).join(), /at least two sides/);
   const noSource = { date: '2024', type: '转折', title: 'T', body: 'B', sources: [] };
-  assert.match(validatePerson(base({ events: [noSource] }), 'ada').join(), /at least one source/);
+  assert.match(validatePerson(base({ events: [noSource] })).join(), /at least one source/);
   const ok = { ...fight, sides: [{ who: 'A', text: 'a' }, { who: 'B', text: 'b' }] };
-  assert.deepEqual(validatePerson(base({ events: [ok] }), 'ada'), []);
+  assert.deepEqual(validatePerson(base({ events: [ok] })), []);
 });
 
 test('a published file needs source URLs; a draft may leave them out', () => {
   const e = { date: '2024', type: '转折', title: 'T', body: 'B', sources: [{ title: 'Somewhere', url: '' }] };
-  assert.match(validatePerson(base({ events: [e] }), 'ada').join(), /needs an http\(s\) url/);
-  assert.deepEqual(validatePerson(base({ events: [e], draft: true }), 'ada'), []);
+  assert.match(validatePerson(base({ events: [e] })).join(), /needs an http\(s\) url/);
+  assert.deepEqual(validatePerson(base({ events: [e], draft: true })), []);
 });
 
 test('only one pinned event, and only it has steps', () => {
   const e = (extra) => ({ date: '2024', type: '低谷', title: 'T', body: 'B', sources: [src], ...extra });
-  assert.match(validatePerson(base({ events: [e({ pinned: true }), e({ pinned: true })] }), 'ada').join(), /at most one/);
-  assert.match(validatePerson(base({ events: [e({ steps: [{ date: '11.17', text: 'x' }] })] }), 'ada').join(), /only the pinned/);
+  assert.match(validatePerson(base({ events: [e({ pinned: true }), e({ pinned: true })] })).join(), /at most one/);
+  assert.match(validatePerson(base({ events: [e({ steps: [{ date: '11.17', text: 'x' }] })] })).join(), /only the pinned/);
 });
 
 test('stances are 0–100 with a note and a source', () => {
   const s = { left: '开源', right: '闭源', position: 120, note: 'n', source: src };
-  assert.match(validatePerson(base({ stances: [s] }), 'ada').join(), /position must be 0–100/);
-  assert.deepEqual(validatePerson(base({ stances: [{ ...s, position: 70, was: 20 }] }), 'ada'), []);
-});
-
-test('drafts are not published, and published people never link to them', () => {
-  const files = {
-    ada: base({ compare: [{ name: 'Bob', slug: 'bob', why: 'w' }] }),
-    bob: base({ slug: 'bob', name: 'Bob', x_handle: 'bob', draft: true }),
-  };
-  const people = loadPeople(files);
-  assert.deepEqual(people.map((p) => p.slug), ['ada']);
-  assert.equal(people[0].compare[0].slug, undefined);
-  assert.equal(loadPeople(files, { includeDrafts: true }).length, 2);
-});
-
-test('compare links and handles are checked across files', () => {
-  assert.throws(() => loadPeople({ ada: base({ compare: [{ name: 'X', slug: 'nobody', why: 'w' }] }) }), /unknown person "nobody"/);
-  assert.throws(() => loadPeople({ ada: base(), bob: base({ slug: 'bob', x_handle: 'ADA' }) }), /also used by/);
+  assert.match(validatePerson(base({ stances: [s] })).join(), /position must be 0–100/);
+  assert.deepEqual(validatePerson(base({ stances: [{ ...s, position: 70, was: 20 }] })), []);
 });
 
 test('events read oldest first; the defining event is the pinned one, else the newest non-转折', () => {

@@ -1,15 +1,17 @@
-// 人物 (/people): the people the site keeps a file on, one JSON file each in
-// src/content/people/<slug>.json, written by hand (see docs/people.md).
+// 人物 (/people): the people the site keeps a page on. They live in the news
+// database (sql/people/): `people` holds one row per person (the directory:
+// identity, the take, status), `person_profiles` the rest of the page
+// (events, record, labels, stances, compare), edited by hand in the
+// Supabase table editor (docs/people.md).
 //
-// A person is "written" once the file has a take (蜗牛说): written people get
-// an indexed page and a sitemap entry; the others get a noindex page with
-// their public identity and recent posts only. A file with "draft": true is
-// not published at all (the dev server shows it).
+// A person is "written" once their row has a take (蜗牛说): written people
+// get an indexed page and a sitemap entry; the others get a noindex page with
+// their public identity and recent posts only. Rows with status 'draft' are
+// not read by the build at all.
 //
-// Pure functions apart from nothing: the pages pass in the raw files
-// (import.meta.glob) and the feed posts, tests pass in fixtures, so
-// tests/people.test.mjs checks every committed file against the same rules
-// the build enforces.
+// Pure functions: queries.ts reads the rows, peopleFromRows turns them into
+// pages' data and drops (with a warning) any row that breaks the rules below,
+// so one bad edit never stops a deploy.
 import type { FeedPost } from './feed.ts';
 
 export const PEOPLE_PATH = '/people';
@@ -94,14 +96,14 @@ const isList = (v: unknown): v is unknown[] => Array.isArray(v);
 const isPos = (v: unknown) => typeof v === 'number' && v >= 0 && v <= 100;
 
 /**
- * Problems with one file, as readable messages (empty when it is valid).
- * `file` is the file name without .json; it must equal the slug. A draft
- * may cite sources without a URL yet; a published file may not.
+ * Problems with one person, as readable messages (empty when it is valid).
+ * A draft may cite sources without a URL yet; a published person may not.
  */
-export function validatePerson(raw: any, file: string): string[] {
+export function validatePerson(raw: any): string[] {
   const errors: string[] = [];
-  const err = (message: string) => errors.push(`${file}.json: ${message}`);
-  if (!raw || typeof raw !== 'object') return [`${file}.json: not a JSON object`];
+  const who = typeof raw?.slug === 'string' && raw.slug ? raw.slug : '(no slug)';
+  const err = (message: string) => errors.push(`${who}: ${message}`);
+  if (!raw || typeof raw !== 'object') return ['(row): not an object'];
   const draft = raw.draft === true;
   const source = (s: any, where: string) => {
     if (!s || !isText(s.title)) err(`${where}: a source needs a title`);
@@ -110,7 +112,6 @@ export function validatePerson(raw: any, file: string): string[] {
   };
 
   if (!SLUG.test(raw.slug ?? '')) err('slug must be lowercase letters, digits and hyphens');
-  else if (raw.slug !== file) err(`slug "${raw.slug}" must match the file name`);
   if (!isText(raw.name)) err('name is required');
   if (!isText(raw.role)) err('role is required');
   if (!GROUPS.includes(raw.group)) err(`group must be one of ${GROUPS.join(' / ')}`);
@@ -170,31 +171,94 @@ export function validatePerson(raw: any, file: string): string[] {
   return errors;
 }
 
-/** Validated people from `files` (file name without .json → parsed JSON). Throws listing every problem. */
-export function loadPeople(files: Record<string, unknown>, { includeDrafts = false } = {}): Person[] {
-  const errors = Object.entries(files).flatMap(([file, raw]) => validatePerson(raw, file));
-  const all = Object.values(files) as Person[];
-  const slugs = new Set(all.map((p) => p.slug));
-  for (const p of all) {
-    for (const c of p.compare ?? []) if (c.slug && !slugs.has(c.slug)) errors.push(`${p.slug}.json: compare links to unknown person "${c.slug}"`);
-  }
-  const handles = new Map<string, string>();
-  for (const p of all) {
-    if (!p.x_handle) continue;
-    const key = p.x_handle.toLowerCase();
-    if (handles.has(key)) errors.push(`${p.slug}.json: x_handle @${p.x_handle} is also used by ${handles.get(key)}`);
-    handles.set(key, p.slug);
-  }
-  if (errors.length > 0) throw new Error(`Invalid people files:\n  ${errors.join('\n  ')}`);
-  const people = all.filter((p) => includeDrafts || !p.draft);
-  // A published person may not link to a draft.
-  const published = new Set(people.map((p) => p.slug));
-  return people.map((p) => ({ ...p, compare: p.compare.map((c) => (c.slug && !published.has(c.slug) ? { ...c, slug: undefined } : c)) }));
+/** A `people` row, as the build reads it (published rows only). */
+export interface PersonRow {
+  id: string;
+  slug: string;
+  name: string;
+  name_zh: string | null;
+  x_handle: string | null;
+  person_group: string;
+  role: string;
+  tier: string | null;
+  take_text: string | null;
+  take_updated_at: string | null;
+  status: string;
+  former_subjects: string[] | null;
+  added_at: string;
+  updated_at: string;
 }
 
-/** `import.meta.glob(..., { eager: true, import: 'default' })` result → file name → JSON. */
-export function filesFromGlob(modules: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(modules).map(([p, v]) => [p.replace(/^.*\//, '').replace(/\.json$/, ''), v]));
+/** A `person_profiles` row: everything on the page beyond the directory. */
+export interface ProfileRow {
+  person_id: string;
+  born: string | null;
+  fields: string[] | null;
+  events: unknown;
+  record: unknown;
+  labels: unknown;
+  stances: unknown;
+  compare: unknown;
+  updated_at: string;
+}
+
+const day = (v: string | null | undefined) => String(v ?? '').slice(0, 10);
+const opt = <T>(v: T | null | undefined) => (v === null || v === undefined || v === '' ? undefined : v);
+const list = (v: unknown) => (Array.isArray(v) ? v : []);
+
+/** One person from their two rows (no profile row yet: identity only). */
+export function personFromRows(row: PersonRow, profile: ProfileRow | undefined): Person {
+  const updated = [day(row.updated_at), day(profile?.updated_at)].sort().at(-1)!;
+  const person: Record<string, unknown> = {
+    slug: row.slug,
+    name: row.name,
+    name_zh: opt(row.name_zh),
+    x_handle: opt(row.x_handle),
+    group: row.person_group,
+    role: row.role,
+    born: opt(profile?.born),
+    fields: profile?.fields?.length ? profile.fields : undefined,
+    tier: opt(row.tier),
+    take: opt(row.take_text) ? { text: row.take_text, updated_at: day(row.take_updated_at) || updated } : undefined,
+    events: list(profile?.events),
+    record: list(profile?.record),
+    labels: list(profile?.labels),
+    stances: list(profile?.stances),
+    compare: list(profile?.compare),
+    former_subjects: row.former_subjects?.length ? row.former_subjects : undefined,
+    added_at: day(row.added_at),
+    updated_at: updated,
+    draft: row.status !== 'published' ? true : undefined,
+  };
+  for (const key of Object.keys(person)) if (person[key] === undefined) delete person[key];
+  return person as unknown as Person;
+}
+
+/**
+ * The people the pages show: valid, published, in no particular order.
+ * A row that breaks a rule is left out and reported through `onProblem`
+ * (the build turns it into a warning), so one bad edit never stops a deploy.
+ */
+export function peopleFromRows(rows: PersonRow[], profiles: ProfileRow[], onProblem: (message: string) => void = () => {}): Person[] {
+  const profileOf = new Map(profiles.map((p) => [p.person_id, p]));
+  const valid: Person[] = [];
+  const handles = new Map<string, string>();
+  for (const row of rows) {
+    const person = personFromRows(row, profileOf.get(row.id));
+    if (person.draft) continue;
+    const problems = validatePerson(person);
+    const handle = person.x_handle?.toLowerCase();
+    if (handle && handles.has(handle)) problems.push(`${person.slug}: x_handle @${person.x_handle} is also used by ${handles.get(handle)}`);
+    if (problems.length > 0) {
+      onProblem(`人物 ${person.slug} 没有发布：${problems.join('；')}`);
+      continue;
+    }
+    if (handle) handles.set(handle, person.slug);
+    valid.push(person);
+  }
+  // A link to someone who is not shown becomes plain text.
+  const shown = new Set(valid.map((p) => p.slug));
+  return valid.map((p) => ({ ...p, compare: p.compare.map((c) => (c.slug && !shown.has(c.slug) ? { ...c, slug: undefined } : c)) }));
 }
 
 export const isWritten = (p: Person) => Boolean(p.take?.text);

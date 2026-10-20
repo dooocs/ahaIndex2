@@ -134,11 +134,14 @@ full build if a daily run displaced it.
 ### 人物 (/people) and the retired 专题
 
 People pages are ordinary Astro pages (`src/pages/people/`) rendered from
-hand-written files in `src/content/people/` (see `docs/people.md`) and the
-feed's posts. Every mode builds them; the hourly feed deploy uploads them
-too. A person with a take (蜗牛说) is indexed and listed in
-`sitemap-pages.xml`; one without is `noindex` and left out; a file with
-`"draft": true` is not built (the dev server shows it).
+the news database's `people` and `person_profiles` tables (`sql/people/`,
+edited by hand: `docs/people.md`) and the feed's posts. Every mode builds
+them, and the hourly feed deploy uploads them too, so an edit in the table
+editor is live within the hour. A person with a take (蜗牛说) is indexed and
+listed in `sitemap-pages.xml`; one without is `noindex` and left out; a
+`draft` row is never read. A row that breaks the rules in `src/lib/people.ts`
+is left out with a build warning instead of failing the deploy. Until the
+tables exist the directory is simply empty.
 
 专题 (`/subjects`) is retired. The export no longer writes subject data or
 pages; instead every `subjects/…/index.html` still on the bucket is replaced

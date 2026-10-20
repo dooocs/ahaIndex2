@@ -31,6 +31,11 @@ const db = () => getSupabase();
 /** The 24 hours of the feed up to its newest post. */
 export const getFeed = () => memo('feed', () => getFeedPosts(db()));
 
+// ─── 人物 ───────────────────────────────────────────
+
+/** Published rows of people and person_profiles. */
+export const getPeopleTables = () => memo('people', () => q.getPeopleRows(db()));
+
 // ─── Daily editions ─────────────────────────────────
 
 export const getLatestDate = () => memo('latestDate', () => q.getLatestDate(db()));

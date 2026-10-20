@@ -193,8 +193,42 @@ export function buildFixture() {
     prompt_version: 2,
   }));
 
+  // 人物: one written person, one with identity only, one draft (never read
+  // by the build). Fixed dates, so repeated builds render the same pages.
+  const day = dates.at(-1);
+  const person = (slug, name, handle, group, role, extra = {}) => ({
+    id: id(), slug, name, name_zh: null, x_handle: handle, person_group: group, role, tier: null,
+    take_text: null, take_updated_at: null, status: 'published', former_subjects: [],
+    added_at: dates[0], updated_at: `${day}T00:00:00Z`, ...extra,
+  });
+  const src = (title) => [{ title, url: `https://example.com/${encodeURIComponent(title)}` }];
+  const people = [
+    person('sam-altman', 'Sam Altman', 'sama', '掌舵人', 'OpenAI CEO', {
+      name_zh: '萨姆·奥尔特曼', tier: '值得关注', take_text: '总在对的时候把东西推出去。', take_updated_at: day,
+      former_subjects: ['person:sam'],
+    }),
+    person('santiago', 'Santiago', 'svpino', '布道者', '机器学习工程博主'),
+    person('andrej-karpathy', 'Andrej Karpathy', 'karpathy', '布道者', 'Eureka Labs', { status: 'draft', take_text: '草稿' }),
+  ];
+  const personProfiles = [{
+    person_id: people[0].id, born: '1985', fields: ['大模型'], updated_at: `${day}T00:00:00Z`,
+    events: [
+      { date: '2015.12', type: '转折', title: '创立 OpenAI', body: '非营利。', sources: src('intro') },
+      { date: '2023.11', type: '低谷', title: '被解雇，5 天后回归', body: '董事会改组。', pinned: true,
+        steps: [{ date: '11.17', text: '解雇' }, { date: '11.22', text: '回归' }],
+        sides: [{ who: '董事会', text: '不够坦诚。' }, { who: '员工', text: '要求董事会辞职。' }], reading: '控制权在人心。', sources: src('board') },
+      { date: '2024.05', type: '争议', title: 'Sky 语音', body: '暂停。', sides: [{ who: 'A', text: 'a' }, { who: 'B', text: 'b' }], sources: src('sky') },
+    ],
+    record: [{ period: '2014–2019', text: 'YC 总裁' }],
+    labels: [{ text: 'ChatGPT 之父', by: '媒体' }],
+    stances: [{ left: '开源', right: '闭源', position: 70, was: 40, note: '立场在变。', others: [{ name: 'Yann LeCun', initial: 'L', position: 10 }], source: src('stance')[0] }],
+    compare: [{ name: 'Santiago', slug: 'santiago', why: '对照。' }, { name: 'Karpathy', slug: 'andrej-karpathy', why: '草稿，不链接。' }],
+  }];
+
   return {
     proc_feed_posts: procFeedPosts,
+    people,
+    person_profiles: personProfiles,
     display_items: displayItems,
     daily_archives: archives,
     tracks,
