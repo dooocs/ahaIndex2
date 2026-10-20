@@ -12,7 +12,7 @@ import PanelHead from '../../components/panel/PanelHead.astro';
 import StatRow from '../../components/panel/StatRow.astro';
 import PanelSection from '../../components/panel/PanelSection.astro';
 import { getPeople } from '../../lib/people-data';
-import { GROUPS, PEOPLE_PATH, definingEvent, dotDate, initialOf, isWritten, postsOf } from '../../lib/people';
+import { GROUPS, PEOPLE_PATH, avatarOf, definingEvent, dotDate, initialOf, isWritten, postsOf } from '../../lib/people';
 import { SITE_URL, siteTitle } from '../../lib/site';
 import '../../styles/people.css';
 
@@ -24,7 +24,7 @@ const rows = people.map((p, i) => {
     no: String(i + 1).padStart(3, '0'),
     event: isWritten(p) ? definingEvent(p) : null,
     posts: posts.length,
-    avatar: posts.find((post) => post.avatar_url)?.avatar_url ?? null,
+    avatar: avatarOf(p, posts),
     search: [p.name, p.name_zh, p.x_handle, p.x_handle && `@${p.x_handle}`].filter(Boolean).join(' ').toLowerCase(),
   };
 });
@@ -46,7 +46,7 @@ const canonical = `${SITE_URL}${PEOPLE_PATH}`;
   <p class="people-mobile-meta" slot="mobile-summary">
     <span>{people.length} 位人物</span>
     <span>已写 {written.length}</span>
-    <span>今日发帖 {active.length}</span>
+    <span>今日 {active.length} 人发帖</span>
   </p>
 
   <div class="people-search">
@@ -90,6 +90,9 @@ const canonical = `${SITE_URL}${PEOPLE_PATH}`;
                 <div class="person-pending"><span class="ev-tag">评价待写 · 先看他的动态</span></div>
               )}
             </div>
+            <div class="person-photo" aria-hidden="true">
+              {avatar ? <img src={avatar} alt="" width="56" height="56" loading="lazy" decoding="async" /> : <span>{initialOf(p.name)}</span>}
+            </div>
           </a>
         </li>
       ))}
@@ -100,7 +103,7 @@ const canonical = `${SITE_URL}${PEOPLE_PATH}`;
   <SidePanel slot="side">
     <PanelHead kicker="人物 / People" text={intro} />
 
-    <StatRow stats={[{ label: '收录', value: people.length }, { label: '已写', value: written.length }, { label: '今日发帖', value: active.length }]} />
+    <StatRow stats={[{ label: '收录', value: people.length }, { label: '已写', value: written.length }, { label: '发帖人数', value: active.length }]} />
 
     {types.length > 1 && (
       <PanelSection label="按类型 / By type">

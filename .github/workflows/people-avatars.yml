@@ -1,0 +1,60 @@
+name: People Avatars
+
+# Photos for 人物: once a day, fetch each published person's photo (X via
+# unavatar.io, else GitHub), store it on OSS under media/people/avatars/ and
+# write people.avatar_url (scripts/people-avatars.ts). Separate from the 动态
+# pipeline and from deploys: the pages pick the new photos up on the next
+# hourly feed deploy. A photo set by hand in the table is never replaced.
+
+on:
+  # Also when the job itself changes, so a fix takes effect without waiting a day.
+  push:
+    branches: [main]
+    paths:
+      - scripts/people-avatars.ts
+      - src/lib/people-avatars.ts
+      - .github/workflows/people-avatars.yml
+  schedule:
+    - cron: "30 21 * * *" # UTC; 05:30 Asia/Shanghai
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Only report what would change
+        type: boolean
+        default: false
+
+concurrency:
+  group: people-avatars
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  avatars:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+      OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install ossutil
+        run: |
+          curl -Lo ossutil.zip https://gosspublic.alicdn.com/ossutil/v2/2.2.1/ossutil-2.2.1-linux-amd64.zip
+          unzip ossutil.zip
+          chmod +x ossutil-2.2.1-linux-amd64/ossutil
+          sudo mv ossutil-2.2.1-linux-amd64/ossutil /usr/local/bin/ossutil
+
+      - name: Fetch and store photos
+        run: node --experimental-strip-types --no-warnings scripts/people-avatars.ts ${{ inputs.dry_run && '--dry-run' || '' }}

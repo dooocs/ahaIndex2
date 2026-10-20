@@ -79,6 +79,8 @@ export interface Person {
   compare: { name: string; slug?: string; why: string }[];
   /** Retired /subjects/<slug> URLs that now point here. */
   former_subjects?: string[];
+  /** A photo on the site's own OSS (people.avatar_url); see people-avatars.ts. */
+  avatar_url?: string;
   added_at: string;
   updated_at: string;
   draft?: boolean;
@@ -185,6 +187,9 @@ export interface PersonRow {
   take_updated_at: string | null;
   status: string;
   former_subjects: string[] | null;
+  /** Absent before sql/people/003_avatars.sql. */
+  avatar_url?: string | null;
+  github_handle?: string | null;
   added_at: string;
   updated_at: string;
 }
@@ -201,6 +206,9 @@ export interface ProfileRow {
   compare: unknown;
   updated_at: string;
 }
+
+/** Where every photo the pages show must live. */
+export const SITE_MEDIA = 'https://www.amazingindex.com/';
 
 const day = (v: string | null | undefined) => String(v ?? '').slice(0, 10);
 const opt = <T>(v: T | null | undefined) => (v === null || v === undefined || v === '' ? undefined : v);
@@ -226,6 +234,8 @@ export function personFromRows(row: PersonRow, profile: ProfileRow | undefined):
     stances: list(profile?.stances),
     compare: list(profile?.compare),
     former_subjects: row.former_subjects?.length ? row.former_subjects : undefined,
+    // Only a photo the site serves itself: other hosts are not reachable for every reader.
+    avatar_url: typeof row.avatar_url === 'string' && row.avatar_url.startsWith(SITE_MEDIA) ? row.avatar_url : undefined,
     added_at: day(row.added_at),
     updated_at: updated,
     draft: row.status !== 'published' ? true : undefined,
@@ -292,6 +302,11 @@ export function postsByHandle(posts: FeedPost[]): Map<string, FeedPost[]> {
 
 export function postsOf(p: Person, byHandle: Map<string, FeedPost[]>): FeedPost[] {
   return p.x_handle ? byHandle.get(p.x_handle.toLowerCase()) ?? [] : [];
+}
+
+/** The photo to show: the person's own (people.avatar_url), else the avatar on their latest post, else none (initials). */
+export function avatarOf(p: Person, posts: FeedPost[]): string | null {
+  return p.avatar_url ?? posts.find((post) => post.avatar_url)?.avatar_url ?? null;
 }
 
 /** Feed authors with no person file, for a build-time reminder. */
