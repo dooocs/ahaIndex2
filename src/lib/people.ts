@@ -81,6 +81,8 @@ export interface Person {
   former_subjects?: string[];
   /** A photo on the site's own OSS (people.avatar_url); see people-avatars.ts. */
   avatar_url?: string;
+  /** 外号: the phrase readers know him by, shown after the name in 动态 (people.nickname). */
+  nickname?: string;
   added_at: string;
   updated_at: string;
   draft?: boolean;
@@ -190,6 +192,8 @@ export interface PersonRow {
   /** Absent before sql/people/003_avatars.sql. */
   avatar_url?: string | null;
   github_handle?: string | null;
+  /** Absent before sql/people/004_nickname.sql. */
+  nickname?: string | null;
   added_at: string;
   updated_at: string;
 }
@@ -236,6 +240,7 @@ export function personFromRows(row: PersonRow, profile: ProfileRow | undefined):
     former_subjects: row.former_subjects?.length ? row.former_subjects : undefined,
     // Only a photo the site serves itself: other hosts are not reachable for every reader.
     avatar_url: typeof row.avatar_url === 'string' && row.avatar_url.startsWith(SITE_MEDIA) ? row.avatar_url : undefined,
+    nickname: opt(row.nickname?.trim()),
     added_at: day(row.added_at),
     updated_at: updated,
     draft: row.status !== 'published' ? true : undefined,

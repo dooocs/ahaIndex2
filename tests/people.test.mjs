@@ -31,6 +31,13 @@ test('a row and its profile become one person, dated by the later edit', () => {
   assert.deepEqual([bare.events, bare.updated_at, isWritten(bare)], [[], '2026-10-05', false]);
 });
 
+test('the 外号 is trimmed, and absent when empty or before the column exists', () => {
+  assert.equal(personFromRows(row({ nickname: '  Claude Code 之父 ' }), undefined).nickname, 'Claude Code 之父');
+  for (const nickname of [undefined, null, '', '   ']) {
+    assert.equal('nickname' in personFromRows(row({ nickname }), undefined), false, `nickname ${JSON.stringify(nickname)}`);
+  }
+});
+
 test('invalid or duplicate rows are left out with a warning; drafts are never shown', () => {
   const problems = [];
   const people = peopleFromRows([

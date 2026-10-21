@@ -70,6 +70,26 @@
 
 a.feed-name:hover { text-decoration: underline; text-underline-offset: 3px; }
 
+/* 外号 after the name: who this is, for readers who do not know the name. */
+.feed-nickname {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--paper-dark);
+  font-family: var(--fd);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+/* On a phone the nickname says more than the @handle (which is not a link):
+   drop the handle and its dot so the header does not wrap mid-way. */
+@media (max-width: 480px) {
+  .feed-nickname ~ .feed-handle,
+  .feed-nickname ~ .feed-handle + .feed-dot { display: none; }
+}
+
 .feed-handle,
 .feed-dot,
 .feed-time {
