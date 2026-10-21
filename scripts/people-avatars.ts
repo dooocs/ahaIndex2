@@ -58,8 +58,8 @@ async function upload(objectKey: string, body: Uint8Array, type: string) {
     await writeFile(file, body);
     await run(ossutil, [
       'cp', file, `oss://${bucket}/${objectKey}`, '--force',
-      '--metadata', 'Cache-Control=max-age=31536000,immutable',
-      '--metadata', `Content-Type=${type}`,
+      '--cache-control', 'max-age=31536000,immutable',
+      '--content-type', type,
       '--endpoint', 'https://oss-cn-hangzhou.aliyuncs.com',
       '--access-key-id', process.env.OSS_ACCESS_KEY_ID ?? '',
       '--access-key-secret', process.env.OSS_ACCESS_KEY_SECRET ?? '',
