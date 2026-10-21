@@ -216,8 +216,10 @@ export async function getTracks(db: Db): Promise<TrackInfo[]> {
 // ─── People ─────────────────────────────────────────
 
 const PEOPLE_BASE_COLUMNS = 'id, slug, name, name_zh, x_handle, person_group, role, tier, take_text, take_updated_at, status, former_subjects, added_at, updated_at';
-// Added by sql/people/003_avatars.sql; read only once the migration is in.
-const PEOPLE_COLUMNS = `${PEOPLE_BASE_COLUMNS}, avatar_url, github_handle`;
+// Added by sql/people/003_avatars.sql and 004_nickname.sql; each is read only
+// once its migration is in (a missing column falls back to the shorter list).
+const PEOPLE_AVATAR_COLUMNS = `${PEOPLE_BASE_COLUMNS}, avatar_url, github_handle`;
+const PEOPLE_COLUMNS = `${PEOPLE_AVATAR_COLUMNS}, nickname`;
 
 function isMissingColumnError(error: unknown): boolean {
   const err = error as { code?: string; message?: string } | null;
@@ -234,10 +236,13 @@ export async function getPeopleRows(db: Db): Promise<{ people: PersonRow[]; prof
     const read = (columns: string) => fetchAllRows<PersonRow>((from, to) =>
       db.from('people').select(columns).eq('status', 'published').order('slug', { ascending: true }).range(from, to) as unknown as PageResult<PersonRow>,
     );
-    const people = await read(PEOPLE_COLUMNS).catch((error) => {
-      if (isMissingColumnError(error)) return read(PEOPLE_BASE_COLUMNS);
+    const fallback = (next: () => Promise<PersonRow[]>) => (error: unknown) => {
+      if (isMissingColumnError(error)) return next();
       throw error;
-    });
+    };
+    const people = await read(PEOPLE_COLUMNS)
+      .catch(fallback(() => read(PEOPLE_AVATAR_COLUMNS)
+        .catch(fallback(() => read(PEOPLE_BASE_COLUMNS)))));
     const profiles: ProfileRow[] = [];
     for (const batch of chunkValues(people.map((p) => p.id), 100)) {
       profiles.push(...await fetchAllRows<ProfileRow>((from, to) =>

@@ -199,6 +199,7 @@ export function buildFixture() {
   const person = (slug, name, handle, group, role, extra = {}) => ({
     id: id(), slug, name, name_zh: null, x_handle: handle, person_group: group, role, tier: null,
     take_text: null, take_updated_at: null, status: 'published', former_subjects: [],
+    avatar_url: null, github_handle: null, nickname: null,
     added_at: dates[0], updated_at: `${day}T00:00:00Z`, ...extra,
   });
   const src = (title) => [{ title, url: `https://example.com/${encodeURIComponent(title)}` }];
@@ -206,8 +207,9 @@ export function buildFixture() {
     person('sam-altman', 'Sam Altman', 'sama', '掌舵人', 'OpenAI CEO', {
       name_zh: '萨姆·奥尔特曼', tier: '值得关注', take_text: '总在对的时候把东西推出去。', take_updated_at: day,
       former_subjects: ['person:sam'], avatar_url: 'https://www.amazingindex.com/media/people/avatars/mock-sam-altman.jpg',
+      nickname: 'ChatGPT 之父',
     }),
-    person('santiago', 'Santiago', 'svpino', '布道者', '机器学习工程博主'),
+    person('santiago', 'Santiago', 'svpino', '布道者', '机器学习工程博主', { nickname: '机器学习科普博主' }),
     person('andrej-karpathy', 'Andrej Karpathy', 'karpathy', '布道者', 'Eureka Labs', { status: 'draft', take_text: '草稿' }),
   ];
   const personProfiles = [{

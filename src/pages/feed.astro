@@ -35,6 +35,8 @@ const canonical = `${SITE_URL}${FEED_PATH}`;
 // accounts no longer followed may not, and stay plain).
 const { people } = await getPeople();
 const personHref = new Map(people.filter((x) => x.x_handle).map((x) => [x.x_handle!.toLowerCase(), `${PEOPLE_PATH}/${x.slug}`]));
+// The 外号 after each name (people.nickname), from the same published people.
+const personNickname = new Map(people.filter((x) => x.x_handle && x.nickname).map((x) => [x.x_handle!.toLowerCase(), x.nickname!]));
 const initial = (name: string) => Array.from(name.trim())[0]?.toUpperCase() ?? '?';
 const hh = (h: number) => String(h).padStart(2, '0');
 ---
@@ -58,7 +60,7 @@ const hh = (h: number) => String(h).padStart(2, '0');
     <p class="feed-empty">最近 {FEED_WINDOW_HOURS} 小时还没有新动态，晚点再来看看。</p>
   ) : (
     <ol class="feed-stream" data-feed-stream>
-      {posts.map((p) => <FeedPost post={p} href={personHref.get(p.author.toLowerCase()) ?? null} filterable />)}
+      {posts.map((p) => <FeedPost post={p} href={personHref.get(p.author.toLowerCase()) ?? null} nickname={personNickname.get(p.author.toLowerCase()) ?? null} filterable />)}
     </ol>
   )}
 

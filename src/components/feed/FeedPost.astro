@@ -9,17 +9,21 @@
 // Nothing links to X: the time is plain text, @mentions and x.com links in
 // the text are not linked (renderPostText). The avatar and name link to the
 // author's 人物 page when `href` is given, otherwise they are plain.
+// `nickname` (people.nickname, e.g. "Claude Code 之父") follows the name, so a
+// reader who does not know the name still knows who this is.
 import { beijingTime, durationLabel, renderPostText, type FeedPost } from '../../lib/feed.ts';
 
 interface Props {
   post: FeedPost;
   /** The author's /people/<slug> page, when there is a published one. */
   href?: string | null;
+  /** The author's 外号, shown after the name; omitted on their own 人物 page. */
+  nickname?: string | null;
   /** Adds data-author for the side panel's "only this blogger" filter. */
   filterable?: boolean;
 }
 
-const { post: p, href = null, filterable = false } = Astro.props;
+const { post: p, href = null, nickname = null, filterable = false } = Astro.props;
 const initial = Array.from(p.display_name.trim())[0]?.toUpperCase() ?? '?';
 const unavailable = (tooLarge: boolean) => (tooLarge ? '视频较长，未收录' : '视频暂未收录');
 const translated = Boolean(p.text_zh);
@@ -39,6 +43,7 @@ const dialogId = `feed-original-${p.id}`;
   <div class="feed-post-body">
     <header class="feed-post-head">
       {href ? <a class="feed-name" href={href} title={`${p.display_name} 的人物页`}>{p.display_name}</a> : <span class="feed-name">{p.display_name}</span>}
+      {nickname && <span class="feed-nickname">{nickname}</span>}
       <span class="feed-handle">@{p.author}</span>
       <span class="feed-dot" aria-hidden="true">·</span>
       <time class="feed-time" datetime={p.published_at}>{beijingTime(p.published_at)}</time>
