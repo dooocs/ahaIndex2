@@ -6,8 +6,8 @@
 // getFeedPosts, so tests/feed.test.mjs covers ordering, summary and text.
 //
 // text_zh === '' means no translation is needed (already Chinese, or only
-// links/media): the page shows the original alone. Otherwise the original is
-// shown with the translation below it.
+// links/media): the page shows the original. Otherwise the page shows the
+// translation, and the original in a dialog (查看原文).
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export const FEED_WINDOW_HOURS = 24;

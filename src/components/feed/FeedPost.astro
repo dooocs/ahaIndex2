@@ -1,7 +1,10 @@
 ---
 // One 动态 post in a .feed-stream list (the /feed stream and a person's
-// "他最近在说"). Original text, translation below it, media from the site's
-// own OSS only: photos open the full image, videos and GIFs play inline.
+// "他最近在说"). The Chinese translation is the post's text; 查看原文 opens a
+// dialog with the original. A post with no translation (already Chinese, or
+// only links/media: text_zh === '') shows its original and has no button.
+// Media from the site's own OSS only: photos open the full image, videos and
+// GIFs play inline.
 // Nothing links to X: the time is plain text, @mentions and x.com links in
 // the text are not linked (renderPostText). The avatar and name link to the
 // author's 人物 page when `href` is given, otherwise they are plain.
@@ -18,6 +21,8 @@ interface Props {
 const { post: p, href = null, filterable = false } = Astro.props;
 const initial = Array.from(p.display_name.trim())[0]?.toUpperCase() ?? '?';
 const unavailable = (tooLarge: boolean) => (tooLarge ? '视频较长，未收录' : '视频暂未收录');
+const translated = Boolean(p.text_zh);
+const dialogId = `feed-original-${p.id}`;
 ---
 
 <li class="feed-post" data-author={filterable ? p.author.toLowerCase() : undefined}>
@@ -37,12 +42,10 @@ const unavailable = (tooLarge: boolean) => (tooLarge ? '视频较长，未收录
       <span class="feed-dot" aria-hidden="true">·</span>
       <time class="feed-time" datetime={p.published_at}>{beijingTime(p.published_at)}</time>
     </header>
-    {p.text_original && <div class="feed-text feed-original" set:html={renderPostText(p.text_original)} />}
-    {p.text_zh && (
-      <div class="feed-text feed-zh" lang="zh-CN">
-        <span class="feed-zh-label" aria-label="中文翻译">译</span>
-        <Fragment set:html={renderPostText(p.text_zh)} />
-      </div>
+    {translated ? (
+      <div class="feed-text feed-main" lang="zh-CN" set:html={renderPostText(p.text_zh)} />
+    ) : (
+      p.text_original && <div class="feed-text feed-main" set:html={renderPostText(p.text_original)} />
     )}
     {p.media.length > 0 && (
       <div class={`feed-media feed-media-${Math.min(p.media.length, 4)}`}>
@@ -68,5 +71,39 @@ const unavailable = (tooLarge: boolean) => (tooLarge ? '视频较长，未收录
         ))}
       </div>
     )}
+    {translated && (
+      <div class="feed-actions">
+        <span class="feed-mt">AI 翻译</span>
+        <button type="button" class="feed-original-btn" data-feed-original={dialogId} aria-haspopup="dialog">查看原文</button>
+      </div>
+    )}
   </div>
+  {translated && (
+    <dialog class="feed-dialog" id={dialogId} aria-labelledby={`${dialogId}-h`}>
+      <div class="feed-dialog-inner">
+        <header class="feed-dialog-head">
+          <div id={`${dialogId}-h`} class="feed-dialog-title">
+            <span class="feed-dialog-kicker">原文 / Original</span>
+            <span class="feed-dialog-who">{p.display_name} <span class="feed-handle">@{p.author}</span> <span class="feed-dot" aria-hidden="true">·</span> <time class="feed-time" datetime={p.published_at}>{beijingTime(p.published_at)}</time></span>
+          </div>
+          <form method="dialog"><button class="feed-dialog-close" aria-label="关闭">×</button></form>
+        </header>
+        <div class="feed-text feed-original" set:html={renderPostText(p.text_original)} />
+      </div>
+    </dialog>
+  )}
 </li>
+
+<script>
+  // 查看原文: open the post's dialog. Esc and × close it (native <dialog>), so does a click on the backdrop.
+  document.addEventListener('click', (event) => {
+    const target = event.target as HTMLElement | null;
+    const opener = target?.closest<HTMLElement>('[data-feed-original]');
+    if (opener) {
+      const dialog = document.getElementById(opener.dataset.feedOriginal ?? '');
+      if (dialog instanceof HTMLDialogElement && !dialog.open) dialog.showModal();
+      return;
+    }
+    if (target instanceof HTMLDialogElement && target.classList.contains('feed-dialog')) target.close();
+  });
+</script>
