@@ -18,7 +18,7 @@ const store = path.join(root, 'objects');
 mkdirSync(store, { recursive: true });
 
 const [command, ...rest] = process.argv.slice(2);
-const VALUE_FLAGS = new Set(['--endpoint', '--access-key-id', '--access-key-secret', '--region', '-j', '--metadata']);
+const VALUE_FLAGS = new Set(['--endpoint', '--access-key-id', '--access-key-secret', '--region', '-j', '--metadata', '--metadata-directive', '--cache-control', '--content-type']);
 const args = [];
 for (let i = 0; i < rest.length; i++) {
   if (VALUE_FLAGS.has(rest[i])) i++;

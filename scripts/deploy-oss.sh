@@ -41,7 +41,8 @@ if [[ "$TARGET" == oss ]]; then
   # For the parallel workers below (xargs runs them in fresh shells).
   export DEST OSS_ACCESS_KEY_ID OSS_ACCESS_KEY_SECRET
   copy_bare() {
-    ossutil cp "$DEST$1" "$DEST$2" --force --metadata "Cache-Control=no-cache" --metadata "Content-Type=text/html; charset=utf-8" \
+    # Server-side copy: REPLACE, or the copy keeps the source's headers and ignores ours.
+    ossutil cp "$DEST$1" "$DEST$2" --force --metadata-directive REPLACE --cache-control "no-cache" --content-type "text/html; charset=utf-8" \
       --endpoint https://oss-cn-hangzhou.aliyuncs.com --access-key-id "$OSS_ACCESS_KEY_ID" --access-key-secret "$OSS_ACCESS_KEY_SECRET" --region cn-hangzhou > /dev/null
   }
   remove_key() {
@@ -64,8 +65,10 @@ put() {
   [[ -d "$src" ]] || return 0
   if [[ "$TARGET" == oss ]]; then
     local meta=()
-    [[ -n "$cache" ]] && meta+=(--metadata "Cache-Control=$cache")
-    [[ -n "$type" ]] && meta+=(--metadata "Content-Type=$type")
+    # Real HTTP headers. (--metadata would only write x-oss-meta-* user metadata,
+    # which browsers, crawlers and the CDN all ignore.)
+    [[ -n "$cache" ]] && meta+=(--cache-control "$cache")
+    [[ -n "$type" ]] && meta+=(--content-type "$type")
     ossutil sync "$src/" "$DEST$sub" --force -j "$jobs" "${meta[@]}" "${CREDS[@]}"
   else
     mkdir -p "$LOCAL_ROOT$sub"
