@@ -1,11 +1,12 @@
 ---
 // 动态: the last 24 hours of original X posts by the bloggers Octopus follows.
 // A TabLayout page: on the left one stream of posts in the order they were
-// sent on X, each with its original text and the Chinese translation below
-// it; on the right an overview of the window built from the panel primitives
-// (counts, when people posted, who posted most — click a name to see only
-// their posts). In the stream, a blogger's avatar and name open their 人物
-// page; nothing on the page links to X. Rendered at build time from proc_feed_posts (src/lib/feed.ts);
+// sent on X, each shown in Chinese (the original opens in a dialog); on the
+// right an overview of the window built from the panel primitives (counts,
+// when people posted, who posted most — click a name to see only their
+// posts). In the stream, a blogger's avatar and name open their 人物 page;
+// nothing on the page links to X. Rendered at build time from
+// proc_feed_posts (src/lib/feed.ts);
 // the hourly feed deploy (.github/workflows/feed-deploy.yml) rebuilds and
 // uploads only this page.
 import TabLayout from '../layouts/TabLayout.astro';
@@ -28,7 +29,7 @@ const peak = Math.max(1, ...sum.by_hour);
 const busiestHour = Math.max(...sum.by_hour) >= 2 ? sum.by_hour.indexOf(Math.max(...sum.by_hour)) : -1;
 
 const pageTitle = siteTitle('动态 · AI 博主 24 小时');
-const pageDesc = `AI 圈 ${sum.authors || ''} 位博主最近 ${FEED_WINDOW_HOURS} 小时在 X 上的原创动态，原文与中文翻译对照，每小时更新。`;
+const pageDesc = `AI 圈 ${sum.authors || ''} 位博主最近 ${FEED_WINDOW_HOURS} 小时在 X 上的原创动态，中文翻译，可查看原文，每小时更新。`;
 const canonical = `${SITE_URL}${FEED_PATH}`;
 // Avatar and name link to the blogger's 人物 page (every followed account has one; older posts by
 // accounts no longer followed may not, and stay plain).
@@ -62,7 +63,7 @@ const hh = (h: number) => String(h).padStart(2, '0');
   )}
 
   <SidePanel slot="side">
-    <PanelHead kicker="动态 / Feed" title="AI 博主" accent={`最近 ${FEED_WINDOW_HOURS} 小时`} text="AI 圈博主在 X 上的原创帖子，原文在上、中文翻译在下，按发帖时间排列。每小时更新。" />
+    <PanelHead kicker="动态 / Feed" title="AI 博主" accent={`最近 ${FEED_WINDOW_HOURS} 小时`} text="AI 圈博主在 X 上的原创帖子，默认显示中文翻译，点「查看原文」看原帖，按发帖时间排列。每小时更新。" />
 
     <StatRow stats={[{ label: '博主', value: sum.authors }, { label: '帖子', value: sum.posts }, { label: '带图', value: sum.with_media }]} />
     {sum.latest_at && (

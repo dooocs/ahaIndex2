@@ -47,7 +47,7 @@ export const SHELVES: Shelf[] = [
     tab: 'AI 日报', tabHref: '/', paths: ['/', '/daily', '/article', '/history', '/projects'],
   },
   {
-    id: 'feed', href: '/feed', name: '动态', desc: 'AI 圈博主最近 24 小时在 X 上说了什么，中英对照',
+    id: 'feed', href: '/feed', name: '动态', desc: 'AI 圈博主最近 24 小时在 X 上说了什么，中文翻译、可看原文',
     tab: '动态', tabHref: '/feed', paths: ['/feed'],
   },
   {
