@@ -204,6 +204,8 @@ a.feed-name:hover { text-decoration: underline; text-underline-offset: 3px; }
 .feed-media-3,
 .feed-media-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
+.feed-media > a { cursor: zoom-in; }
+
 .feed-media > a,
 .feed-media > .feed-video {
   position: relative;

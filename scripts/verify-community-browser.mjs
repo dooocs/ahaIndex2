@@ -82,7 +82,8 @@ try {
  await page.getByRole('link',{name:'想找一个一起逛书店的人'}).click();
  await page.getByRole('button',{name:'查看第 1 张照片',exact:true}).click();
  await page.getByRole('dialog',{name:'查看照片'}).waitFor({state:'visible'});
- await page.getByRole('button',{name:'关闭照片',exact:true}).click();
+ await page.locator('.lightbox').getByRole('button',{name:'关闭',exact:true}).click();
+ assert.equal(await page.locator('.lightbox[open]').count(),0);
  await page.getByRole('link',{name:'返回相亲广场',exact:true}).click();
  await page.getByRole('link',{name:'想找一个一起逛书店的人'}).waitFor();
  assert.equal(await page.locator('script[src*="googletagmanager"]').count(),0);

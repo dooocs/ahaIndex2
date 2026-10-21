@@ -131,8 +131,8 @@ try {
   await reader.page.locator('#post-photos img').first().waitFor();
   await reader.page.waitForFunction(()=>document.querySelector('#post-photos img')?.naturalWidth>0);
   await reader.page.getByRole('button',{name:'查看第 1 张照片',exact:true}).click();
-  await reader.page.locator('.photo-dialog[open]').waitFor();
-  await reader.page.waitForFunction(()=>document.querySelector('.photo-dialog img')?.naturalWidth>0);
+  await reader.page.locator('.lightbox[open]').waitFor();
+  await reader.page.waitForFunction(()=>document.querySelector('.lightbox-img')?.naturalWidth>0);
   await reader.page.getByRole('button',{name:'关闭照片',exact:true}).click();
   await reader.page.screenshot({ path: join(tmpdir(), 'community-live-detail.png'), fullPage: true });
   stage = 'edit prefill and withdrawal';

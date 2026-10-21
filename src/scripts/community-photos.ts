@@ -1,4 +1,5 @@
-import { ArrowLeft, ArrowRight, Plus, RotateCcw, Trash2, X, createElement, type IconNode } from 'lucide';
+import { ArrowLeft, ArrowRight, Plus, RotateCcw, Trash2, createElement, type IconNode } from 'lucide';
+import { closeLightbox, openLightbox } from './lightbox';
 import { communityClient } from '../lib/community-client';
 import { listPhotos, MAX_PHOTOS, photoError, photoRequest, preparePhoto, uploadPhoto, type MeetPhoto } from '../lib/community-photos';
 
@@ -89,25 +90,13 @@ export async function photoEditor(root: HTMLElement, form: HTMLFormElement) {
 export function photoViewer(root: HTMLElement) {
   let disposed = false;
   let generation = 0, lastPosts: number[] = [], lastDetail = false;
-  const dialog = document.createElement('dialog'); dialog.className = 'photo-dialog'; dialog.setAttribute('aria-label', '查看照片');
-  const large = document.createElement('img'); large.alt = '相亲帖照片';
-  const caption = document.createElement('p');
-  const close = iconButton('关闭照片', X, () => dialog.close());
-  let photos: MeetPhoto[] = [], index = 0;
-  const previous = iconButton('上一张照片', ArrowLeft, () => show(index - 1));
-  const next = iconButton('下一张照片', ArrowRight, () => show(index + 1));
-  const toolbar = document.createElement('div'); toolbar.className = 'photo-dialog-tools'; toolbar.append(previous, caption, next, close);
-  dialog.append(large, toolbar); root.append(dialog);
-  const show = (value: number) => {
-    if (!photos.length) return;
-    index = (value + photos.length) % photos.length; large.src = photos[index].url!; caption.textContent = `${index + 1} / ${photos.length}`;
-    previous.disabled = next.disabled = photos.length < 2;
-  };
-  dialog.addEventListener('close', () => { large.removeAttribute('src'); photos = []; });
-  dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
-  dialog.addEventListener('keydown', event => { if (event.key === 'ArrowLeft') { event.preventDefault(); show(index - 1); } if (event.key === 'ArrowRight') { event.preventDefault(); show(index + 1); } });
+  // Display is the shared viewer; this only decides which (signed) URLs it gets.
+  const view = (photos: MeetPhoto[], start: number) => openLightbox(
+    photos.map(photo => ({ src: photo.url!, alt: `相亲帖照片 ${photo.sort_order + 1}`, width: photo.width, height: photo.height })),
+    start, { label: '查看照片' },
+  );
   const clear = () => {
-    if (dialog.open) dialog.close();
+    closeLightbox();
     root.querySelectorAll<HTMLElement>('[data-private-photo]').forEach(element => { element.replaceChildren(document.createTextNode('登录后可见')); element.dataset.locked = 'true'; });
   };
   const listener = communityClient!.auth.onAuthStateChange(event => {
@@ -162,7 +151,7 @@ export function photoViewer(root: HTMLElement) {
             const full = await listPhotos(posts, false, true);
             const active = await communityClient!.auth.getSession();
             if (disposed || generation !== requestGeneration || active.data.session?.user.id !== userId || !full.length) return;
-            photos = full; show(Math.max(0, full.findIndex(row => row.id === photo.id))); dialog.showModal();
+            view(full, Math.max(0, full.findIndex(row => row.id === photo.id)));
           } catch { button.title = '照片暂不可用，请稍后重试'; }
           finally { button.disabled = false; }
         });
@@ -180,5 +169,5 @@ export function photoViewer(root: HTMLElement) {
       }
     }
   }
-  return { load, dispose() { disposed = true; generation++; listener.data.subscription.unsubscribe(); dialog.remove(); } };
+  return { load, dispose() { disposed = true; generation++; listener.data.subscription.unsubscribe(); closeLightbox(); } };
 }

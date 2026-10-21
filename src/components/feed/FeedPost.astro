@@ -3,8 +3,9 @@
 // "他最近在说"). The Chinese translation is the post's text; 查看原文 opens a
 // dialog with the original. A post with no translation (already Chinese, or
 // only links/media: text_zh === '') shows its original and has no button.
-// Media from the site's own OSS only: photos open the full image, videos and
-// GIFs play inline.
+// Media from the site's own OSS only: photos open in the site's image viewer
+// (src/scripts/lightbox.ts), paging through this post's photos only; videos
+// and GIFs play inline.
 // Nothing links to X: the time is plain text, @mentions and x.com links in
 // the text are not linked (renderPostText). The avatar and name link to the
 // author's 人物 page when `href` is given, otherwise they are plain.
@@ -50,7 +51,7 @@ const dialogId = `feed-original-${p.id}`;
     {p.media.length > 0 && (
       <div class={`feed-media feed-media-${Math.min(p.media.length, 4)}`}>
         {p.media.map((m) => m.type === 'photo' ? (
-          <a href={m.url} target="_blank" rel="noopener">
+          <a href={m.url} data-lightbox={p.id} data-lightbox-label={`${p.display_name} 的配图`} aria-label="查看大图">
             <img src={m.url} alt="" loading="lazy" decoding="async" width={m.width ?? undefined} height={m.height ?? undefined} />
           </a>
         ) : m.video_url && m.type === 'animated_gif' ? (
@@ -95,6 +96,11 @@ const dialogId = `feed-original-${p.id}`;
 </li>
 
 <script>
+  import { bindLightboxLinks } from '../../scripts/lightbox';
+
+  // Photos: [data-lightbox] links open in the shared viewer, one group per post.
+  bindLightboxLinks();
+
   // 查看原文: open the post's dialog. Esc and × close it (native <dialog>), so does a click on the backdrop.
   document.addEventListener('click', (event) => {
     const target = event.target as HTMLElement | null;

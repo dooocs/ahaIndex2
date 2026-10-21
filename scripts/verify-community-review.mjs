@@ -66,8 +66,12 @@ try {
   assert.ok(!stored.local.includes(key) && !stored.session.includes(key),'permanent key is never persisted');
   await page.screenshot({path:join(tmpdir(),'community-review-desktop.png'),fullPage:true});
   await page.getByRole('button',{name:'查看第 1 张原图'}).click();
-  await page.locator('dialog[open]').waitFor();
-  await page.getByRole('button',{name:'关闭原图'}).click();
+  await page.locator('.lightbox[open]').waitFor();
+  assert.equal(await page.locator('.lightbox-count').textContent(),'1 / 6');
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await page.locator('.lightbox-count').textContent(),'2 / 6');
+  await page.locator('.lightbox').getByRole('button',{name:'关闭',exact:true}).click();
+  assert.equal(await page.locator('.lightbox[open]').count(),0);
   const beforeRenew = exchanges;
   await page.clock.fastForward(61*60000);
   await page.waitForFunction(key=>{const s=JSON.parse(sessionStorage.getItem(key));return s?.expiresAt>Date.now()+300000;},sessionKey);

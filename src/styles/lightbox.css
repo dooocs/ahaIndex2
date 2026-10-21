@@ -1,0 +1,97 @@
+/* The site's image viewer (src/scripts/lightbox.ts): a dark full-screen
+   dialog, the same on every page that uses it. Self-contained: it does not
+   rely on any page's tokens, so the review page and 相亲帖 can share it. */
+.lightbox {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: rgb(14 12 10 / 0.94);
+  color: #f4efe6;
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+.lightbox::backdrop { background: transparent; }
+
+/* The reserved scrollbar lane is outside the overlay: match its colour. */
+html.lightbox-open { background: rgb(14 12 10); }
+
+.lightbox-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 56px 72px;
+  box-sizing: border-box;
+  touch-action: pan-y pinch-zoom;
+  user-select: none;
+}
+
+.lightbox-img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 4px;
+  -webkit-user-drag: none;
+}
+
+.lightbox-button {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.12);
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.lightbox-button:hover { background: rgb(255 255 255 / 0.24); }
+.lightbox-button:focus-visible { outline: 2px solid #f4efe6; outline-offset: 2px; }
+.lightbox-button[hidden] { display: none; }
+
+.lightbox-close { top: 12px; right: 12px; }
+.lightbox-prev,
+.lightbox-next { top: 50%; transform: translateY(-50%); }
+.lightbox-prev { left: 16px; }
+.lightbox-next { right: 16px; }
+
+.lightbox-count {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  margin: 0;
+  transform: translateX(-50%);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 0.4);
+  font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.04em;
+}
+
+.lightbox-count[hidden] { display: none; }
+
+/* Phones: the image uses the whole width; paging is by swipe, the arrows sit
+   at the bottom beside the counter instead of over the image. */
+@media (max-width: 640px) {
+  .lightbox-stage { padding: 56px 0 72px; }
+  .lightbox-img { border-radius: 0; }
+  .lightbox-prev,
+  .lightbox-next { top: auto; bottom: 10px; transform: none; }
+  .lightbox-prev { left: 16px; }
+  .lightbox-next { right: 16px; }
+}
