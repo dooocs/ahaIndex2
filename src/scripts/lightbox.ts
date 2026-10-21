@@ -187,6 +187,10 @@ let bound = false;
 export function bindLightboxLinks() {
   if (bound) return;
   bound = true;
+  // Capture phase: Astro's ClientRouter also listens for clicks on document
+  // and takes over every same-origin link nobody has prevented yet — and the
+  // site's /media/ images are same-origin, so in the bubble phase the router
+  // would navigate to the image first. Prevented here, it leaves the click be.
   document.addEventListener('click', (event) => {
     if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     const link = (event.target as Element | null)?.closest?.<HTMLAnchorElement>('a[data-lightbox]');
@@ -197,7 +201,7 @@ export function bindLightboxLinks() {
       ? Array.from(document.querySelectorAll<HTMLAnchorElement>(`a[data-lightbox="${CSS.escape(group)}"]`))
       : [link];
     openLightbox(links.map(itemOf), Math.max(0, links.indexOf(link)), { label: link.dataset.lightboxLabel });
-  });
+  }, true);
   // Close before a ClientRouter navigation swaps the page out.
   document.addEventListener('astro:before-swap', closeLightbox);
 }
