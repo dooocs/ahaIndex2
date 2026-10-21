@@ -48,10 +48,6 @@ h1 { font-size: 18px; margin: 0; }
 .action-button.reject { color: #a52e24; border-color: #bd7870; }
 .empty-state { padding: 24px; color: #69726b; font-size: 14px; }
 #review-more { margin: 16px 24px; }
-#review-photo-dialog { border: 0; border-radius: 4px; padding: 12px; max-width: 94vw; max-height: 94dvh; background: #fff; }
-#review-photo-dialog::backdrop { background: #151c18d9; }
-#review-photo-close { margin-left: auto; display: flex; margin-bottom: 8px; }
-#review-photo-full { display: block; max-width: 100%; max-height: 78dvh; object-fit: contain; margin: auto; }
 #review-confirm-dialog { width: min(420px, calc(100vw - 32px)); padding: 24px; border: 1px solid #cdd4ce; border-radius: 4px; color: inherit; }
 #review-confirm-dialog::backdrop { background: #151c1880; }
 #review-confirm-title { margin: 0; font-size: 18px; }

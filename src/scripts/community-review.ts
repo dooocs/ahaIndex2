@@ -1,4 +1,5 @@
 import { Check, X, Ban, LogOut, RefreshCw, createElement } from 'lucide';
+import { closeLightbox, openLightbox } from './lightbox';
 import { community } from '../lib/community-config';
 import { communityStorageKey } from '../lib/community-model';
 import { communityFunctionFetch } from '../lib/community-transport';
@@ -21,21 +22,16 @@ let currentStatus = 'pending', cursor: number | null = null, listGeneration = 0,
 let acting = false, photosReady = false;
 let authGeneration = 0;
 let renewal: Promise<void> | null = null;
-const dialog = $<HTMLDialogElement>('#review-photo-dialog');
 const confirmDialog = $<HTMLDialogElement>('#review-confirm-dialog');
 $('#review-exit').append(createElement(LogOut, { width: 18, height: 18 }));
 $('#review-refresh').append(createElement(RefreshCw, { width: 18, height: 18 }));
-$('#review-photo-close').append(createElement(X, { width: 18, height: 18 }));
-$('#review-photo-close').addEventListener('click', () => dialog.close());
-dialog.addEventListener('close', () => $<HTMLImageElement>('#review-photo-full').removeAttribute('src'));
-dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
 
 function clearAccess() {
   session = null; entryKey = ''; selected = null; renewal = null; listGeneration++; detailGeneration++; authGeneration++;
   try { sessionStorage.removeItem(storageKey); } catch { /* Session may be memory-only. */ }
   $('#review-workspace').hidden = true; $('#review-exit').hidden = true; $('#review-session').textContent = '';
   $('#review-list').replaceChildren(); $('#review-detail').replaceChildren();
-  if (dialog.open) dialog.close();
+  closeLightbox();
   if (confirmDialog.open) confirmDialog.close('cancel');
 }
 function explain(error: unknown) {
@@ -161,9 +157,9 @@ function renderDetail(data: Detail) {
         const latest: Detail = await request({ action: 'detail', id: post.id });
         if (selected !== data) return;
         if (latest.version !== data.version) { await loadDetail(post.id); throw new Error('post_changed'); }
-        const full = latest.photos.find(p => p.id === photo.id);
-        if (!full) throw new Error('post_changed');
-        $<HTMLImageElement>('#review-photo-full').src = photoUrl(full.url); dialog.showModal();
+        const start = latest.photos.findIndex(p => p.id === photo.id);
+        if (start < 0) throw new Error('post_changed');
+        openLightbox(latest.photos.map((p, i) => ({ src: photoUrl(p.url), alt: `相亲帖原图 ${i + 1}` })), start, { label: '查看原图' });
       } catch (error) { statusMessage(explain(error), true); }
       finally { button.disabled = false; }
     });

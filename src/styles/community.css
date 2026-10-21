@@ -119,11 +119,6 @@
 .photo-gallery .post-photo { width: 100%; padding: 0; cursor: zoom-in; }
 .photo-gallery .post-photo:first-child { grid-column: 1/-1; }
 .photo-gallery .post-photo[data-locked=true] { aspect-ratio: auto; min-height: 88px; cursor: pointer; }
-.photo-dialog { max-width: min(94vw, 1000px); max-height: 94dvh; margin: auto; padding: 12px; background: var(--c-paper); border: 1px solid var(--c-ink); color: var(--c-ink); }
-.photo-dialog::backdrop { background: rgb(28 24 20 / .8); }
-.photo-dialog > img { display: block; max-width: 100%; max-height: 75dvh; margin: auto; object-fit: contain; }
-.photo-dialog-tools { display: flex; gap: 12px; justify-content: center; align-items: center; padding-top: 12px; }
-.photo-dialog-tools p { font: 12px var(--fm); min-width: 60px; text-align: center; }
 @media (max-width: 760px) {
   .community-shell { grid-template-columns: minmax(0, 1fr); }
   .community-main, .community-side, .account-section { padding: 24px 16px; }
