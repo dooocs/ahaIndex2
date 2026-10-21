@@ -3,6 +3,7 @@ import BaseLayout from './BaseLayout.astro';
 import Masthead from '../components/Masthead.astro';
 import Footer from '../components/Footer.astro';
 import type { ProcessedItem } from '../lib/types';
+import { siteTitle } from '../lib/site';
 
 interface Props {
   item: ProcessedItem;
@@ -139,11 +140,10 @@ const maturityClass: Record<string, string> = { production: 'production', beta: 
 ---
 
 <BaseLayout
-  title={`${titleText} | ${dateText} 日报快照 | AmazingIndex`}
+  title={siteTitle(titleText)}
   description={metaDescription}
   canonicalUrl={articleUrl}
   ogType="article"
-  ogTitle={titleText}
   ogDescription={metaDescription}
   ogUrl={articleUrl}
   jsonLd={{

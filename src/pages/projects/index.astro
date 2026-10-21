@@ -4,6 +4,7 @@ import Masthead from '../../components/Masthead.astro';
 import Footer from '../../components/Footer.astro';
 import { getProjects, getProjectDates } from '../../lib/data';
 import { isDailyBuild } from '../../lib/build-scope';
+import { siteTitle } from '../../lib/site';
 
 // Rebuilt by full builds only; a daily build skips the data and does not upload this page.
 const projects = isDailyBuild() ? [] : await getProjects();
@@ -62,7 +63,7 @@ const projectsJSON = JSON.stringify(projects.map(p => ({
   timeline: p.timeline,
 })));
 
-const pageTitle = '开源项目热力矩阵 | AmazingIndex';
+const pageTitle = siteTitle('开源项目热力矩阵');
 const pageDesc = '基于 AHA Index 量化算法，追踪 AI 开源项目在各赛道的活跃度变化。热力矩阵展示 track × date 维度的项目密度。';
 ---
 

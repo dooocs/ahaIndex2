@@ -1,5 +1,6 @@
 ---
 import DailyPage from '../../../components/DailyPage.astro';
+import { siteTitle } from '../../../lib/site';
 import { getBuildDates, getItemsByDate, getDailyArchiveByDate, getPreviousPublished } from '../../../lib/data';
 
 export async function getStaticPaths() {
@@ -12,7 +13,7 @@ const items = await getItemsByDate(date!);
 const dailyArchive = await getDailyArchiveByDate(date!);
 const prev = await getPreviousPublished(date!);
 
-const pageTitle = `${date} AI 行业精选简报 | AmazingIndex`;
+const pageTitle = siteTitle(`AI 日报 · ${date}`);
 const pageDesc = `AmazingIndex ${date} 每日 AI 行业精选简报。基于多维度量化算法，为您筛选当日最具价值的 AI 行业动态与创新洞察。`;
 ---
 

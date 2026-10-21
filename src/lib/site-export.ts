@@ -17,6 +17,7 @@ import type {
   ProcessedItem,
   WeeklyArchive,
 } from './types.ts';
+import { siteTitle } from './site.ts';
 
 export const DATA_VERSION = 1;
 export const MONTH_NAMES = ['一月', '二月', '三月', '四月', '五月', '六月', '七月', '八月', '九月', '十月', '十一月', '十二月'];
@@ -221,7 +222,7 @@ export function fillSlots(html: string, slots: Record<string, string>): string {
 export function yearShellMeta(): ShellMeta {
   return {
     path: '/daily',
-    title: '历史归档 | AmazingIndex',
+    title: siteTitle('历史归档'),
     description: '深入探索 AmazingIndex 过去 AI 行业动态的综合数据库，经过评分和分类，方便您发现。',
   };
 }
@@ -231,7 +232,7 @@ export function monthShellMeta(month: string): ShellMeta {
   const name = MONTH_NAMES[Number(month.slice(5, 7)) - 1];
   return {
     path: `/daily/${month}`,
-    title: `历史归档 - ${year}年${name} | AmazingIndex`,
+    title: siteTitle(`历史归档 - ${year}年${name}`),
     description: `在 AmazingIndex 探索 ${year}年${name} 的 AI 行业动态与突破。`,
   };
 }
