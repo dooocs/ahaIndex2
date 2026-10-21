@@ -83,7 +83,7 @@ test('fillShell escapes per-URL values and requires every token', () => {
 test('shell metadata matches the former page titles', () => {
   assert.deepEqual(monthShellMeta('2026-01'), {
     path: '/daily/2026-01',
-    title: '历史归档 - 2026年一月 | AmazingIndex',
+    title: '历史归档 - 2026年一月 | 蜗牛杂货站',
     description: '在 AmazingIndex 探索 2026年一月 的 AI 行业动态与突破。',
   });
 });

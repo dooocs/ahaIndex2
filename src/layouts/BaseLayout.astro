@@ -20,6 +20,10 @@ interface Props {
   analytics?: boolean;
 }
 
+// The brand share card (public/og/amazingindex-og.jpg, 1200×630). Its key
+// content sits in the centered square, so square thumbnails crop cleanly.
+const DEFAULT_OG_IMAGE = `${SITE_URL}/og/amazingindex-og.jpg`;
+
 const {
   title = `${SITE_NAME} · ${SITE_SLOGAN}`,
   description = SITE_DESCRIPTION,
@@ -28,7 +32,7 @@ const {
   ogTitle: ogTitleProp,
   ogDescription: ogDescriptionProp,
   ogUrl: ogUrlProp,
-  ogImage = `${SITE_URL}/og/amazingindex-og.jpg`,
+  ogImage = DEFAULT_OG_IMAGE,
   jsonLd,
   noindex = false,
   analytics = true,
@@ -57,6 +61,10 @@ const ogUrl = ogUrlProp ?? canonicalUrl;
     <meta property="og:description" content={ogDescription} />
     <meta property="og:url" content={ogUrl} />
     <meta property="og:image" content={ogImage} />
+    {ogImage === DEFAULT_OG_IMAGE && <meta property="og:image:width" content="1200" />}
+    {ogImage === DEFAULT_OG_IMAGE && <meta property="og:image:height" content="630" />}
+    {ogImage === DEFAULT_OG_IMAGE && <meta property="og:image:type" content="image/jpeg" />}
+    <meta property="og:image:alt" content={`${SITE_NAME} · ${SITE_SLOGAN}`} />
     <meta property="og:locale" content="zh_CN" />
     <meta property="og:site_name" content={SITE_NAME} />
 

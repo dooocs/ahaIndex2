@@ -2,14 +2,14 @@
 // Static shell: the stories are rendered in the browser from /data/history.json.
 import TabLayout from '../layouts/TabLayout.astro';
 import Sidebar from '../components/Sidebar.astro';
+import { siteTitle } from '../lib/site';
 ---
 
 <TabLayout
   tab="daily"
-  title="历史精选 | AmazingIndex"
+  title={siteTitle('历史精选')}
   description="AmazingIndex 历史精选：回顾过往最具价值的 AI 行业动态与创新洞察。"
   canonicalUrl="https://www.amazingindex.com/history"
-  ogTitle="历史精选 | AmazingIndex"
   ogDescription="AmazingIndex 历史精选：回顾过往最具价值的 AI 行业动态与创新洞察。"
   ogUrl="https://www.amazingindex.com/history"
 >
