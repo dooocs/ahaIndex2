@@ -2,14 +2,15 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Masthead from '../components/Masthead.astro';
 import Footer from '../components/Footer.astro';
+import { SITE_NAME, siteTitle } from '../lib/site';
 ---
 
 <BaseLayout
-  title="联系方式 | 蜗牛杂货站"
-  description="与蜗牛杂货站联系，发送内容建议、合作咨询或任何反馈至 hi@amazingindex.com。"
+  title={siteTitle('联系方式')}
+  description={`与${SITE_NAME}联系，发送内容建议、合作咨询或任何反馈至 hi@amazingindex.com。`}
   canonicalUrl="https://www.amazingindex.com/contact"
-  ogTitle="联系方式 | 蜗牛杂货站"
-  ogDescription="与蜗牛杂货站联系。"
+  ogTitle={siteTitle('联系方式')}
+  ogDescription={`与${SITE_NAME}联系。`}
   ogUrl="https://www.amazingindex.com/contact"
 >
   <Masthead />
@@ -52,7 +53,7 @@ import Footer from '../components/Footer.astro';
     <div class="static-section">
       <div class="static-section-label">Note · 说明</div>
       <h2>关于回复速度</h2>
-      <p>蜗牛杂货站由独立开发者运营，我们尽力在合理时间内回复每一封邮件。如果你的问题比较紧急，请在邮件标题注明 <span style="font-family: var(--fm); font-size: 13px;">[紧急]</span>，我们会优先处理。</p>
+      <p>{SITE_NAME}由独立开发者运营，我们尽力在合理时间内回复每一封邮件。如果你的问题比较紧急，请在邮件标题注明 <span style="font-family: var(--fm); font-size: 13px;">[紧急]</span>，我们会优先处理。</p>
       <p>对于重复性或明显的推广邮件，我们可能不会一一回复，敬请理解。</p>
     </div>
   </main>

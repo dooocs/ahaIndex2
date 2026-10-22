@@ -92,7 +92,7 @@ try {
      const response = page.waitForResponse(r => r.request().isNavigationRequest() && r.url() === `${origin}/`,{timeout:180000});
      await link.click({noWaitAfter:true});
      assert.equal((await response).status(),200,'Homepage must load with the news Supabase configuration');
-     await page.getByRole('heading',{name:'蜗牛杂货站 · 让生活多一点 Amazing',exact:true}).waitFor();
+     await page.getByRole('heading',{name:'向上研究所 · 每天来一点 Amazing',exact:true}).waitFor();
      assert.ok(await page.locator('#article-list a.article').count(),'Homepage must contain real news articles');
      await page.getByRole('link',{name:'相亲贴',exact:true}).click();
      await page.getByRole('link',{name:'想找一个一起逛书店的人'}).waitFor();

@@ -1,9 +1,12 @@
 // Site-wide brand copy. Change names here, not in individual pages.
-export const SITE_NAME = '蜗牛杂货站';
-export const SITE_SLOGAN = '让生活多一点 Amazing';
+export const SITE_NAME = '向上研究所';
+// The slogan in two parts: the homepage panel sets the accent on its own line.
+export const SITE_SLOGAN_LEAD = '每天来一点';
+export const SITE_SLOGAN_ACCENT = 'Amazing';
+export const SITE_SLOGAN = `${SITE_SLOGAN_LEAD} ${SITE_SLOGAN_ACCENT}`;
 export const SITE_SLOGAN_EN = 'A little more amazing, every day.';
-export const SITE_INTRO = '蜗牛杂货站是一个独立开发者小站，专门做前沿、好玩、有用的小东西。';
-export const SITE_DESCRIPTION = `${SITE_INTRO}让生活多一点 Amazing。`;
+export const SITE_INTRO = `${SITE_NAME}是一个独立开发者小站，专门做前沿、好玩、有用的小东西。`;
+export const SITE_DESCRIPTION = `${SITE_INTRO}${SITE_SLOGAN}。`;
 
 // The daily AI briefing keeps its original name as a column of the site.
 export const DAILY_NAME = 'AmazingIndex';
@@ -20,7 +23,7 @@ export type SectionId = 'daily' | 'feed' | 'people' | 'meet';
 
 /**
  * One section of the site. The same list drives the tab bar (SiteNav) and the
- * "店里有什么" shelf list (homepage sidebar, about page), so a new section is
+ * "所里在做什么" shelf list (homepage sidebar, about page), so a new section is
  * added here and nowhere else.
  */
 export interface Shelf {

@@ -2,14 +2,15 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Masthead from '../components/Masthead.astro';
 import Footer from '../components/Footer.astro';
+import { SITE_NAME, siteTitle } from '../lib/site';
 ---
 
 <BaseLayout
-  title="隐私政策 | 蜗牛杂货站"
-  description="蜗牛杂货站隐私政策：了解我们如何收集、使用和保护您的数据，以及 Google AdSense Cookie 的使用说明。"
+  title={siteTitle('隐私政策')}
+  description={`${SITE_NAME}隐私政策：了解我们如何收集、使用和保护您的数据，以及 Google AdSense Cookie 的使用说明。`}
   canonicalUrl="https://www.amazingindex.com/privacy"
-  ogTitle="隐私政策 | 蜗牛杂货站"
-  ogDescription="蜗牛杂货站隐私政策。"
+  ogTitle={siteTitle('隐私政策')}
+  ogDescription={`${SITE_NAME}隐私政策。`}
   ogUrl="https://www.amazingindex.com/privacy"
 >
   <Masthead />
@@ -25,7 +26,7 @@ import Footer from '../components/Footer.astro';
   <main class="page-content">
     <div class="static-section">
       <div class="static-section-label">Overview · 概述</div>
-      <p>本隐私政策说明蜗牛杂货站（amazingindex.com，原名 AmazingIndex，以下简称"我们"）在您访问本网站时如何收集、使用和保护您的信息。使用本网站即表示您同意本政策所述的数据处理方式。</p>
+      <p>本隐私政策说明{SITE_NAME}（amazingindex.com，原名 AmazingIndex，以下简称"我们"）在您访问本网站时如何收集、使用和保护您的信息。使用本网站即表示您同意本政策所述的数据处理方式。</p>
     </div>
     <div class="static-section">
       <div class="static-section-label">Data Collection · 数据收集</div>
