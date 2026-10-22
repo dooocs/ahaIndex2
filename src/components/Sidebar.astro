@@ -1,6 +1,6 @@
 ---
 import type { ProcessedItem, DailyArchive } from '../lib/types';
-import { SITE_INTRO, visibleShelves } from '../lib/site';
+import { SITE_NAME, SITE_INTRO, SITE_SLOGAN_LEAD, SITE_SLOGAN_ACCENT, visibleShelves } from '../lib/site';
 import { community } from '../lib/community-config';
 import SidePanel from './panel/SidePanel.astro';
 import PanelHead from './panel/PanelHead.astro';
@@ -34,9 +34,9 @@ const panelClass = mode === 'intro' ? 'sidebar-panel-intro' : 'aha-score-card';
 
 <Panel class={panelClass} data-sidebar data-date={date}>
     {mode === 'intro' ? (
-      <PanelHead kicker="关于本站 / About" title="让生活多一点" accent="Amazing" text={SITE_INTRO}>
+      <PanelHead kicker="关于本站 / About" title={SITE_SLOGAN_LEAD} accent={SITE_SLOGAN_ACCENT} text={SITE_INTRO}>
         <div class="sidebar-shelves">
-          <div class="sidebar-shelves-title">店里有什么 / On the shelves</div>
+          <div class="sidebar-shelves-title">所里在做什么 / In the lab</div>
           <ol class="shelf-list">
             {shelves.map((shelf, i) => (
               <li>
@@ -51,7 +51,7 @@ const panelClass = mode === 'intro' ? 'sidebar-panel-intro' : 'aha-score-card';
               </li>
             ))}
           </ol>
-          <p class="shelf-more">更多新东西，正在慢慢上架。<a href="/about" data-astro-reload>关于本站 →</a></p>
+          <p class="shelf-more">更多新东西，正在慢慢做出来。<a href="/about" data-astro-reload>关于本站 →</a></p>
         </div>
       </PanelHead>
     ) : (
@@ -91,7 +91,7 @@ const panelClass = mode === 'intro' ? 'sidebar-panel-intro' : 'aha-score-card';
       <>
       <div class="divider"></div>
       <p class="about-text">
-        AmazingIndex 是<a href="/about" class="about-text-link">蜗牛杂货站</a>的每日 AI 精选栏目，用一套多维度量化算法，从全网筛出当下最值得关注的创新成果。
+        AmazingIndex 是<a href="/about" class="about-text-link">{SITE_NAME}</a>的每日 AI 精选栏目，用一套多维度量化算法，从全网筛出当下最值得关注的创新成果。
       </p>
       </>
     )}

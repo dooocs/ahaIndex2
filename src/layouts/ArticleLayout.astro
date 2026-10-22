@@ -3,7 +3,7 @@ import BaseLayout from './BaseLayout.astro';
 import Masthead from '../components/Masthead.astro';
 import Footer from '../components/Footer.astro';
 import type { ProcessedItem } from '../lib/types';
-import { siteTitle } from '../lib/site';
+import { SITE_NAME, siteTitle } from '../lib/site';
 
 interface Props {
   item: ProcessedItem;
@@ -158,7 +158,7 @@ const maturityClass: Record<string, string> = { production: 'production', beta: 
       "name": `${dateText} AI 日报`,
       "url": dailyUrl,
     },
-    "publisher": { "@type": "Organization", "name": "蜗牛杂货站", "alternateName": "AmazingIndex" }
+    "publisher": { "@type": "Organization", "name": SITE_NAME, "alternateName": "AmazingIndex" }
   }}
 >
   <Masthead items={items} />

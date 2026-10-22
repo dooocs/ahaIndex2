@@ -26,20 +26,20 @@ const shelves = visibleShelves(Boolean(community));
   <main class="page-content">
     <div class="static-section">
       <div class="static-section-label">Origin · 起源</div>
-      <h2>为什么开这家杂货站</h2>
-      <p>这里会陆续上架各种<strong>前沿、好玩、有用的小东西</strong>：有的帮你跟上技术的变化，有的帮你省点时间，有的只是让你会心一笑。</p>
-      <p>店不大，上新也不快，但每一样都认真做。</p>
+      <h2>为什么叫{SITE_NAME}</h2>
+      <p>这里会陆续做出各种<strong>前沿、好玩、有用的小东西</strong>：有的帮你跟上技术的变化，有的帮你省点时间，有的只是让你会心一笑。</p>
+      <p>所里人不多，出东西也不快，但每一样都认真做。目标只有一个：{SITE_SLOGAN}。</p>
     </div>
 
     <div class="static-section">
-      <div class="static-section-label">Shelves · 货架</div>
-      <h2>店里有什么</h2>
+      <div class="static-section-label">Lab · 栏目</div>
+      <h2>所里在做什么</h2>
       <ul class="about-shelves">
         {shelves.map((shelf) => (
           <li><a href={shelf.href} data-astro-reload><strong>{shelf.name}</strong></a> — {shelf.desc}</li>
         ))}
       </ul>
-      <p>这家店会一直长出新东西。新货架上线时，会出现在导航和首页里。</p>
+      <p>这里会一直长出新东西。新栏目上线时，会出现在导航和首页里。</p>
     </div>
 
     <div class="static-section">
@@ -58,15 +58,15 @@ const shelves = visibleShelves(Boolean(community));
 
     <div class="static-section">
       <div class="static-section-label">Identity · 定位</div>
-      <h2>谁在开这家店</h2>
-      <p>{SITE_NAME}由独立开发者「蜗牛快跑」运营，站名里的“蜗牛”就来自这里：跑得不快，但一直在跑。我们不代表任何机构或投资方，保持独立的判断。</p>
+      <h2>谁在运营</h2>
+      <p>{SITE_NAME}由独立开发者「蜗牛快跑」运营。蜗牛跑得不快，但一直在往上爬，“向上”就是这个意思。我们不代表任何机构或投资方，保持独立的判断。</p>
       <p>AmazingIndex 的内容基于算法与人工双重审核，来源涵盖 arXiv、HuggingFace、Hacker News、Reddit 等主流平台。</p>
     </div>
 
     <div class="static-section">
       <div class="static-section-label">Contact · 联系</div>
-      <h2>来店里聊聊</h2>
-      <p>有内容建议、合作想法、想上架的新点子，或任何反馈，欢迎发邮件至 <a href="mailto:hi@amazingindex.com" style="color: var(--accent); text-decoration: underline;">hi@amazingindex.com</a>。每一封来信我们都会认真读。</p>
+      <h2>来所里聊聊</h2>
+      <p>有内容建议、合作想法、想看到的新点子，或任何反馈，欢迎发邮件至 <a href="mailto:hi@amazingindex.com" style="color: var(--accent); text-decoration: underline;">hi@amazingindex.com</a>。每一封来信我们都会认真读。</p>
     </div>
   </main>
   <Footer />

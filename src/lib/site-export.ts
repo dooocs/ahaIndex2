@@ -251,7 +251,7 @@ export function retiredSubjectPage(target: string, siteUrl: string): string {
   return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">`
     + `<meta name="viewport" content="width=device-width, initial-scale=1">`
     + `<meta name="robots" content="noindex, follow">`
-    + `<title>专题已下线 | 蜗牛杂货站</title>`
+    + `<title>${escapeHtml(siteTitle('专题已下线'))}</title>`
     + `<link rel="canonical" href="${absolute}">`
     + `<meta http-equiv="refresh" content="0; url=${href}">`
     + `</head><body style="margin:0;background:#f0ebe0;color:#1a1612;font:15px/1.8 'Noto Serif SC',serif">`
