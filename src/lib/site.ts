@@ -1,7 +1,7 @@
 // Site-wide brand copy. Change names here, not in individual pages.
 export const SITE_NAME = '向上研究所';
 // The slogan in two parts: the homepage panel sets the accent on its own line.
-export const SITE_SLOGAN_LEAD = '每天来一点';
+export const SITE_SLOGAN_LEAD = '每天一点';
 export const SITE_SLOGAN_ACCENT = 'Amazing';
 export const SITE_SLOGAN = `${SITE_SLOGAN_LEAD} ${SITE_SLOGAN_ACCENT}`;
 export const SITE_SLOGAN_EN = 'A little more amazing, every day.';
