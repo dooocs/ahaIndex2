@@ -20,10 +20,11 @@ interface Props {
   analytics?: boolean;
 }
 
-// The brand share card (public/og/xiangshang-seal.jpg, 1200×630): the 向上 seal
+// The brand share card (public/og/snail-mark.jpg, 1200×630): the snail mark
 // alone, centered, so a small square thumbnail still reads. New design →
 // new file name, so platform and CDN caches cannot serve the old one.
-const DEFAULT_OG_IMAGE = `${SITE_URL}/og/xiangshang-seal.jpg`;
+// Brand sources: docs/brand/.
+const DEFAULT_OG_IMAGE = `${SITE_URL}/og/snail-mark.jpg`;
 
 const {
   title = `${SITE_NAME} · ${SITE_SLOGAN}`,
@@ -92,7 +93,9 @@ const ogUrl = ogUrlProp ?? canonicalUrl;
       }
     })} />
 
+    <link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 
     {analytics && <script is:inline async src="https://www.googletagmanager.com/gtag/js?id=G-HXX784QFN0"></script>}
     {analytics && <script is:inline>
