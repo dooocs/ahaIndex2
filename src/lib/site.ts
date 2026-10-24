@@ -19,7 +19,7 @@ export function siteTitle(page: string): string {
   return `${page} | ${SITE_NAME}`;
 }
 
-export type SectionId = 'daily' | 'feed' | 'people' | 'meet';
+export type SectionId = 'daily' | 'feed' | 'people' | 'meet' | 'dream';
 
 /**
  * One section of the site. The same list drives the tab bar (SiteNav) and the
@@ -60,6 +60,10 @@ export const SHELVES: Shelf[] = [
   {
     id: 'meet', href: '/meet', name: '相亲贴', desc: '给认真生活的开发者，认识一个对的人',
     tab: '相亲贴', tabHref: '/meet', needsCommunity: true, paths: ['/meet'],
+  },
+  {
+    id: 'dream', href: '/dream', name: '梦想人生', desc: '把想要的生活按市价一件件摆出来，看看离它还有几年',
+    tab: '梦想人生', tabHref: '/dream', beta: true, paths: ['/dream'],
   },
 ];
 
