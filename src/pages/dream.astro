@@ -1,0 +1,53 @@
+---
+// 梦想人生: the site's masthead and tab bar on top, the 3D app below it.
+// The app is a self-contained page (public/dream/app.html, with three.js and
+// its fonts under public/dream/) shown in an iframe: its full-screen styles and
+// render loop stay out of the site's layout, and it needs no data at build time.
+// Its configuration lives in the visitor's browser (localStorage).
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Masthead from '../components/Masthead.astro';
+import { SITE_URL, siteTitle } from '../lib/site';
+
+const title = siteTitle('梦想人生');
+const description = '把想要的生活按当下市价一件件摆出来：房子、车、书房、爱好、旅行，实时算出启动资金、每月开销和财务自由数，看看离梦想还有几年。';
+const canonical = `${SITE_URL}/dream`;
+---
+
+<BaseLayout title={title} description={description} canonicalUrl={canonical} ogUrl={canonical}>
+  <Masthead tab="dream" showScore={false} />
+  <main class="dream-page">
+    <h1 class="sr-only">梦想人生</h1>
+    <iframe id="dream-app" class="dream-app" src="/dream/app.html" title="梦想人生 · 3D 场景" allow="fullscreen"></iframe>
+    <noscript><p class="dream-noscript">梦想人生是一个 3D 场景，需要开启 JavaScript。</p></noscript>
+  </main>
+</BaseLayout>
+
+<style>
+  .dream-page { position: relative; margin: 0; padding: 0; }
+  .dream-app {
+    display: block;
+    width: 100%;
+    /* Replaced by the script below with the exact space under the masthead. */
+    height: calc(100vh - 150px);
+    min-height: 560px;
+    border: 0;
+    background: #e7ecef;
+  }
+  .dream-noscript { padding: 48px 24px; text-align: center; color: var(--muted); }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+</style>
+
+<script is:inline>
+  // The app fills the window below the masthead, so the 3D scene is the page.
+  (() => {
+    const frame = document.getElementById('dream-app');
+    if (!frame) return;
+    const fit = () => {
+      const top = frame.getBoundingClientRect().top + window.scrollY;
+      frame.style.height = `${Math.max(560, window.innerHeight - top)}px`;
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    window.addEventListener('load', fit);
+  })();
+</script>
