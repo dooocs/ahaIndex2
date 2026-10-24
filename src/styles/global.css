@@ -89,14 +89,14 @@ body::before {
   line-height: 1;
 }
 
+/* The snail mark (two fixed brand colours; viewBox 136.7 × 100). */
 .logo-icon {
   flex-shrink: 0;
   margin-right: 8px;
   position: relative;
-  top: -1px;
-  width: 23px;
-  height: 18px;
-  color: #7b7871;
+  top: -2px;
+  width: 30px;
+  height: 22px;
 }
 
 .logo-text {
@@ -1474,8 +1474,8 @@ html {
     letter-spacing: 0.5px;
   }
   .logo-icon {
-    width: 18px;
-    height: 14px;
+    width: 22px;
+    height: 16px;
     margin-right: 6px;
   }
   .masthead-meta {
