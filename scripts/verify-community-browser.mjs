@@ -94,7 +94,8 @@ try {
      assert.equal((await response).status(),200,'Homepage must load with the news Supabase configuration');
      await page.getByRole('heading',{name:'向上研究所 · 每天一点 Amazing',exact:true}).waitFor();
      assert.ok(await page.locator('#article-list a.article').count(),'Homepage must contain real news articles');
-     await page.getByRole('link',{name:'相亲贴',exact:true}).click();
+     // 相亲贴 is hidden from the tab bar; its pages are reached by direct URL.
+     await page.goto(origin+'/meet');
      await page.getByRole('link',{name:'想找一个一起逛书店的人'}).waitFor();
      assert.equal(await page.locator('script[src*="googletagmanager"]').count(),0);
    }
