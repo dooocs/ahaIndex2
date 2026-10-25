@@ -141,6 +141,9 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
   .qseg{left:32px;bottom:24px}
   .back{top:226px;left:32px}
   .crumbs{top:226px;left:32px;max-width:calc(100% - 480px)}
+  .app.info-off .crumbs{top:20px}
+  .info-btn{top:20px;right:max(20px,env(safe-area-inset-right,0px))}
+  .app:not(.info-off) .drawer{top:72px}
   .app.scene-dark header h1,.app.scene-dark .stat .v,.app.scene-dark .years{color:#eef2f6}
   .app.scene-dark header h1 small,.app.scene-dark .stat .k,.app.scene-dark .stat .v em{color:rgba(238,242,246,.66)}
   .app.scene-dark .years button{color:#eef2f6;border-color:rgba(238,242,246,.3);background:rgba(255,255,255,.06)}
@@ -150,9 +153,17 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
   .stage canvas{cursor:grab}
 }
 @media (prefers-reduced-motion: reduce){.toast{transition:none}}
+/* 默认只看 3D：数字、清单、标签、画质和风格切换都收起来；右上角 i 打开价格 */
+.qseg,.badge,header .seg{display:none!important}
+.app.info-off header,.app.info-off .hud,.app.info-off .years,.app.info-off .drawer,.app.info-off .zlabels,.app.info-off .crumbs .sum,.app.info-off .tip span{display:none!important}
+.info-btn{position:absolute;top:10px;right:max(10px,env(safe-area-inset-right,0px));z-index:6;width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:color-mix(in srgb,var(--panel) 80%,transparent);color:var(--ink);font:italic 600 18px/1 Georgia,"Times New Roman",serif;cursor:pointer;display:grid;place-items:center;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);transition:background .2s,color .2s}
+.info-btn:hover{background:var(--ink);color:var(--panel)}
+.app:not(.info-off) .info-btn{background:var(--ink);color:var(--panel)}
+.app.scene-dark .info-btn{border-color:rgba(238,242,246,.28);color:#eef2f6;background:rgba(255,255,255,.08)}
+.app.scene-dark:not(.info-off) .info-btn,.app.scene-dark .info-btn:hover{background:#eef2f6;color:#1c2630}
 </style>
 
-<div class="app">
+<div class="app info-off">
   <header class="gut">
     <h1>梦想人生<small>向上研究所 · beta</small></h1>
     <div class="seg" role="group" aria-label="视觉风格">
@@ -174,6 +185,7 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
     <div class="badge" id="badge">加载中</div>
     <button class="back" id="btn-back" hidden>返回全景</button>
     <div class="toast" id="toast"></div>
+    <button class="info-btn" id="btn-info" aria-label="查看价格" aria-expanded="false" title="查看价格">i</button>
   </div>
   <section class="drawer gut" aria-label="配置">
     <div class="tabs" role="tablist" id="tabs"></div>
@@ -944,6 +956,21 @@ function headMesh(av){const H=HEADG(),skin=AVATAR_OPTS.skin[av.skin],hair=AVATAR
     if(av.hair==='bun'){h.add(sph(0.085,hair,0,0.44,-0.11,'hair2'));const band=mesh(new THREE.TorusGeometry(0.05,0.014,8,20),0xe27a3f,0,0.405,-0.085,'cloth');band.rotation.x=Math.PI/2-0.6;h.add(band)}
     if(av.hair==='long'){h.add(sph(0.17,hair,0,0.2,-0.07,'hair2',1.0,1.25,0.75));[-1,1].forEach(s=>h.add(sph(0.075,hair,s*0.15,0.14,0.0,'hair2',0.7,1.9,1.0)))}}
   return {h,eyes}}
+// 原木扶手椅：后腿斜着一直延伸到靠背顶，扶手前端圆头，米白亚麻厚坐垫 + 靠垫（正面朝 +z）
+function beam(g,a,b,t,col,k='wood'){const A=new THREE.Vector3(...a),B=new THREE.Vector3(...b),d=B.clone().sub(A),m=rb(t,d.length(),t*0.82,t*0.3,col,0,0,0,k);m.position.copy(A).add(B).multiplyScalar(0.5);m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),d.normalize());g.add(m);return m}
+function armchair3(){const g=new THREE.Group(),OAK=0xd6a56c,CR=0xebe5d9,X=0.34;
+  [-1,1].forEach(s=>{const x=s*X;
+    beam(g,[x,0,0.3],[x,0.6,0.28],0.052,OAK);                          // 前腿直通扶手
+    beam(g,[x,0,-0.2],[x,0.98,-0.5],0.052,OAK);                        // 后腿斜向后，一直到靠背顶
+    const ar=rb(0.072,0.038,0.8,0.018,OAK,x,0.62,-0.02,'wood');g.add(ar);g.add(mesh(cylg(0.036,0.036,0.038,20),OAK,x,0.62,0.38,'wood'));
+    beam(g,[x,0.3,0.3],[x,0.3,-0.3],0.05,OAK);                        // 座框侧梁
+    beam(g,[x,0.12,0.29],[x,0.12,-0.24],0.04,OAK)});                   // 下拉档
+  g.add(rb(0.7,0.06,0.045,0.015,OAK,0,0.3,0.29,'wood'));g.add(rb(0.7,0.06,0.045,0.015,OAK,0,0.3,-0.3,'wood'));
+  g.add(rb(0.7,0.05,0.04,0.015,OAK,0,0.93,-0.48,'wood'));g.add(rb(0.7,0.04,0.035,0.012,OAK,0,0.52,-0.36,'wood'));
+  const seat=rb(0.62,0.12,0.6,0.05,CR,0,0.38,0.0,'cloth');seat.rotation.x=0.04;g.add(seat);
+  g.add(rb(0.6,0.012,0.58,0.004,darker(CR,0.05),0,0.38,0.0,'cloth'));
+  const back=rb(0.62,0.54,0.11,0.05,CR,0,0.69,-0.355,'cloth');back.rotation.x=-0.28;g.add(back);
+  g.add(shadow(0.62));return g}
 // 小件：躺椅边几
 function sideTable(){const g=new THREE.Group(),OAK=0xd2a874;g.add(mesh(cylg(0.2,0.2,0.03,28),OAK,0,0.5,0,'wood'));
   [0,1,2].forEach(i=>{const a=i/3*Math.PI*2+0.3;g.add(rod([Math.cos(a)*0.05,0.49,Math.sin(a)*0.05],[Math.cos(a)*0.17,0,Math.sin(a)*0.17],0.014,OAK,'wood'))});g.add(shadow(0.3));return g}
@@ -954,7 +981,7 @@ const POSES={
   stand:{hip:[[0,0.03,0],[0,0.03,0]],kn:[0.04,0.04],sh:[[0.04,0.13,0],[0.04,0.13,0]],el:[-0.22,-0.22]},
   sit:  {seat:0.6,pz:-0.06,spine:0.06,head:0.18,hip:[[-1.22,0.07,0],[-1.22,0.07,0]],kn:[1.24,1.24],sh:[[-0.42,0.08,0],[-0.42,0.08,0]],el:[-1.05,-1.05],wr:[0.2,0.2]},
   game: {seat:0.46,pz:-0.03,spine:-0.2,head:0.22,hip:[[-1.45,0.1,0],[-1.45,0.1,0]],kn:[1.28,1.28],sh:[[-0.42,-0.22,0],[-0.42,-0.22,0]],el:[-1.18,-1.18],wr:[0.3,0.3]},
-  relax:{seat:0.46,pz:-0.03,spine:-0.17,head:0.04,hy:0.22,hip:[[-1.45,0.14,0],[-1.86,-0.46,0]],kn:[1.28,1.55],sh:[[-0.18,0.24,0],[-0.06,-0.16,0]],el:[-0.62,-1.5],wr:[0,0]},
+  relax:{seat:0.44,pz:-0.07,spine:-0.27,head:0.06,hy:0.16,hip:[[-1.42,0.16,0],[-1.96,-0.62,0]],kn:[1.22,1.42],sh:[[-0.4,0.46,0],[-0.06,0.04,-0.42]],el:[-0.92,-1.52],wr:[0.15,0.1]},
   lift: {hip:[[0,0.09,0],[0,0.09,0]],kn:[0.06,0.06],sh:[[-0.08,0.16,0],[-0.08,0.16,0]],el:[-0.4,-0.4]},
   shoot:{spine:0.08,head:0.12,hip:[[0,0.07,0],[0,0.07,0]],kn:[0.05,0.05],sh:[[-1.12,-0.08,0],[-1.12,-0.08,0]],el:[-1.32,-1.32],wr:[0.2,0.2]},
   hike: {spine:0.1,hip:[[0,0.03,0],[0,0.03,0]],kn:[0.1,0.1],sh:[[-0.1,0.14,0],[-0.1,0.14,0]],el:[-0.5,-0.5]},
@@ -970,7 +997,7 @@ function buildAvatar2(pose='stand',floor=0.3){
     const kn=new THREE.Group();kn.position.y=-0.4;hip.add(kn);kn.add(sph(0.081,PANTS,0,0,0,'cloth'));kn.add(mesh(limbGeo(0.08,0.07,0.36),PANTS,0,0,0,'cloth'));
     kn.add(rb(0.016,0.12,0.012,0.004,darker(PANTS,0.03),s*0.075,-0.24,0,'cloth'));
     const an=new THREE.Group();an.position.y=-0.36;kn.add(an);
-    an.add(mesh(cylg(0.05,0.052,0.05,16),0xe9e6de,0,-0.01,0,'cloth'));
+    an.add(mesh(cylg(0.05,0.052,0.05,16),0xe9e6de,0,-0.01,0,'cloth'));kn.add(mesh(cylg(0.076,0.075,0.055,20),darker(PANTS,0.035),0,-0.33,0,'cloth'));
     an.add(rb(0.122,0.036,0.285,0.016,SOLE,0,-0.082,0.05,'rubber'));an.add(rb(0.124,0.008,0.288,0.004,darker(SOLE,0.08),0,-0.066,0.05,'rubber'));
     an.add(rb(0.11,0.082,0.25,0.042,SHOE,0,-0.03,0.045,'plastic'));an.add(sph(0.056,SHOE,0,-0.048,0.135,'plastic',0.98,0.72,1.05));
     [0.03,0.065,0.1].forEach(z=>an.add(rb(0.06,0.008,0.012,0.004,IVORY,0,0.012-z*0.25,z,'plastic')));
@@ -986,11 +1013,12 @@ function buildAvatar2(pose='stand',floor=0.3){
   [-1,1].forEach(s=>{const e=rb(0.012,0.1,0.034,0.004,darker(top,0.06),s*0.143,0.1,0.155,'cloth');e.rotation.z=s*0.18;torso.add(e)});
   const collar=mesh(new THREE.TorusGeometry(0.1,0.036,12,30),top,0,0.432,-0.008,'cloth');collar.rotation.x=Math.PI/2;collar.scale.set(1.12,1,1);torso.add(collar);
   torso.add(sph(0.15,top,0,0.44,-0.1,'cloth',1.1,0.62,0.72));
-  [-1,1].forEach(s=>{torso.add(rod([s*0.038,0.43,0.13],[s*0.046,0.28,0.17],0.007,IVORY,'cloth',6));torso.add(mesh(cylg(0.01,0.01,0.03,8),IVORY,s*0.046,0.265,0.172,'plastic'));
+  torso.add(sph(0.07,0xf4f2ed,0,0.425,0.075,'cloth',1.15,0.55,0.55));
+  [-1,1].forEach(s=>{torso.add(rod([s*0.038,0.43,0.13],[s*0.044,0.24,0.172],0.0075,IVORY,'cloth',6));torso.add(mesh(cylg(0.011,0.011,0.034,8),IVORY,s*0.044,0.222,0.174,'plastic'));
     const ey=mesh(new THREE.TorusGeometry(0.009,0.003,6,12),0xc9ccd0,s*0.038,0.432,0.128,'metal');torso.add(ey)});
   // 头
   const neck=new THREE.Group();neck.position.set(0,0.4,0);neck.rotation.x=P.head||0;neck.rotation.y=P.hy||0;spine.add(neck);
-  const {h:head,eyes}=headMesh(a);head.position.set(0,0.015,-0.008);neck.add(head);
+  const {h:head,eyes}=headMesh(a);head.position.set(0,0.015,-0.008);head.scale.setScalar(1.1);neck.add(head);
   // 手臂：上臂 0.27 + 前臂 0.25，袖口罗纹，圆润的手
   const arms=[1,-1].map((s,i)=>{const sh=new THREE.Group();sh.position.set(s*0.218,0.382,-0.02);spine.add(sh);
     sh.add(sph(0.077,top,0,0,0,'cloth'));sh.add(mesh(limbGeo(0.077,0.068,0.27),top,0,0,0,'cloth'));
@@ -1011,12 +1039,9 @@ function buildAvatar2(pose='stand',floor=0.3){
   if(pose==='stand'){if(mounts.has('hand_r')){R.sh.rotation.set(-0.35,0,0.1);R.el.rotation.x=-1.25;const p=phoneM();p.position.set(0,-0.075,0.03);p.rotation.x=-1.2;R.wr.add(p)}
     if(mounts.has('hand_l')){L.sh.rotation.set(-0.3,0,-0.1);L.el.rotation.x=-1.2;const t=tabM();t.position.set(0,-0.1,0.04);t.rotation.x=-1.15;L.wr.add(t)}}
   let prop=null;
-  if(pose==='relax'){ // 躺椅 + 咖啡 + 边几（手机、平板放在边几上）
-    const ch=lounge2(true);ch.position.set(0,floor,-0.02);ch.rotation.y=Math.PI;g.add(mergeStatic(ch));
-    const m=mug();m.scale.setScalar(0.9);put(m,L.wr,0,0,0);m.position.set(-0.045,-0.11,0.02);prop=m;
-    const st=sideTable();st.position.set(-0.66,floor,0.1);g.add(st);
-    if(mounts.has('hand_r')){const p=phoneM();p.rotation.x=-Math.PI/2;p.rotation.z=0.4;p.position.set(-0.68,floor+0.522,0.04);g.add(p)}
-    if(mounts.has('hand_l')){const t=tabM();t.rotation.x=-Math.PI/2;t.rotation.z=-0.3;t.position.set(-0.6,floor+0.522,0.18);g.add(t)}}
+  if(pose==='relax'){ // 原木扶手椅 + 一杯咖啡，靠着、翘着二郎腿
+    const ch=armchair3();ch.position.set(0,floor,0);g.add(mergeStatic(ch));
+    const m=mug();m.scale.setScalar(0.92);put(m,L.wr,0,0,0);m.position.set(0.0,-0.085,0.05);prop=m}
   if(pose==='game'){const gp=gamepad();gp.scale.setScalar(1.15);const v=handPos(R).add(handPos(L)).multiplyScalar(0.5);spine.worldToLocal(v);gp.position.copy(v).add(new THREE.Vector3(0,0.0,0.035));gp.rotation.set(0.7,Math.PI,0);spine.add(gp)}
   if(pose==='lift')arms.forEach(A=>{const d=new THREE.Group();d.position.set(0,-0.06,0.01);const hb=mesh(cylg(0.016,0.016,0.24,10),0xc4cad0,0,0,0,'metal');hb.rotation.z=Math.PI/2;d.add(hb);
     [-1,1].forEach(s=>{const p=mesh(cylg(0.065,0.065,0.06,8),0x2a2f36,s*0.11,0,0,'rubber');p.rotation.z=Math.PI/2;d.add(p)});A.wr.add(d)});
@@ -1036,7 +1061,7 @@ function animAvatar(A,now){const P=A.P,[R,L]=A.arms;
   if(A.pose==='sit'){R.el.rotation.x=P.el[0]+Math.max(0,Math.sin(now/95))*0.05;L.el.rotation.x=P.el[1]+Math.max(0,Math.sin(now/95+1.7))*0.05}
   else if(A.pose==='game'){const q=Math.sin(now/1700);A.spine.rotation.z=q*0.035;R.wr.rotation.z=Math.sin(now/120)*0.04;L.wr.rotation.z=Math.sin(now/150+1)*0.04}
   else if(A.pose==='relax'){ // 时不时喝一口咖啡；翘着的那只脚轻轻点
-    const c=(now%7000)/7000,s=c>0.72&&c<0.96?Math.sin((c-0.72)/0.24*Math.PI):0;L.sh.rotation.x=P.sh[1][0]-s*0.55;L.el.rotation.x=P.el[1]-s*0.5;A.neck.rotation.x=(P.head||0)-s*0.12;
+    const c=window.__noSip?0:(now%7000)/7000,s=c>0.72&&c<0.96?Math.sin((c-0.72)/0.24*Math.PI):0;L.sh.rotation.x=P.sh[1][0]-s*0.55;L.el.rotation.x=P.el[1]-s*0.5;A.neck.rotation.x=(P.head||0)-s*0.12;
     A.legs[1].kn.rotation.x=P.kn[1]+Math.sin(now/520)*0.06}
   else if(A.pose==='lift'){const q=now/650;R.el.rotation.x=-(0.3+Math.max(0,Math.sin(q))*1.9);L.el.rotation.x=-(0.3+Math.max(0,Math.sin(q+Math.PI))*1.9)}
   else if(A.pose==='hike'){const sn=Math.sin(now/330);A.legs[0].hip.rotation.x=sn*0.42;A.legs[1].hip.rotation.x=-sn*0.42;A.legs[0].kn.rotation.x=0.1+Math.max(0,-Math.cos(now/330))*0.55;A.legs[1].kn.rotation.x=0.1+Math.max(0,Math.cos(now/330))*0.55;
@@ -1160,7 +1185,7 @@ crumbs.addEventListener('click',e=>{const b=e.target.closest('[data-nav]');if(b)
 function renderCrumbs(){crumbs.hidden=nav==='world';if(nav==='world')return;const path=pathOf(nav),sum=sumIn(nav),[n,u]=wan(sum);
   crumbs.innerHTML=`<button class="up" data-nav="${NODES[nav].parent}" aria-label="返回上一级">‹</button>`+path.map((id,i)=>i===path.length-1?`<button aria-current="page">${NODES[id].name}</button>`:`<button data-nav="${id}">${NODES[id].name}</button><i>›</i>`).join('')+(sum?`<span class="sum">这里的东西 ${n}${u}</span>`:'')}
 function applyView(id){const n=NODES[id];
-  if(id==='world'){focused=null;Object.assign(goal,{tx:0,ty:1,tz:0,r:DESK()?20:13,phi:60*D2R})}
+  if(id==='world'){focused=null;Object.assign(goal,{tx:0,ty:1,tz:0,r:DESK()?16.5:13,phi:60*D2R})}
   else if(n.zone){const a=ZONES.find(z=>z.id===n.zone).angle*D2R;focused=a;const tall=n.zone==='home';Object.assign(goal,{tx:Math.sin(a)*ISLE_R,ty:tall?1.4:0.6,tz:-Math.cos(a)*ISLE_R,r:DESK()?(tall?10:8.5):(tall?8:6.4),phi:58*D2R,theta:-a+0.45});
     while(goal.theta-cam.theta>Math.PI)goal.theta-=Math.PI*2;while(cam.theta-goal.theta>Math.PI)goal.theta+=Math.PI*2}
   else{focused='space';Object.assign(goal,n.cam||NODES[spaceOf(id)].cam)}
@@ -1625,7 +1650,7 @@ const SLOTS=[[0,0.15],[-0.75,-0.35],[0.75,-0.35],[-0.7,0.6],[0.7,0.6],[0,-0.8]];
 const HOUSING=new Set(['apartment','house']);
 function syncIslands(instant){
   let added=false;
-  if(avatarG)world.remove(avatarG);avatarG=buildAvatar2('relax',0.3);avatarG.scale.setScalar(1.6);world.add(avatarG);
+  if(avatarG)world.remove(avatarG);avatarG=buildAvatar2('relax',0.3);avatarG.scale.setScalar(2.0);world.add(avatarG);
   hotspots=[];animItems=[];
   ZONES.filter(z=>z.group).forEach(z=>{
     const g=z.group,slots=g.userData.slots;
@@ -1667,7 +1692,7 @@ function syncIslands(instant){
 function placeCam(){const sp=Math.sin(cam.phi);camera.position.set(cam.tx+cam.r*Math.sin(cam.theta)*sp,cam.ty+cam.r*Math.cos(cam.phi),cam.tz+cam.r*Math.cos(cam.theta)*sp);camera.lookAt(cam.tx,cam.ty,cam.tz)}
 function focus(angle){
   lastInput=performance.now();
-  if(angle===null||angle===undefined){focused=null;Object.assign(goal,{tx:0,ty:1,tz:0,r:DESK()?20:13,phi:60*D2R});backBtn.hidden=true;return}
+  if(angle===null||angle===undefined){focused=null;Object.assign(goal,{tx:0,ty:1,tz:0,r:DESK()?16.5:13,phi:60*D2R});backBtn.hidden=true;return}
   const a=angle*D2R;focused=a;
   Object.assign(goal,{tx:Math.sin(a)*ISLE_R,ty:0.6,tz:-Math.cos(a)*ISLE_R,r:6.4,phi:58*D2R,theta:-a+0.45});
   while(goal.theta-cam.theta>Math.PI)goal.theta-=Math.PI*2;while(cam.theta-goal.theta>Math.PI)goal.theta+=Math.PI*2;
@@ -1692,7 +1717,8 @@ const ray=new THREE.Raycaster(),ndc=new THREE.Vector2();
 // ---------- 极致档：后期管线（环境光遮蔽、景深、泛光、调色、抗锯齿） ----------
 let composer=null,ssaoP=null,bokehP=null,bloomP=null,gradeP=null;
 const DESK=()=>window.innerWidth>=900;
-const PANEL_W=()=>DESK()?420:0;
+const infoOn=()=>!document.querySelector('.app').classList.contains('info-off');
+const PANEL_W=()=>DESK()&&infoOn()?420:0;
 const prv=()=>window.__prOverride?window.__prOverride:curQ==='max'?Math.min(2,Math.max(1.5,window.devicePixelRatio||1)):Math.min(window.devicePixelRatio||1,2);
 const postReady=()=>!!(THREE.EffectComposer&&THREE.SSAOPass&&THREE.BokehPass&&THREE.UnrealBloomPass&&THREE.SMAAPass&&THREE.ShaderPass&&THREE.GammaCorrectionShader);
 const GradeShader={uniforms:{tDiffuse:{value:null},time:{value:0},res:{value:new THREE.Vector2(1,1)}},
@@ -1800,13 +1826,14 @@ function loop(now){
   animClouds.forEach(c=>{c.position.x+=c.userData.drift*dt;if(c.position.x>24)c.position.x=-24});
   walkers.forEach(w=>w.update(dt,now));if(flowTex)flowTex.offset.y-=dt*0.35;
   if(studyAv){const L=!!studyAv.lounge&&nav==='home.study.lounge';studyAv.desk.visible=!L;if(studyAv.lounge){studyAv.lounge.visible=L;studyAv.pad.visible=!L}avatarG=L?studyAv.lounge:studyAv.desk}
+  if(avatarG&&curSpace==='world'&&avatarG.userData.anim&&avatarG.userData.anim.pose==='relax'&&!window.__noTurn){let d=cam.theta+0.5-avatarG.rotation.y;d=Math.atan2(Math.sin(d),Math.cos(d));avatarG.rotation.y+=d*Math.min(1,dt*2.2)}
   if(avatarG&&avatarG.userData.anim)animAvatar(avatarG.userData.anim,now);
   if(composer&&curQ==='max'){setFocus();gradeP.uniforms.time.value=now/1000;composer.render()}else renderer.render(scene,camera);
   updateLabels();updateHotspots();
   if(firstFrame===null)firstFrame=Math.round(now);
   frames++;if(now-fpsT>1000){const fps=Math.round(frames*1000/(now-fpsT));frames=0;fpsT=now;
     badge.textContent=`${fps} fps · 首帧 ${(firstFrame/1000).toFixed(1)}s`;
-    if(now>4000&&fps<20&&!window.__noDegrade){if(++lowCount>=3){if(curQ==='max'){setQuality('fine');toast('帧率不足，已关闭后期效果')}else if(HI()){setQuality('lo');toast('帧率不足，已切回原型画质')}else fallback('帧率过低，已切换为卡片视图')}}else lowCount=0}
+    if(now>4000&&fps<20&&window.__allowDegrade){if(++lowCount>=3){if(curQ==='max'){setQuality('fine');toast('帧率不足，已关闭后期效果')}else if(HI()){setQuality('lo');toast('帧率不足，已切回原型画质')}else fallback('帧率过低，已切换为卡片视图')}}else lowCount=0}
 }
 function resize(){if(!renderer)return;const w=stage.clientWidth,h=stage.clientHeight,pw=PANEL_W(),p=prv();renderer.setPixelRatio(p);renderer.setSize(w,h,false);
   const vy=pw?Math.round(h*0.1):0;
@@ -1856,6 +1883,8 @@ function drawPoster(){
   document.getElementById('poster-img').src=cv.toDataURL('image/jpeg',0.92);document.getElementById('poster').hidden=false;
 }
 document.getElementById('btn-poster').addEventListener('click',poster);
+document.getElementById('btn-info').addEventListener('click',e=>{const app=document.querySelector('.app'),on=app.classList.toggle('info-off')===false;e.currentTarget.setAttribute('aria-expanded',on);e.currentTarget.setAttribute('aria-label',on?'收起价格':'查看价格');resize()});
+document.addEventListener('keydown',e=>{if((e.key==='i'||e.key==='I')&&!/INPUT|TEXTAREA/.test(document.activeElement.tagName))document.getElementById('btn-info').click()});
 document.getElementById('poster-close').addEventListener('click',()=>document.getElementById('poster').hidden=true);
 
 // ---------- 画面上的附加控件 ----------
@@ -1878,7 +1907,7 @@ function init(){
   sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-8,right:8,top:8,bottom:-8,near:1,far:30});sun.shadow.bias=-0.0004;sun.shadow.normalBias=0.02;scene.add(sun);
   fill=new THREE.DirectionalLight(0xcfe0ff,0);fill.position.set(-6,4,-5);scene.add(fill);
   addOverlay();ensureLabels();stage.appendChild(hotBox);stage.appendChild(tip);stage.appendChild(fadeEl);stage.appendChild(crumbs);
-  curQ=DESK()?'max':'fine';quality='hi';detail=true;goal.r=DESK()?20:13;goal.phi=DESK()?60*D2R:goal.phi;applyQuality();bindInput(renderer.domElement);
+  curQ='max';quality='hi';detail=true;goal.r=DESK()?16.5:13;goal.phi=DESK()?60*D2R:goal.phi;applyQuality();bindInput(renderer.domElement);
   renderer.domElement.addEventListener('pointermove',onHover);renderer.domElement.addEventListener('pointerleave',()=>{tip.hidden=true});
   new ResizeObserver(resize).observe(stage);
   requestAnimationFrame(loop);
