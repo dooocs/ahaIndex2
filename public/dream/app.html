@@ -7,6 +7,7 @@
 <meta name="robots" content="noindex">
 <link rel="canonical" href="https://www.amazingindex.com/dream">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<script>window.__dreamerUrl='/dream/dreamer.glb'</script>
 <style>
 [hidden]{display:none!important}
 @font-face{font-family:"ZCOOL XiaoWei";font-weight:400;font-display:swap;src:url(/dream/fonts/zcool-title.woff2) format("woff2")}
@@ -1651,7 +1652,7 @@ function buildIslands(){
 // 姿势、比例、椅子都来自参考图的 3D 重建；肤色、发色、卫衣颜色按配置改材质，非默认发型换成贴头发壳。
 let DREAMER=null;
 function loadDreamer(){if(!THREE.GLTFLoader||DREAMER)return;
-  new THREE.GLTFLoader().load(window.__dreamerUrl||'dreamer.glb',gl=>{DREAMER=gl.scene;
+  new THREE.GLTFLoader().load(window.__dreamerUrl||'dreamer.json',gl=>{DREAMER=gl.scene;
     if(curSpace==='world'&&avatarG&&avatarG.userData.anim&&avatarG.userData.anim.pose==='relax'){const r=avatarG.rotation.y;world.remove(avatarG);avatarG=buildWorldAvatar();avatarG.rotation.y=r;world.add(avatarG)}},undefined,()=>{});
 }
 function buildWorldAvatar(){
