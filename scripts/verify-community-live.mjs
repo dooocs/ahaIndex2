@@ -173,7 +173,8 @@ try {
       assert.equal((await response).status(), 200);
       await owner.page.getByRole('heading', { name: '向上研究所 · 每天一点 Amazing', exact: true }).waitFor();
       assert.ok(await owner.page.locator('#article-list a.article').count());
-      await owner.page.getByRole('link', { name: '相亲贴', exact: true }).click();
+      // 相亲贴 is hidden from the tab bar; its pages are reached by direct URL.
+      await owner.page.goto(`${origin}/meet`);
       await owner.page.locator('#post-total').getByText(String(baselineCount),{exact:true}).waitFor();
     }
   }

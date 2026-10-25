@@ -39,6 +39,8 @@ export interface Shelf {
   beta?: boolean;
   /** Shown only when the community (login) service is enabled. */
   needsCommunity?: boolean;
+  /** Taken out of navigation and shelf lists; its pages still work by direct URL. */
+  hidden?: boolean;
   /** Paths whose tab this is: exact for '/', otherwise the path and everything under it. */
   paths: string[];
 }
@@ -59,7 +61,7 @@ export const SHELVES: Shelf[] = [
   },
   {
     id: 'meet', href: '/meet', name: '相亲贴', desc: '给认真生活的开发者，认识一个对的人',
-    tab: '相亲贴', tabHref: '/meet', needsCommunity: true, paths: ['/meet'],
+    tab: '相亲贴', tabHref: '/meet', needsCommunity: true, hidden: true, paths: ['/meet'],
   },
   {
     id: 'dream', href: '/dream', name: '梦想人生', desc: '把想要的生活按市价一件件摆出来，看看离它还有几年',
@@ -67,9 +69,9 @@ export const SHELVES: Shelf[] = [
   },
 ];
 
-/** The sections a visitor can see: community-only ones need the community service. */
+/** The sections a visitor can see: hidden ones never, community-only ones need the community service. */
 export function visibleShelves(communityEnabled: boolean): Shelf[] {
-  return SHELVES.filter((shelf) => !shelf.needsCommunity || communityEnabled);
+  return SHELVES.filter((shelf) => !shelf.hidden && (!shelf.needsCommunity || communityEnabled));
 }
 
 const underPath = (pathname: string, base: string) =>

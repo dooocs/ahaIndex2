@@ -24,7 +24,12 @@ test('site pages outside a section have no active tab', () => {
 
 test('community-only sections are hidden until community is enabled', () => {
   assert.deepEqual(visibleShelves(false).map((s) => s.id), ['daily', 'feed', 'people', 'dream']);
-  assert.deepEqual(visibleShelves(true).map((s) => s.id), SHELVES.map((s) => s.id));
+  assert.deepEqual(visibleShelves(true).map((s) => s.id), SHELVES.filter((s) => !s.hidden).map((s) => s.id));
+});
+
+test('hidden sections stay out of navigation even with community enabled', () => {
+  assert.ok(!visibleShelves(true).some((s) => s.id === 'meet'));
+  assert.equal(sectionForPath('/meet'), 'meet');
 });
 
 test('section ids are unique', () => {
