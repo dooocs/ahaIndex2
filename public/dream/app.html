@@ -155,6 +155,17 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 @media (prefers-reduced-motion: reduce){.toast{transition:none}}
 /* 默认只看 3D：数字、清单、标签、画质和风格切换都收起来；右上角 i 打开价格 */
 .qseg,.badge,header .seg{display:none!important}
+/* ?perf 时显示帧率角标（排查用） */
+.app.perf .badge{display:block!important}
+/* 显卡提示：只在检测到软件渲染、或集成显卡且已自动降清晰度时出现，可关闭 */
+.gpuhint{position:absolute;left:max(16px,env(safe-area-inset-left,0px));bottom:16px;z-index:5;max-width:340px;box-sizing:border-box;padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:color-mix(in srgb,var(--panel) 90%,transparent);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);color:var(--ink);font:13px/1.55 var(--f-body);box-shadow:0 10px 30px rgba(20,30,40,.12)}
+.gpuhint b{display:block;font-size:14px;margin-bottom:4px}
+.gpuhint p{margin:0;color:var(--muted)}
+.gpuhint ol{margin:6px 0 0;padding-left:18px;color:var(--muted)}
+.gpuhint .row{display:flex;gap:8px;margin-top:10px}
+.gpuhint button{font:600 12px/1 var(--f-body);padding:7px 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
+.gpuhint button.pri{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+@media (min-width:900px){.gpuhint{left:32px;bottom:24px}}
 .app.info-off header,.app.info-off .hud,.app.info-off .years,.app.info-off .drawer,.app.info-off .zlabels,.app.info-off .crumbs .sum,.app.info-off .tip span{display:none!important}
 .info-btn{position:absolute;top:10px;right:max(10px,env(safe-area-inset-right,0px));z-index:6;width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:color-mix(in srgb,var(--panel) 80%,transparent);color:var(--ink);font:italic 600 18px/1 Georgia,"Times New Roman",serif;cursor:pointer;display:grid;place-items:center;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);transition:background .2s,color .2s}
 .info-btn:hover{background:var(--ink);color:var(--panel)}
@@ -1235,6 +1246,7 @@ function onWheel(e){e.preventDefault();const L=lim();
 
 // ---------- 构建：当前空间 = f(人物, 清单, 空间) ----------
 function buildWorld(){
+  perf.settle=Math.max(perf.settle,performance.now()+1200);perf.forceShadow=true;
   if(world)scene.remove(world);world=new THREE.Group();scene.add(world);
   isles=[];animItems=[];animClouds=[];hotspots=[];walkers=[];flowTex=null;avatarG=null;studyAv=null;hovIsle=null;ZONES.forEach(z=>z.group=null);
   if(spaceSeen.space!==curSpace){spaceSeen=new Set();spaceSeen.space=curSpace;buildInstant=true}
@@ -1628,7 +1640,7 @@ function gymRackSpot(){const g=new THREE.Group();
   mergeStatic(g);const a=new THREE.Object3D();a.position.set(0,1.15,0);g.add(a);g.userData.anchor=a;return g}
 
 const fv=new THREE.Vector3();
-function setFocus(){const sp=NODES[curSpace];let f=cam.r;if(sp&&sp.focusAvatar&&avatarG&&nav===curSpace){avatarG.getWorldPosition(fv);fv.y+=1.2;f=camera.position.distanceTo(fv)}
+function setFocus(){if(!bokehP)return;const sp=NODES[curSpace];let f=cam.r;if(sp&&sp.focusAvatar&&avatarG&&nav===curSpace){avatarG.getWorldPosition(fv);fv.y+=1.2;f=camera.position.distanceTo(fv)}
   bokehP.uniforms.focus.value=f;bokehP.uniforms.aperture.value=(sp&&sp.aperture)||0.0016}
 function buildIslands(){
   if(HI()&&detail)buildSky();else scene.fog=null;
@@ -1715,11 +1727,87 @@ const ray=new THREE.Raycaster(),ndc=new THREE.Vector2();
 
 
 // ---------- 极致档：后期管线（环境光遮蔽、景深、泛光、调色、抗锯齿） ----------
-let composer=null,ssaoP=null,bokehP=null,bloomP=null,gradeP=null;
+let composer=null,sceneP=null,ssaoP=null,bokehP=null,bloomP=null,gradeP=null;
 const DESK=()=>window.innerWidth>=900;
 const infoOn=()=>!document.querySelector('.app').classList.contains('info-off');
 const PANEL_W=()=>DESK()&&infoOn()?420:0;
-const prv=()=>window.__prOverride?window.__prOverride:curQ==='max'?Math.min(2,Math.max(1.5,window.devicePixelRatio||1)):Math.min(window.devicePixelRatio||1,2);
+// 景深：BokehPass 的 needsSwap=false 且不是最后一个 pass，输出一直被 composer 丢掉，
+// 画面上从来没有景深，却每帧多画一遍整场景（外加一遍阴影）。默认关闭；
+// 打开时改为复用 SSAO 已经画好的深度图，不再单独画深度。
+const DOF_ON=false;
+
+// ---------- 自适应画质阶梯（只在极致档生效） ----------
+// 好机器停在 L0，画面与原来完全一致；帧率不足时一级级往下：先降渲染分辨率，
+// 再把阴影改为隔帧更新，最后才关 SSAO。帧率富余时会试着往回升，升上去又掉帧就锁住。
+const nativePR=()=>Math.min(2,window.devicePixelRatio||1);
+const LADDER=[
+  {pr:n=>Math.min(2,Math.max(1.5,n)),sm:4096,every:1,ssao:true},  // L0 超采样（原极致档）
+  {pr:n=>n,        sm:4096,every:1,ssao:true},                     // L1 原生分辨率
+  {pr:n=>n*0.85,   sm:2048,every:1,ssao:true},
+  {pr:n=>n*0.75,   sm:2048,every:2,ssao:true},
+  {pr:n=>n*0.65,   sm:2048,every:2,ssao:true},
+  {pr:n=>n*0.6,    sm:2048,every:3,ssao:false},
+];
+let lvl=1,gpu={name:'',short:'',soft:false,discrete:false,integrated:false,apple:false};
+const perf={slow:0,fast:0,ceil:0,probe:0,settle:0,forceShadow:true,frame:0,hinted:false,lastFps:0,t0:0};
+const LV=()=>LADDER[lvl];
+const prv=()=>window.__prOverride?window.__prOverride:curQ==='max'?Math.max(0.5,LV().pr(nativePR())):Math.min(window.devicePixelRatio||1,2);
+const shadowSize=()=>curQ==='max'?LV().sm:2048;
+function setShadowSize(ms){if(sun&&sun.shadow.mapSize.x!==ms){sun.shadow.mapSize.set(ms,ms);if(sun.shadow.map){sun.shadow.map.dispose();sun.shadow.map=null}}perf.forceShadow=true}
+function setLevel(i){
+  lvl=Math.max(0,Math.min(LADDER.length-1,i));
+  if(ssaoP){ssaoP.enabled=LV().ssao;sceneP.enabled=!ssaoP.enabled;if(bokehP)bokehP.enabled=ssaoP.enabled}
+  if(HI())setShadowSize(shadowSize());
+  perf.slow=perf.fast=0;perf.settle=performance.now()+1500;resize();
+}
+function perfTick(fps,now){
+  perf.lastFps=fps;
+  if(failed||curQ!=='max'||now<perf.settle||document.hidden)return;
+  if(fps<45){perf.slow++;perf.fast=0}else if(fps>=57){perf.fast++;perf.slow=0}else{perf.slow=0;perf.fast=0}
+  if(perf.slow>=2&&lvl<LADDER.length-1){
+    if(perf.probe&&now-perf.probe<6000)perf.ceil=lvl+1;  // 刚升上来就掉帧：这一级扛不住，锁住上限
+    perf.probe=0;setLevel(lvl+1);
+  }else if(perf.fast>=5&&lvl>perf.ceil){perf.probe=now;setLevel(lvl-1)}
+  // 给阶梯 8 秒时间往上爬，仍停在低档才提示切独显
+  if(!perf.hinted&&gpu.integrated&&lvl>=3&&now-perf.t0>8000&&/Windows/.test(navigator.userAgent))showGpuHint('igpu');
+}
+
+// ---------- 显卡识别 + 提示 ----------
+function detectGPU(){
+  let name='';
+  try{const gl=renderer.getContext(),ext=gl.getExtension('WEBGL_debug_renderer_info');name=String(gl.getParameter(ext?ext.UNMASKED_RENDERER_WEBGL:gl.RENDERER)||'')}catch(e){}
+  const s=name.toLowerCase();
+  // "ANGLE (NVIDIA, NVIDIA GeForce RTX 3050 Ti Laptop GPU (0x000025A0) Direct3D11 vs_5_0 ps_5_0, D3D11)" → "NVIDIA GeForce RTX 3050 Ti Laptop GPU"
+  const m=name.match(/^ANGLE \((.*)\)$/),parts=m?m[1].split(','):[name];
+  // Mac: "ANGLE (Apple, ANGLE Metal Renderer: Apple M1, Unspecified Version)" → "Apple M1"
+  const short=(parts[1]||parts[0]||'').trim().replace(/^.*Renderer:\s*/i,'').replace(/\(0x[0-9a-f]+\)/ig,'').replace(/\s+(Direct3D|OpenGL|Vulkan).*$/i,'').replace(/,\s*or similar$/i,'').trim();
+  const soft=/swiftshader|basic render|llvmpipe|softpipe|software/.test(s);
+  const discrete=/nvidia|geforce|quadro|rtx|gtx|radeon rx|radeon pro|\brx ?\d{3,4}|intel\(r\) arc|intel arc|arc\(tm\)/.test(s);
+  const apple=/apple/.test(s);
+  const integrated=!soft&&!discrete&&!apple&&/intel|uhd|iris|hd graphics|radeon\(tm\)|radeon graphics|vega \d|mali|adreno|powervr/.test(s);
+  return{name,short,soft,discrete,integrated,apple};
+}
+function startLevel(){if(gpu.soft)return LADDER.length-1;if(gpu.integrated)return 3;if(gpu.discrete)return 0;return 1}
+const BROWSER=(()=>{const u=navigator.userAgent;if(/Edg\//.test(u))return{name:'Edge',scheme:'edge',accel:'在可用时使用图形加速'};
+  if(/Firefox\//.test(u))return{name:'Firefox',scheme:null,accel:'自动启用硬件加速'};return{name:'Chrome',scheme:'chrome',accel:'使用图形加速功能（如果可用）'}})();
+function copyText(t){
+  const done=ok=>toast(ok?'已复制，粘贴到浏览器地址栏打开':`复制失败，请手动输入 ${t}`);
+  const legacy=()=>{try{const a=document.createElement('textarea');a.value=t;a.style.cssText='position:fixed;opacity:0';document.body.appendChild(a);a.select();const ok=document.execCommand('copy');a.remove();done(ok)}catch(e){done(false)}};
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(t).then(()=>done(true),legacy);else legacy();
+}
+function showGpuHint(kind){
+  perf.hinted=true;
+  try{if(localStorage.getItem('dream-gpuhint-'+kind))return}catch(e){}
+  const B=BROWSER,url=kind==='soft'?(B.scheme?`${B.scheme}://settings/system`:'about:preferences'):(B.scheme?`${B.scheme}://gpu`:'about:support');
+  const box=document.createElement('div');box.className='gpuhint';box.setAttribute('role','status');
+  box.innerHTML=kind==='soft'
+    ?`<b>浏览器没有开启图形加速</b><p>3D 场景正在用 CPU 软件渲染，所以会很卡。</p><ol><li>打开 ${B.name} 设置 › ${B.scheme?'系统':'常规 › 性能'}</li><li>打开「${B.accel}」</li><li>重启浏览器</li></ol>`
+    :`<b>已自动降低清晰度，保持流畅</b><p>浏览器正在用集成显卡（${gpu.short||'核显'}）。如果电脑有独立显卡，可以让 ${B.name} 改用它：</p><ol><li>Windows 设置 › 系统 › 屏幕 › 显示卡</li><li>添加或找到 ${B.name}，选「高性能」</li><li>重启浏览器</li></ol><p style="margin-top:6px">N 卡也可以在 NVIDIA 控制面板 › 管理 3D 设置里，把浏览器设为「高性能 NVIDIA 处理器」。</p>`;
+  const row=document.createElement('div');row.className='row';
+  const cp=document.createElement('button');cp.className='pri';cp.textContent=kind==='soft'?'复制设置地址':'复制显卡检测地址';cp.title=url;cp.addEventListener('click',()=>copyText(url));
+  const ok=document.createElement('button');ok.textContent='知道了';ok.addEventListener('click',()=>{box.remove();try{localStorage.setItem('dream-gpuhint-'+kind,'1')}catch(e){}});
+  row.append(cp,ok);box.appendChild(row);stage.appendChild(box);
+}
 const postReady=()=>!!(THREE.EffectComposer&&THREE.SSAOPass&&THREE.BokehPass&&THREE.UnrealBloomPass&&THREE.SMAAPass&&THREE.ShaderPass&&THREE.GammaCorrectionShader);
 const GradeShader={uniforms:{tDiffuse:{value:null},time:{value:0},res:{value:new THREE.Vector2(1,1)}},
   vertexShader:'varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',
@@ -1737,8 +1825,16 @@ function setupPost(){
     const w=stage.clientWidth,h=stage.clientHeight;
     const rt=new THREE.WebGLRenderTarget(w,h,{minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter,format:THREE.RGBAFormat,type:THREE.HalfFloatType});
     composer=new THREE.EffectComposer(renderer,rt);
+    // 普通场景绘制，只在 SSAO 关闭时用（SSAO 自己会画 beauty）
+    sceneP=new THREE.Pass();sceneP.needsSwap=false;sceneP.render=function(r,w,read){r.setRenderTarget(this.renderToScreen?null:read);r.clear();r.render(scene,camera)};sceneP.enabled=false;composer.addPass(sceneP);
     ssaoP=new THREE.SSAOPass(scene,camera,w,h);ssaoP.kernelRadius=0.35;ssaoP.minDistance=0.0005;ssaoP.maxDistance=0.02;ssaoP.beautyRenderTarget.texture.type=THREE.HalfFloatType;composer.addPass(ssaoP);
-    bokehP=new THREE.BokehPass(scene,camera,{focus:13,aperture:0.0016,maxblur:0.0065,width:w,height:h});composer.addPass(bokehP);
+    if(DOF_ON){
+      bokehP=new THREE.BokehPass(scene,camera,{focus:13,aperture:0.0016,maxblur:0.0065,width:w,height:h});
+      bokehP.renderTargetDepth.dispose();bokehP.materialBokeh.defines.DEPTH_PACKING=0;bokehP.materialBokeh.needsUpdate=true;
+      bokehP.uniforms.tDepth.value=ssaoP.normalRenderTarget.depthTexture;bokehP.needsSwap=true;
+      bokehP.render=function(r,w,read){const u=this.uniforms;u.tColor.value=read.texture;u.nearClip.value=camera.near;u.farClip.value=camera.far;r.setRenderTarget(this.renderToScreen?null:w);this.fsQuad.render(r)};
+      composer.addPass(bokehP);
+    }
     bloomP=new THREE.UnrealBloomPass(new THREE.Vector2(w,h),0.3,0.55,0.9);composer.addPass(bloomP);
     composer.addPass(new THREE.ShaderPass(THREE.GammaCorrectionShader));
     gradeP=new THREE.ShaderPass(GradeShader);composer.addPass(gradeP);
@@ -1801,7 +1897,7 @@ function applyQuality(){
     scene.environment=null;hemi.intensity=0.85;sun.intensity=0.75;sun.castShadow=false;fill.intensity=0;
   }
   if(curQ==='max'&&!setupPost()){curQ='fine';toast('后期效果没有加载成功，已使用精修档')}
-  if(HI()){const ms=curQ==='max'?4096:2048;if(sun.shadow.mapSize.x!==ms){sun.shadow.mapSize.set(ms,ms);if(sun.shadow.map){sun.shadow.map.dispose();sun.shadow.map=null}}}
+  if(HI())setShadowSize(shadowSize());
   if(!HI())scene.fog=null;
   stage.classList.toggle('hi',HI());stage.classList.toggle('post',curQ==='max');hovIsle=null;resize();
   document.querySelectorAll('[data-q]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.q===curQ));
@@ -1828,12 +1924,17 @@ function loop(now){
   if(studyAv){const L=!!studyAv.lounge&&nav==='home.study.lounge';studyAv.desk.visible=!L;if(studyAv.lounge){studyAv.lounge.visible=L;studyAv.pad.visible=!L}avatarG=L?studyAv.lounge:studyAv.desk}
   if(avatarG&&curSpace==='world'&&avatarG.userData.anim&&avatarG.userData.anim.pose==='relax'&&!window.__noTurn){let d=cam.theta+0.5-avatarG.rotation.y;d=Math.atan2(Math.sin(d),Math.cos(d));avatarG.rotation.y+=d*Math.min(1,dt*2.2)}
   if(avatarG&&avatarG.userData.anim)animAvatar(avatarG.userData.anim,now);
+  // 阴影图：three r128 默认在每次 renderer.render 时都重画（极致档一帧要画 3 次）。
+  // 改为每帧最多画一次；低阶梯隔帧更新，物品掉落时每帧更新。
+  if(renderer.shadowMap.enabled){const ev=curQ==='max'?LV().every:1;
+    renderer.shadowMap.needsUpdate=perf.forceShadow||(++perf.frame%ev===0)||animItems.some(ch=>ch.userData.drop<1||ch.userData.land);perf.forceShadow=false}
   if(composer&&curQ==='max'){setFocus();gradeP.uniforms.time.value=now/1000;composer.render()}else renderer.render(scene,camera);
   updateLabels();updateHotspots();
   if(firstFrame===null)firstFrame=Math.round(now);
   frames++;if(now-fpsT>1000){const fps=Math.round(frames*1000/(now-fpsT));frames=0;fpsT=now;
-    badge.textContent=`${fps} fps · 首帧 ${(firstFrame/1000).toFixed(1)}s`;
-    if(now>4000&&fps<20&&window.__allowDegrade){if(++lowCount>=3){if(curQ==='max'){setQuality('fine');toast('帧率不足，已关闭后期效果')}else if(HI()){setQuality('lo');toast('帧率不足，已切回原型画质')}else fallback('帧率过低，已切换为卡片视图')}}else lowCount=0}
+    badge.textContent=`${fps} fps · L${lvl} · ${renderer.getPixelRatio().toFixed(2)}x · ${gpu.short||'GPU 未知'}`;
+    perfTick(fps,now);
+    if(now>4000&&fps<20&&window.__allowDegrade&&(curQ!=='max'||lvl===LADDER.length-1)){if(++lowCount>=3){if(curQ==='max'){setQuality('fine');toast('帧率不足，已关闭后期效果')}else if(HI()){setQuality('lo');toast('帧率不足，已切回原型画质')}else fallback('帧率过低，已切换为卡片视图')}}else lowCount=0}
 }
 function resize(){if(!renderer)return;const w=stage.clientWidth,h=stage.clientHeight,pw=PANEL_W(),p=prv();renderer.setPixelRatio(p);renderer.setSize(w,h,false);
   const vy=pw?Math.round(h*0.1):0;
@@ -1854,7 +1955,8 @@ function drawPoster(){
     const keep={w:renderer.domElement.width,h:renderer.domElement.height,pr:renderer.getPixelRatio(),aspect:camera.aspect};
     camera.clearViewOffset();renderer.setPixelRatio(1);renderer.setSize(W,Math.round(sh),false);camera.aspect=W/sh;camera.updateProjectionMatrix();
     const usePost=composer&&curQ==='max',keepR=cam.r;if(nav==='world'){cam.r=13.5;placeCam()}
-    if(sun&&HI()){sun.shadow.mapSize.set(4096,4096);if(sun.shadow.map){sun.shadow.map.dispose();sun.shadow.map=null}}
+    if(sun&&HI())setShadowSize(4096);renderer.shadowMap.needsUpdate=true;
+    const keepSSAO=ssaoP&&ssaoP.enabled;if(ssaoP){ssaoP.enabled=true;sceneP.enabled=false;if(bokehP)bokehP.enabled=true}
     if(usePost){composer.setPixelRatio(1);composer.setSize(W,Math.round(sh));gradeP.uniforms.res.value.set(W,sh);setFocus();composer.render()}else renderer.render(scene,camera);
     const shot=renderer.domElement;x.drawImage(shot,0,sy,W,sh);
     // 移轴：上下边缘虚化，中间清晰（极致档已有真实景深，跳过）
@@ -1865,7 +1967,8 @@ function drawPoster(){
       m.addColorStop(0,'rgba(0,0,0,1)');m.addColorStop(0.28,'rgba(0,0,0,0)');m.addColorStop(0.72,'rgba(0,0,0,0)');m.addColorStop(1,'rgba(0,0,0,1)');tx.fillStyle=m;tx.fillRect(0,0,W,sh);
       x.drawImage(t,0,sy);
     }
-    if(sun&&HI()){const ms=curQ==='max'?4096:2048;sun.shadow.mapSize.set(ms,ms);if(sun.shadow.map){sun.shadow.map.dispose();sun.shadow.map=null}}
+    if(ssaoP){ssaoP.enabled=keepSSAO;sceneP.enabled=!keepSSAO;if(bokehP)bokehP.enabled=keepSSAO}
+    if(sun&&HI())setShadowSize(shadowSize());
     cam.r=keepR;placeCam();
     resize();
   }
@@ -1899,15 +2002,23 @@ function addOverlay(){
 // ---------- 启动 ----------
 function init(){
   if(!window.THREE)return fallback('3D 库未加载，已切换为卡片视图');
-  try{renderer=new THREE.WebGLRenderer({antialias:true,alpha:true,preserveDrawingBuffer:true})}catch(e){return fallback('设备不支持 WebGL，已切换为卡片视图')}
+  // 极致档最后一道是 SMAA，默认帧缓冲的 MSAA 用不上；海报是渲染后同步读取，不需要 preserveDrawingBuffer。
+  // powerPreference 只是提示：Mac 双显卡会切独显，Windows 上 Chrome 多半不理会（靠下面的提示引导）。
+  try{renderer=new THREE.WebGLRenderer({antialias:!postReady(),alpha:true,powerPreference:'high-performance'})}catch(e){return fallback('设备不支持 WebGL，已切换为卡片视图')}
   renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));stage.prepend(renderer.domElement);
+  renderer.shadowMap.autoUpdate=false;
+  gpu=detectGPU();lvl=startLevel();
+  window.__dreamPerf={get gpu(){return gpu},get level(){return lvl},get fps(){return perf.lastFps},get pixelRatio(){return renderer&&renderer.getPixelRatio()},setLevel};
   scene=new THREE.Scene();camera=new THREE.PerspectiveCamera(38,1,0.5,90);
   hemi=new THREE.HemisphereLight(0xffffff,0x8a8f96,0.85);scene.add(hemi);
   sun=new THREE.DirectionalLight(0xfff2e2,0.75);sun.position.set(6,10,5);
   sun.shadow.mapSize.set(2048,2048);Object.assign(sun.shadow.camera,{left:-8,right:8,top:8,bottom:-8,near:1,far:30});sun.shadow.bias=-0.0004;sun.shadow.normalBias=0.02;scene.add(sun);
   fill=new THREE.DirectionalLight(0xcfe0ff,0);fill.position.set(-6,4,-5);scene.add(fill);
   addOverlay();ensureLabels();stage.appendChild(hotBox);stage.appendChild(tip);stage.appendChild(fadeEl);stage.appendChild(crumbs);
-  curQ='max';quality='hi';detail=true;goal.r=DESK()?16.5:13;goal.phi=DESK()?60*D2R:goal.phi;applyQuality();bindInput(renderer.domElement);
+  curQ='max';quality='hi';detail=true;goal.r=DESK()?16.5:13;goal.phi=DESK()?60*D2R:goal.phi;applyQuality();setLevel(lvl);perf.t0=performance.now();bindInput(renderer.domElement);
+  // 切走标签页时 rAF 停了，切回来那一段采样会把帧率算得很低，重新计时
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden){fpsT=prev=performance.now();frames=0;perf.settle=Math.max(perf.settle,fpsT+1000)}});
+  if(gpu.soft)showGpuHint('soft');
   renderer.domElement.addEventListener('pointermove',onHover);renderer.domElement.addEventListener('pointerleave',()=>{tip.hidden=true});
   new ResizeObserver(resize).observe(stage);
   requestAnimationFrame(loop);
@@ -1924,6 +2035,7 @@ window.Scene3D={
 const rebuild=()=>{if(world)buildWorld()};
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',rebuild);
 new MutationObserver(rebuild).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+if(/[?&]perf\b/.test(location.search)||(()=>{try{return /[?&]perf\b/.test(parent.location.search)}catch(e){return false}})())document.querySelector('.app').classList.add('perf');
 renderTabs();renderPane();refresh();init();
 })();
 
