@@ -30,7 +30,7 @@
 
   .brand {
     position: fixed;
-    top: calc(14px + env(safe-area-inset-top, 0px));
+    top: calc(14px + env(safe-area-inset-top, 0px) + var(--inset-top, 0px));
     left: max(16px, env(safe-area-inset-left, 0px));
     display: grid; gap: 2px; pointer-events: none;
   }
@@ -39,7 +39,7 @@
 
   .panel {
     position: fixed;
-    top: calc(14px + env(safe-area-inset-top, 0px));
+    top: calc(14px + env(safe-area-inset-top, 0px) + var(--inset-top, 0px));
     right: max(16px, env(safe-area-inset-right, 0px));
     width: 220px; background: var(--card); border: 1px solid var(--line); border-radius: 10px;
     backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
@@ -95,7 +95,7 @@
 
   .planets {
     position: fixed; left: 50%; transform: translateX(-50%);
-    top: calc(14px + env(safe-area-inset-top, 0px));
+    top: calc(14px + env(safe-area-inset-top, 0px) + var(--inset-top, 0px));
     display: flex; gap: 4px; padding: 4px; background: var(--card); border: 1px solid var(--line); border-radius: 10px;
     backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
   }
@@ -944,12 +944,32 @@ postScene.add(quad);
 // ---------- sizing & adaptive resolution ----------
 let pr = Math.min(window.devicePixelRatio || 1, 2);
 const prMax = pr;
+// insetTop: height of a site header laid over the top of this page (sent by the parent page,
+// or ?inset=<px>). The area below it keeps exactly the framing the scene was composed for;
+// the strip behind the header just shows more sky.
+let insetTop = Math.max(0, Math.min(400, +(new URLSearchParams(location.search).get('inset')) || 0));
+function applyInset() { document.documentElement.style.setProperty('--inset-top', `${insetTop}px`); }
+applyInset();
+addEventListener('message', e => {
+  if (e.origin !== location.origin || !e.data || e.data.type !== 'dream:inset') return;
+  const v = Math.max(0, Math.min(400, Math.round(+e.data.top || 0)));
+  if (v !== insetTop) { insetTop = v; applyInset(); resize(); }
+});
 function resize() {
-  const w = window.innerWidth, h = window.innerHeight;
+  const w = window.innerWidth, h = window.innerHeight, seen = h - insetTop;
   renderer.setPixelRatio(pr);
   renderer.setSize(w, h, false);
-  camera.aspect = w / h;
-  camera.fov = w / h < 1 ? 62 : 50;
+  const fov = w / Math.max(1, seen) < 1 ? 62 : 50;
+  if (insetTop > 0 && seen > 120) {
+    const full = h + insetTop;       // a virtual frame whose centre is the centre of the visible area
+    camera.fov = 2 * Math.atan(Math.tan(fov * D2R / 2) * full / seen) / D2R;
+    camera.aspect = w / full;
+    camera.setViewOffset(w, full, 0, 0, w, h);
+  } else {
+    camera.clearViewOffset();
+    camera.aspect = w / h;
+    camera.fov = fov;
+  }
   camera.updateProjectionMatrix();
   const W = Math.round(w * pr), H = Math.round(h * pr);
   rtColor.setSize(W, H); rtNormal.setSize(W, H);
@@ -2278,7 +2298,8 @@ function frame() {
       tagPos.copy(o.tagLocal).applyMatrix4(planet.matrixWorld);
       const vis = tagPos.y / tagPos.length() > minUp;
       tagPos.project(camera);
-      const show = vis && tagPos.z < 1 && Math.abs(tagPos.x) < 1.05 && Math.abs(tagPos.y) < 1.05;
+      const sy = (-tagPos.y * 0.5 + 0.5) * innerHeight;
+      const show = vis && tagPos.z < 1 && Math.abs(tagPos.x) < 1.05 && sy > insetTop + 36 && sy < innerHeight + 20;
       o.tag.style.opacity = show ? '1' : '0';
       o.tag.style.pointerEvents = show && !o.tag.classList.contains('mini') ? 'auto' : 'none';
       if (show) o.tag.style.transform = `translate(${(tagPos.x * 0.5 + 0.5) * innerWidth}px, ${(-tagPos.y * 0.5 + 0.5) * innerHeight}px) translate(-50%, -100%)`;

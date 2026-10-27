@@ -8,9 +8,11 @@ interface Props {
   showScore?: boolean;
   /** The section whose tab is lit; defaults to the one the URL belongs to. */
   tab?: SectionId | null;
+  /** Lay the masthead over a full-bleed scene (梦想人生): text stays, the paper fades into the scene. */
+  overlay?: boolean;
 }
 
-const { items = [], showScore = true, tab } = Astro.props;
+const { items = [], showScore = true, tab, overlay = false } = Astro.props;
 
 const displayDate = items.length > 0 && items[0].snapshot_date
   ? new Date(items[0].snapshot_date + 'T00:00:00')
@@ -25,7 +27,7 @@ const ahaScore = items.length > 0
   : '0.0';
 ---
 
-<header class="masthead">
+<header class:list={["masthead", { "masthead--overlay": overlay }]}>
   <div class="masthead-inner">
     <div class="masthead-logo">
       <a href="/" class="logo" style="text-decoration: none;" data-astro-reload>

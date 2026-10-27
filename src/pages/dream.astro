@@ -17,7 +17,7 @@ const canonical = `${SITE_URL}/dream`;
 ---
 
 <BaseLayout title={title} description={description} canonicalUrl={canonical} ogUrl={canonical}>
-  <Masthead tab="dream" showScore={false} />
+  <Masthead tab="dream" showScore={false} overlay />
   <main class="dream-page">
     <h1 class="sr-only">梦想人生</h1>
     <iframe id="dream-app" class="dream-app" src="/dream/app.html" title="梦想人生 · 3D 场景" allow="fullscreen"></iframe>
@@ -26,31 +26,32 @@ const canonical = `${SITE_URL}/dream`;
 </BaseLayout>
 
 <style>
-  .dream-page { position: relative; margin: 0; padding: 0; }
+  /* Immersive: the scene fills the whole window and the masthead floats over it. */
+  :global(html:has(.dream-page)), :global(body:has(.dream-page)) { overflow: hidden; scrollbar-gutter: auto; }
+  .dream-page { margin: 0; padding: 0; }
   .dream-app {
+    position: fixed;
+    inset: 0;
     display: block;
     width: 100%;
-    /* Replaced by the script below with the exact space under the masthead. */
-    height: calc(100vh - 150px);
-    min-height: 560px;
+    height: 100%;
     border: 0;
     background: #8fd3d4;
   }
-  .dream-noscript { padding: 48px 24px; text-align: center; color: var(--muted); }
+  .dream-noscript { position: relative; z-index: 11; padding: 200px 24px 48px; text-align: center; color: var(--muted); }
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 </style>
 
 <script is:inline>
-  // The app fills the window below the masthead, so the 3D scene is the page.
+  // Tell the scene how tall the masthead over it is, so it keeps its controls and framing
+  // clear of it, and hand it the keyboard so WASD works straight away.
   (() => {
     const frame = document.getElementById('dream-app');
-    if (!frame) return;
-    const fit = () => {
-      const top = frame.getBoundingClientRect().top + window.scrollY;
-      frame.style.height = `${Math.max(560, window.innerHeight - top)}px`;
-    };
-    fit();
-    window.addEventListener('resize', fit);
-    window.addEventListener('load', fit);
+    const head = document.querySelector('.masthead');
+    if (!frame || !head) return;
+    const send = () => frame.contentWindow && frame.contentWindow.postMessage({ type: 'dream:inset', top: Math.round(head.getBoundingClientRect().bottom) }, location.origin);
+    frame.addEventListener('load', () => { send(); frame.contentWindow.focus(); });
+    if (window.ResizeObserver) new ResizeObserver(send).observe(head);
+    window.addEventListener('resize', send);
   })();
 </script>
