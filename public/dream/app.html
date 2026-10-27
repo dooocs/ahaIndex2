@@ -159,7 +159,7 @@
 </script>
 <script type="module">
 import * as THREE from 'three';
-import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // Authored hex colours are used as-is in every shader (no sRGB conversion), so the
 // palette on screen is exactly the palette written here.
@@ -226,6 +226,11 @@ function vnoise(x, y, z) {
 const fbm3 = (x, y, z) => 0.55 * vnoise(x, y, z) + 0.3 * vnoise(x * 2.13 + 3.1, y * 2.13 + 3.1, z * 2.13 + 3.1) + 0.15 * vnoise(x * 4.37 + 7.7, y * 4.37 + 7.7, z * 4.37 + 7.7);
 let seed = 7;
 const rand = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+// A planet is built in slices: slice() hands the thread back once ~40 ms have passed, so clicks
+// (here and in the site header around this page) and the veil keep working during a build.
+const yieldNow = () => new Promise(r => { const ch = new MessageChannel(); ch.port1.onmessage = () => r(); ch.port2.postMessage(0); });
+let sliceT = 0;
+async function slice() { if (performance.now() - sliceT > 40) { await yieldNow(); sliceT = performance.now(); } }
 
 const D2R = Math.PI / 180;
 const sph = (lat, lon) => new THREE.Vector3(
@@ -262,7 +267,29 @@ function arcDist(d, a, b) {
   if (Math.abs(a.angleTo(p) + p.angleTo(b) - ab) < 1e-3) return Math.asin(Math.min(1, Math.abs(off)));
   return Math.min(d.angleTo(a), d.angleTo(b));
 }
-function arcW(list, d) { let w = 0; for (const [a, b, hw] of list) w = Math.max(w, 1 - arcDist(d, a, b) / (hw * AW * 2)); return w; }
+// Each arc only reaches hw·AW·2 radians, but the ground asks about ~260k vertices. So a list is
+// compiled once (again whenever arcs are pushed) with two cheap lower bounds on the distance —
+// to the arc's great circle, and to its bounding cap — and a vertex beyond either skips the trig.
+// Skipped arcs could only have given a weight ≤ 0, so the result is exactly what it was.
+function arcPrep(list) {
+  if (list.prepN === list.length) return list.prep;
+  list.prep = list.map(([a, b, hw]) => {
+    const reach = hw * AW * 2, n = new THREE.Vector3().crossVectors(a, b).normalize(), m = a.clone().add(b).normalize();
+    return { a, b, reach, nx: n.x, ny: n.y, nz: n.z, sinReach: Math.sin(Math.min(reach, Math.PI / 2)),
+      mx: m.x, my: m.y, mz: m.z, cosCap: Math.cos(Math.min(Math.PI, a.angleTo(b) / 2 + reach + 2e-3)) };
+  });
+  list.prepN = list.length;
+  return list.prep;
+}
+function arcW(list, d) {
+  let w = 0;
+  for (const c of arcPrep(list)) {
+    if (Math.abs(d.x * c.nx + d.y * c.ny + d.z * c.nz) >= c.sinReach) continue;
+    if (d.x * c.mx + d.y * c.my + d.z * c.mz <= c.cosCap) continue;
+    w = Math.max(w, 1 - arcDist(d, c.a, c.b) / c.reach);
+  }
+  return w;
+}
 const roadW = d => clamp01(arcW(ROADS, d));
 function stoneW(d) {
   let w = arcW(STONES, d), p;
@@ -693,14 +720,70 @@ function addObj(o) {
 }
 
 // ---------- ground (and water) for the current planet ----------
-function buildGround({ detail, lit, shade, defs = [], lawn = null, water = false }) {
-  let geo = new THREE.IcosahedronGeometry(1, detail);
-  geo.deleteAttribute('uv'); geo.deleteAttribute('normal');
-  geo = mergeVertices(geo);
+// Indexed geodesic sphere: the same points and triangles (same winding, same order) as
+// IcosahedronGeometry(radius, detail) followed by mergeVertices, built directly. The three.js route
+// first writes every corner once per triangle (1.5M of them) and then hashes them back together.
+function icosphere(radius, detail, normals = false) {
+  const t = (1 + Math.sqrt(5)) / 2;
+  const C = [-1, t, 0, 1, t, 0, -1, -t, 0, 1, -t, 0, 0, -1, t, 0, 1, t, 0, -1, -t, 0, 1, -t, t, 0, -1, t, 0, 1, -t, 0, -1, -t, 0, 1];
+  const F = [0, 11, 5, 0, 5, 1, 0, 1, 7, 0, 7, 10, 0, 10, 11, 1, 5, 9, 5, 11, 4, 11, 10, 2, 10, 7, 6, 7, 1, 8,
+    3, 9, 4, 3, 4, 2, 3, 2, 6, 3, 6, 8, 3, 8, 9, 4, 9, 5, 2, 4, 11, 6, 2, 10, 8, 6, 7, 9, 8, 1];
+  const n = detail + 1, pos = new Float32Array((10 * n * n + 2) * 3);
+  let count = 0;
+  const put = (x, y, z) => { const k = radius / Math.hypot(x, y, z), o = count * 3; pos[o] = x * k; pos[o + 1] = y * k; pos[o + 2] = z * k; return count++; };
+  for (let i = 0; i < 12; i++) put(C[3 * i], C[3 * i + 1], C[3 * i + 2]);
+  const edges = new Map();     // shared edge p-q (p < q): index of its first inner point, running p → q
+  const edgePoint = (p, q, s) => {
+    const lo = Math.min(p, q), hi = Math.max(p, q);
+    let base = edges.get(lo * 12 + hi);
+    if (base === undefined) {
+      base = count;
+      for (let k = 1; k < n; k++) { const f = k / n; put(C[3 * lo] + (C[3 * hi] - C[3 * lo]) * f, C[3 * lo + 1] + (C[3 * hi + 1] - C[3 * lo + 1]) * f, C[3 * lo + 2] + (C[3 * hi + 2] - C[3 * lo + 2]) * f); }
+      edges.set(lo * 12 + hi, base);
+    }
+    return base + (p === lo ? s : n - s) - 1;
+  };
+  const index = new Uint32Array(20 * n * n * 3);
+  let ix = 0;
+  for (let f = 0; f < 60; f += 3) {
+    const A = F[f], B = F[f + 1], Cc = F[f + 2];
+    // grid point (i, j): i steps from A toward C, j from that row's start toward B
+    const inner = [];
+    for (let i = 1; i < n - 1; i++) {
+      inner[i] = [];
+      for (let j = 1; j < n - i; j++) {
+        const wa = (n - i - j) / n, wb = j / n, wc = i / n;
+        inner[i][j] = put(C[3 * A] * wa + C[3 * B] * wb + C[3 * Cc] * wc, C[3 * A + 1] * wa + C[3 * B + 1] * wb + C[3 * Cc + 1] * wc, C[3 * A + 2] * wa + C[3 * B + 2] * wb + C[3 * Cc + 2] * wc);
+      }
+    }
+    const id = (i, j) => {
+      if (i === n) return Cc;
+      if (i === 0) return j === 0 ? A : j === n ? B : edgePoint(A, B, j);
+      if (j === 0) return edgePoint(A, Cc, i);
+      if (i + j === n) return edgePoint(B, Cc, i);
+      return inner[i][j];
+    };
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < 2 * (n - i) - 1; j++) {
+        const k = j >> 1;
+        if (j % 2 === 0) { index[ix++] = id(i, k + 1); index[ix++] = id(i + 1, k); index[ix++] = id(i, k); }
+        else { index[ix++] = id(i, k + 1); index[ix++] = id(i + 1, k + 1); index[ix++] = id(i + 1, k); }
+      }
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  if (normals) { const nr = pos.slice(); for (let i = 0; i < nr.length; i++) nr[i] /= radius; geo.setAttribute('normal', new THREE.BufferAttribute(nr, 3)); }
+  geo.setIndex(new THREE.BufferAttribute(index, 1));
+  return geo;
+}
+async function buildGround({ detail, lit, shade, defs = [], lawn = null, water = false }) {
+  const geo = icosphere(1, detail);
   const pos = geo.attributes.position, n = pos.count;
   const aStone = new Float32Array(n), aRoad = new Float32Array(n), aLawn = new Float32Array(n);
   const d = new THREE.Vector3();
   for (let i = 0; i < n; i++) {
+    if ((i & 2047) === 0) await slice();
     d.fromBufferAttribute(pos, i).normalize();
     const rw = roadW(d), sw = stoneW(d);
     const h = R + terrainH(d, Math.max(rw, sw));
@@ -711,11 +794,11 @@ function buildGround({ detail, lit, shade, defs = [], lawn = null, water = false
   geo.setAttribute('aRoad', new THREE.BufferAttribute(aRoad, 1));
   geo.setAttribute('aYard', new THREE.BufferAttribute(aLawn, 1));
   geo.computeVertexNormals();
+  await slice();
   addChunked(geo, toon(lit, { kind: 'GROUND', shade, breakMul: 0.5, defs }));
   if (water) {
-    let wg = new THREE.IcosahedronGeometry(R + WATER, 64);
-    wg.deleteAttribute('uv');
-    wg = mergeVertices(wg);
+    await slice();
+    const wg = icosphere(R + WATER, 64, true);
     addChunked(wg, toon(0x6bbcbf, { kind: 'WATER', shade: 0x3f86a0, breakMul: 0.25, noiseScale: 0.9 }));
   }
 }
@@ -870,6 +953,16 @@ AV.ski = [];
 const rtColor = new THREE.WebGLRenderTarget(1, 1, { samples: 4 });
 const rtNormal = new THREE.WebGLRenderTarget(1, 1, { depthTexture: new THREE.DepthTexture(1, 1) });
 const normalMat = new THREE.MeshNormalMaterial();
+// stand-ins for the normal pass (it draws everything with normalMat), so loading can link its shader
+// variants — plain, instanced, instanced with colours — ahead of the first frame too
+const normalProbe = new THREE.Scene();
+{
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(9), 3));
+  g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(9), 3));
+  const ic = new THREE.InstancedMesh(g, normalMat, 1); ic.setColorAt(0, new THREE.Color());
+  [new THREE.Mesh(g, normalMat), new THREE.InstancedMesh(g, normalMat, 1), ic].forEach(m => { m.castShadow = m.receiveShadow = true; normalProbe.add(m); });
+}
 
 const post = new THREE.ShaderMaterial({
   uniforms: {
@@ -980,7 +1073,7 @@ window.addEventListener('resize', resize);
 resize();
 
 // ======================= 杭州星球 =======================
-function buildHangzhou() {
+async function buildHangzhou() {
   R = 50; AW = 26 / R;
   const AREA = (R / 26) ** 2;   // vegetation counts were tuned at R = 26
   WATER = -0.55;
@@ -1024,6 +1117,7 @@ const HXT = { x: 1.9, z: -2.0, r: 0.55 };                    // 湖心亭
 const SANTAN = [[-4.4, -1.6], [-4.65, -0.3], [-4.1, 0.85]];  // 三潭印月
 const LEIFENG = [-9.5, 2.0], BAOCHU = [10.3, -0.6];
 
+await slice();
 // ---------- ground paint: asphalt roads, stone lanes and plazas ----------
 const ringKind = ['road', 'road', 'stone', 'stone', 'road'];   // segment from place i to i+1
 sites.forEach((s, i) => (ringKind[i] === 'road' ? ROADS : STONES).push([s.node, sites[(i + 1) % 5].node, ringKind[i] === 'road' ? 0.05 : 0.03]));
@@ -1040,6 +1134,7 @@ arcsIn(XIXI, [[0, XIXI.roadZ], [0.4, 6.0]], 0.022, STONES);
 arcsIn(XIXI, [[-6.8, -1.95], [-2.0, -1.9], [3.0, -2.1], [5.2, -2.05]], 0.013, STONES);
 arcsIn(LAKE, [[0, LAKE.roadZ], [0, 6.9]], 0.022, STONES);
 arcsIn(LAKE, [[-7.8, 4.7], [-4, 6.4], [0, 6.9], [4, 6.4], [7.8, 4.7]], 0.026, STONES);
+await slice();
 // ---------- terrain ----------
 const hillsBase = d => { const f = 2.6 / AW, g = 7.5 / AW; return 0.75 * fbm3(d.x * f + 5, d.y * f, d.z * f) + 0.25 * fbm3(d.x * g, d.y * g + 2, d.z * g); };
 const lakeE = p => Math.hypot((p.x - LAKE_C.x) / LAKE_C.rx, (p.z - LAKE_C.z) / LAKE_C.rz);
@@ -1101,6 +1196,7 @@ addWalk(XIXI, [0.3, 1.0], [1.7, 1.0], 0.7, 0, DECK_H);
 const XIXI_BRIDGE = addWalk(XIXI, [3.4, 0.5], [3.4, -2.0], 0.4, 0.7);
 const DUANQIAO = addWalk(LAKE, [6.75, 1.35], [6.75, 3.45], 0.45, 0.45);
 const SUDI_WALKS = SUDI_BRIDGES.map(xb => addWalk(LAKE, [xb - 0.8, sudiZ(xb - 0.8)], [xb + 0.8, sudiZ(xb + 0.8)], 0.36, 0.38));
+await slice();
 // ---------- building footprints: block walking, keep grass off floors ----------
 TOWERS.forEach(([x, z]) => FOOT.push({ s: HOME, rect: [x - 1.75, x + 1.75, z - 1.25, z + 1.8] }));
 FOOT.push({ s: HOME, circ: [FOUNTAIN[0], FOUNTAIN[1], 1.3] }, { s: HOME, rect: [1.7, 2.8, HOME_FENCE.z1 + 0.3, HOME_FENCE.z1 + 1.3] }, { s: HOME, rect: [CAR[0] - 0.75, CAR[0] + 0.75, CAR[1] - 1.25, CAR[1] + 1.25] });
@@ -1110,6 +1206,7 @@ XIXI_HOUSES.forEach(([x, z, w, d]) => FOOT.push({ s: XIXI, rect: [x - w / 2 - 0.
 FOOT.push({ s: LAKE, circ: [LEIFENG[0], LEIFENG[1], 1.3] }, { s: LAKE, circ: [BAOCHU[0], BAOCHU[1], 0.7] });
 const inFence = p => inRect(p, HOME_FENCE.x0, HOME_FENCE.x1, HOME_FENCE.z0, HOME_FENCE.z1);
 blockExtra = (from, to) => { const a = local(HOME, from), b = local(HOME, to); return !!(a && b && inFence(a) !== inFence(b) && Math.abs(b.x) > HOME_GATE - 0.2); };
+await slice();
 // ---------- stops shown in the HUD, and smaller landmark tags ----------
 // via: points walked through after leaving the ring road; stand/look: where to stop and what to face
 zones = [
@@ -1129,7 +1226,7 @@ LANDMARKS = [
   { name: '小瀛洲', s: LAKE, at: [XYZ.x, XYZ.z + 0.9], h: 1.9 },
 ];
 
-buildGround({ detail: 160, lit: 0x8cc46a, shade: 0x4f8a6c, lawn: d => (inFence(local(HOME, d)) ? 1 : 0), water: true });
+await buildGround({ detail: 160, lit: 0x8cc46a, shade: 0x4f8a6c, lawn: d => (inFence(local(HOME, d)) ? 1 : 0), water: true });
 // trees planted by the builders below (place, x, z, kind)
 const heroTrees = [];
 
@@ -1434,12 +1531,19 @@ function buildLake() {
 const lakeTrees = [];
 
 buildHome();
+await slice();
 buildMall();
+await slice();
 buildSports();
+await slice();
 buildXixi();
+await slice();
 buildLake();
+await slice();
 flushBatches();
+await slice();
 
+await slice();
 // ---------- boats (moved every frame) ----------
 const boats = [];
 {
@@ -1466,6 +1570,7 @@ siteKeepout = function (d, m = 0) {
   if ((p = local(LAKE, d)) && (lakeE(p) < 1.06 + m * 0.1 || (p.z > 1.6 && lakeE(p) < 1.62))) return true;
   return false;
 };
+await slice();
 {
   const variants = [
     { trunk: [0.09, 0.13, 1.2], clumps: [[0, 1.55, 0, 0.75], [0.45, 1.25, 0.15, 0.5], [-0.4, 1.3, -0.1, 0.52], [0.05, 2.0, -0.05, 0.5]] },
@@ -1493,6 +1598,7 @@ siteKeepout = function (d, m = 0) {
     });
   });
 
+  await slice();
   // willows (drooping strands round a soft crown), peach trees, persimmons with fruit
   const willowM = [], peachM = [];
   lakeTrees.forEach(([x, z, kind]) => (kind === 'willow' ? willowM : peachM).push(matrixOn(L(LAKE, x, z), rand() * 6.28, 0.9 + rand() * 0.2, 0.03)));
@@ -1539,6 +1645,7 @@ siteKeepout = function (d, m = 0) {
     [tt, cc, fr].forEach(o => { o.castShadow = o.receiveShadow = true; addObj(o); });
   }
 
+  await slice();
   // bushes: meadow edges plus a hedge inside the courtyard railing
   {
     const bg = canopy([[0, 0.32, 0, 0.42], [0.36, 0.24, 0.1, 0.3], [-0.32, 0.26, -0.08, 0.32]], 41);
@@ -1553,6 +1660,7 @@ siteKeepout = function (d, m = 0) {
     addObj(bushes);
   }
 
+  await slice();
   const rockDirs = scatterDirs(Math.round(56 * AREA), 0.04, 0.3, 0.15, 30000);
   const rg = lump(0.5, 1, 0.35, 2.3); rg.scale(1, 0.62, 1);
   const rocks = new THREE.InstancedMesh(rg, toon(0xd8ceb6, { kind: 'ROCK', shade: 0x8f93a0, breakMul: 0.5, noiseScale: 1.6 }), rockDirs.length);
@@ -1560,6 +1668,7 @@ siteKeepout = function (d, m = 0) {
   rocks.castShadow = rocks.receiveShadow = true;
   addObj(rocks);
 
+  await slice();
   // reeds in the shallows of the wetland and the lake
   {
     const parts = [];
@@ -1583,6 +1692,7 @@ siteKeepout = function (d, m = 0) {
     addObj(reeds);
   }
 
+  await slice();
   // grass tufts and flowers: colour pass only (layer 1) so they add texture without line noise
   const blade = (x, z, h, lean) => { const g = new THREE.ConeGeometry(0.05, h, 3, 1); g.translate(0, h / 2, 0); g.rotateZ(lean); g.translate(x, 0, z); return prep(g); };
   const tuft = mergeGeometries([blade(0, 0, 0.34, 0.1), blade(0.07, 0.03, 0.26, -0.35), blade(-0.06, 0.04, 0.24, 0.4), blade(0.01, -0.07, 0.22, -0.15)]);
@@ -1593,6 +1703,7 @@ siteKeepout = function (d, m = 0) {
   grass.receiveShadow = true; grass.layers.set(1);
   addObj(grass);
 
+  await slice();
   const fg = new THREE.IcosahedronGeometry(0.07, 0); fg.translate(0, 0.16, 0);
   const flowerDirs = scatterDirs(Math.round(310 * AREA), 0, 0, 0.3, 40000, d => !onFoot(d, 0.15));
   const flowers = new THREE.InstancedMesh(fg, toon(0xffffff, { shade: 0xb9b6c8, breakMul: 0 }), flowerDirs.length);
@@ -1609,7 +1720,7 @@ W.startLon = -12;
 }
 
 // ======================= 滑雪星球: 北海道 + 羊蹄山 + 崇礼 + 雪如意 =======================
-function buildSki() {
+async function buildSki() {
   R = 40; AW = 26 / R; WATER = -6;            // no open water on this planet
   const HW = u => u / 23.9;                    // half-width in units → the width unit arcsIn expects
   sites = makeSites([
@@ -1646,6 +1757,7 @@ function buildSki() {
   STONE_RECTS.push([RUY, -1.7, 1.7, INRUN.z1 - 0.4, 0], [RUY, -3.0, 3.0, -0.4, RUY.roadZ - 0.8]);
   arcsIn(YOT, [[0, YOT.roadZ], [0, 10.6]], HW(0.7), STONES);
 
+  await slice();
   // ---------- terrain ----------
   const hillsBase = d => { const f = 2.6 / AW, g = 7.5 / AW; return 0.75 * fbm3(d.x * f + 5, d.y * f, d.z * f) + 0.25 * fbm3(d.x * g, d.y * g + 2, d.z * g); };
   const g2 = (p, cx, cz, rx, rz, h) => h * Math.exp(-(((p.x - cx) / rx) ** 2 + ((p.z - cz) / rz) ** 2));
@@ -1667,6 +1779,7 @@ function buildSki() {
   const yoteiView = p => { const ax = SLOPE_STAND[0], az = SLOPE_STAND[1], dx = YOT_IN_HOK.x - ax, dz = YOT_IN_HOK.z - az, l = Math.hypot(dx, dz);
     return segD(p, [ax - dx / l * 9, az - dz / l * 9], [YOT_IN_HOK.x, YOT_IN_HOK.z]) < 2.6; };
 
+  await slice();
   // ---------- footprints and stops ----------
   const VILLAGE = {
     hok: [[-3.0, -0.4, 2.4, 1.8, 1.3, 0xa2483c], [-8.4, -0.9, 2.0, 1.6, 1.2, 0x3f5a4e], [-9.3, 3.5, 1.7, 1.4, 1.1, 0x5c3f36]],
@@ -1693,8 +1806,9 @@ function buildSki() {
     { name: '顶峰俱乐部', s: RUY, at: [0, RING.z], h: RING.lift + 1.0 },
   ];
 
-  buildGround({ detail: 130, lit: 0xf3f7fb, shade: 0xa9bed9, defs: ['SNOW'] });
+  await buildGround({ detail: 130, lit: 0xf3f7fb, shade: 0xa9bed9, defs: ['SNOW'] });
 
+  await slice();
   // ---------- buildings ----------
   const SNOW = 0xf6f9fc, SNOW_SH = 0xb6c7de, WIN = 0xf6d58e;
   const snowO = { shade: SNOW_SH, breakMul: 0.3 };
@@ -1760,6 +1874,7 @@ function buildSki() {
     const cap = new THREE.ConeGeometry(0.3, 0.12, 4); cap.rotateY(Math.PI / 4); cap.translate(1.75, 0.98, -0.9); k.add(cap, SNOW, snowO);
   }
 
+  await slice();
   // ---------- lifts: towers, stations, cables and moving chairs or cabins ----------
   const STEEL = 0x8c949c, liftUpdates = [];
   const ptAt = (s, x, z, h) => L(s, x, z).multiplyScalar(R + h);
@@ -1811,6 +1926,7 @@ function buildSki() {
   const tmpP = new THREE.Vector3(), tmpQ = new THREE.Quaternion(), tmpS = new THREE.Vector3();
   LIFTS.forEach(buildLift);
 
+  await slice();
   // ---------- 雪如意: top-club ring, elevated in-run, landing hill, judges' tower, stands ----------
   {
     const top = ruyiH({ x: 0, z: RING.z }), k = kit(RUY, 0, RING.z);
@@ -1846,6 +1962,7 @@ function buildSki() {
   }
   flushBatches();
 
+  await slice();
   // ---------- trees: firs everywhere, birch round 北海道, bare larch round 崇礼 ----------
   {
     const liftLane = (d) => LIFTS.some(l => { const p = local(l.s, d); return p && Math.abs(p.x - l.x) < 1.4 && p.z < l.z0 + 1 && p.z > l.z1 - 1; });
@@ -1863,11 +1980,14 @@ function buildSki() {
     const put = (d, kind) => { const m = matrixOn(d, rand() * 6.28, 0.8 + rand() * 0.55, 0.05); (kind === 'birch' ? birch : kind === 'larch' ? larch : fir).push(m); };
     const zone = (s, n, x0, x1, z0, z1, mix) => scatterIn(s, n, x0, x1, z0, z1, p => clear(L(s, p.x, p.z)), 0.022).forEach(d => put(d, rand() < mix.alt ? mix.kind : 'fir'));
     zone(HOK, 330, -16, 16, -32, -1, { kind: 'birch', alt: 0.4 });
+    await slice();
     zone(CHO, 380, -16, 16, -34, -1, { kind: 'larch', alt: 0.45 });
     zone(YOT, 150, -11, 11, -11, 11, { kind: 'birch', alt: 0.3 });
     zone(RUY, 120, -14, 14, -28, 4, { kind: 'larch', alt: 0.4 });
+    await slice();
     scatterDirs(Math.round(300 * (R / 26) ** 2), 0.045, 0, 0.05, 60000, clear).forEach(d => put(d, rand() < 0.25 ? 'larch' : 'fir'));
 
+    await slice();
     const cone = (r, h, y) => { const g = new THREE.ConeGeometry(r, h, 8); g.translate(0, y + h / 2, 0); return prep(g); };
     const trunk = (r0, r1, h) => { const g = new THREE.CylinderGeometry(r0, r1, h, 6); g.translate(0, h / 2, 0); return prep(g); };
     const plant = (geo, hex, opts, list) => { if (!list.length) return; const im = new THREE.InstancedMesh(geo, toon(hex, opts), list.length); list.forEach((m, i) => im.setMatrixAt(i, m)); im.castShadow = im.receiveShadow = true; addObj(im); };
@@ -1890,6 +2010,7 @@ function buildSki() {
     plant(mergeGeometries([cone(0.62, 1.7, 0.4), cone(0.42, 1.0, 1.6)]), 0xa58a6c, { kind: 'FOLIAGE', shade: 0x6f6064, breakMul: 0.6, noiseScale: 1.8 }, larch);
     plant(cone(0.3, 0.24, 1.75), SNOW, snowO, larch);
 
+    await slice();
     const rocks = scatterDirs(Math.round(45 * (R / 26) ** 2), 0.04, 0, 0.1, 20000, clear);
     const rg = lump(0.5, 1, 0.35, 2.3); rg.scale(1, 0.55, 1);
     const im = new THREE.InstancedMesh(rg, toon(0x7d8288, { kind: 'ROCK', shade: 0x55606e, breakMul: 0.5, noiseScale: 1.6 }), rocks.length);
@@ -1898,6 +2019,7 @@ function buildSki() {
     addObj(im);
   }
 
+  await slice();
   // ---------- snowfall around the avatar, and steam over the hot spring ----------
   const PTS_VERT = /* glsl */`
     uniform float uTime; uniform float uR; uniform float uSize; uniform float uMode;
@@ -1981,6 +2103,7 @@ function ringRoute(fromLon, toIdx) {
   return pts;
 }
 function travelTo(i) {
+  if (building) return;
   const z = zones[i], here = avatarLocalDir(), route = [];
   if (curStop != null && zones[curStop].s === z.s) {
     // another stop at the same place: walk straight across
@@ -2050,7 +2173,7 @@ addEventListener('blur', () => keys.clear());
 let drag = null;
 canvas.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, moved: 0 }; canvas.setPointerCapture(e.pointerId); });
 canvas.addEventListener('pointermove', e => {
-  if (!drag) return;
+  if (!drag || building) return;
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
   drag.x = e.clientX; drag.y = e.clientY; drag.moved += Math.abs(dx) + Math.abs(dy);
   if (drag.moved > 5) {
@@ -2062,7 +2185,7 @@ canvas.addEventListener('pointermove', e => {
 const ray = new THREE.Raycaster(), ndcV = new THREE.Vector2();
 canvas.addEventListener('pointerup', e => {
   canvas.classList.remove('dragging');
-  if (drag && drag.moved <= 5) {
+  if (drag && drag.moved <= 5 && !building) {
     ndcV.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
     ray.setFromCamera(ndcV, camera);
     const hit = ray.intersectObject(planet, true)[0];
@@ -2140,7 +2263,10 @@ function disposeWorld() {
   W.extras.forEach(o => { scene.remove(o); if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
   W = null;
 }
-function loadWorld(key) {
+let building = false;     // true while a planet is being built: the loop and the controls wait
+const parallelCompile = renderer.extensions.has('KHR_parallel_shader_compile');
+async function loadWorld(key) {
+  building = true;
   disposeWorld();
   sites = []; zones = []; LANDMARKS = [];
   ROADS = []; STONES = []; STONE_RECTS = []; STONE_CIRCS = []; WALKWAYS = []; FOOT = [];
@@ -2150,7 +2276,7 @@ function loadWorld(key) {
   scene.add(planet);
   seed = 7;
   W = { key, update: null, extras: [], ski: false, lawnEx: null, startLon: 0 };
-  PLANETS[key].build();
+  await PLANETS[key].build();
   G.uR.value = R; G.uWater.value = WATER;
   G.uYardEx.value.copy(W.lawnEx || new THREE.Vector3(0, 0, 1));
   aimSun();
@@ -2165,13 +2291,20 @@ function loadWorld(key) {
   const look = zones[0].s.node.clone().applyQuaternion(planet.quaternion);
   rotatePlanet(Math.atan2(look.x, -look.z), 0);
   planetButtons.forEach(b => b.setAttribute('aria-pressed', b.dataset.planet === key ? 'true' : 'false'));
+  // Where the browser can link shaders in the background (KHR_parallel_shader_compile), link every
+  // shader the new planet needs before its first frame, so that frame doesn't stall the page. Without
+  // it, compiling ahead only moves the wait, so the first frame compiles as it always has, still
+  // behind the veil.
+  await slice();
+  if (parallelCompile) await Promise.all([renderer.compileAsync(scene, camera), renderer.compileAsync(postScene, postCam), renderer.compileAsync(normalProbe, camera, scene)]);
+  building = false;
 }
 // fly out, swap planets behind the veil, fly back in
 let flyZoom = null, switching = false;
 const veil = document.getElementById('veil');
 const nextPaint = () => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 async function switchPlanet(key) {
-  if (switching || (W && W.key === key)) return;
+  if (switching || building || (W && W.key === key)) return;
   switching = true;
   stopTravel();
   flyZoom = 4.2;
@@ -2179,7 +2312,7 @@ async function switchPlanet(key) {
   veil.classList.add('on');
   await new Promise(r => setTimeout(r, 750));
   await nextPaint();
-  loadWorld(key);
+  await loadWorld(key);
   camZoom = 4.2; flyZoom = null; camLift = 0;
   veil.classList.remove('on');
   switching = false;
@@ -2209,6 +2342,7 @@ function setLowTier(t) {
 
 function frame() {
   requestAnimationFrame(frame);
+  if (building) { clock.getDelta(); return; }
   const dt = Math.min(0.05, clock.getDelta());
   elapsed += dt;
 
@@ -2322,10 +2456,11 @@ function frame() {
 // boot: build the first planet behind the veil, then walk to its first stop
 {
   const start = /[?&]planet=ski\b/.test(location.search) ? 'ski' : 'hangzhou';
-  loadWorld(start);
+  loadWorld(start).then(() => {
+    requestAnimationFrame(() => veil.classList.remove('on'));
+    setTimeout(() => { if (!travel && activeZone === null) travelTo(0); }, 700);
+  });
   frame();
-  requestAnimationFrame(() => veil.classList.remove('on'));
-  setTimeout(() => { if (!travel && activeZone === null) travelTo(0); }, 700);
 }
 </script>
 </body>
