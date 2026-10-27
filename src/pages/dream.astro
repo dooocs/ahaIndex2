@@ -4,6 +4,7 @@
 // home, mall, sports centre, Xixi wetland and West Lake, three.js r170 and a
 // subset font under public/dream/) shown in an iframe, so its full-screen styles
 // and render loop stay out of the site's layout and it needs no build-time data.
+// It holds several planets (杭州, 滑雪), switched inside the page; ?planet=ski opens the ski planet.
 // The previous price-configurator scene is kept as public/dream/app-v1.html.
 // Add ?debug to app.html to see the technique switches and the fps counter.
 import BaseLayout from '../layouts/BaseLayout.astro';
@@ -11,7 +12,7 @@ import Masthead from '../components/Masthead.astro';
 import { SITE_URL, siteTitle } from '../lib/site';
 
 const title = siteTitle('梦想人生');
-const description = '在一颗小星球上过你想要的生活：家门口的院子和车、隔壁的天街、文体中心游泳打球，再往前是西溪湿地和西湖。';
+const description = '在小星球上过你想要的生活：杭州星球有家、天街、文体中心、西溪湿地和西湖；滑雪星球有北海道的粉雪、羊蹄山和温泉，还有崇礼和雪如意。';
 const canonical = `${SITE_URL}/dream`;
 ---
 
