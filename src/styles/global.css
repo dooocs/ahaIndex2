@@ -157,6 +157,27 @@ body::before {
   line-height: 1.8;
 }
 
+/* Masthead laid over a full-bleed scene (梦想人生). The paper fades out over the header's
+   height so the text stays readable while the scene shows through; only the links and
+   buttons take the pointer, so dragging on the empty parts reaches the scene underneath. */
+.masthead--overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  background: linear-gradient(to bottom, rgba(240, 235, 224, 0.86) 0%, rgba(240, 235, 224, 0.62) 58%, rgba(240, 235, 224, 0) 100%);
+  pointer-events: none;
+}
+.masthead--overlay .nav-bar {
+  background: transparent;
+  box-shadow: none;
+}
+.masthead.masthead--overlay .nav-bar { border-top-color: transparent; }
+.masthead--overlay a,
+.masthead--overlay button,
+.masthead--overlay .score-trigger { pointer-events: auto; }
+
 /* Reserve the scrollbar lane so short pages (e.g. 相亲贴) don't shift the header sideways. */
 html {
   scrollbar-gutter: stable;
