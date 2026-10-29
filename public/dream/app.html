@@ -649,10 +649,12 @@ function buildCar() {
 }
 
 
-// ---------- culling: big meshes and instance sets are split into 54 patches of the sphere ----------
-// so the GPU only draws the patches in front of the camera (and in the sun's shadow frustum)
+// ---------- culling: big meshes and instance sets are split into patches of the sphere ----------
+// so the GPU only draws the patches in front of the camera (and in the sun's shadow frustum).
+// 6 × N² patches, N growing with the radius (54 at R ≤ 62, 96 at R = 100). Finer patches cut triangles but add
+// draw calls; at R = 100, N = 4 keeps both at or below what R = 50 had (measured: ~630 calls, ~1.3M triangles).
 function binKey(x, y, z) {
-  const ax = Math.abs(x), ay = Math.abs(y), az = Math.abs(z), N = 3;
+  const ax = Math.abs(x), ay = Math.abs(y), az = Math.abs(z), N = Math.max(3, Math.round(R / 25));
   let f, u, v;
   if (ax >= ay && ax >= az) { f = x > 0 ? 0 : 1; u = y / ax; v = z / ax; }
   else if (ay >= az) { f = y > 0 ? 2 : 3; u = x / ay; v = z / ay; }
@@ -761,8 +763,53 @@ function icosphere(radius, detail, normals = false) {
   geo.setIndex(new THREE.BufferAttribute(index, 1));
   return geo;
 }
-async function buildGround({ detail, lit, shade, defs = [], lawn = null, water = false }) {
-  const geo = icosphere(1, detail);
+// A unit sphere made of latitude rings whose spacing (in planet units) follows step(z), z = distance from the
+// equator. Every place sits along the ring road (the equator), so a big planet can keep full detail in that
+// band and go coarse toward the poles with the same vertex budget. Neighbouring rings are zipped together
+// whatever their vertex counts, so there are no cracks or T-junctions.
+function ringSphere(step) {
+  const lats = [0];
+  for (let lat = 0; ;) {
+    const s = step(lat * R) / R;
+    if (lat + s > Math.PI / 2 - 0.5 * s) break;
+    lats.push(lat += s);
+  }
+  const rings = [...lats.slice(1).reverse().map(l => -l), ...lats];
+  const pos = [], index = [];
+  const vtx = (lat, lon) => { pos.push(Math.cos(lat) * Math.sin(lon), Math.sin(lat), -Math.cos(lat) * Math.cos(lon)); return pos.length / 3 - 1; };
+  const tri = (a, b, c) => {      // wound counter-clockwise seen from outside
+    const ax = pos[3 * a], ay = pos[3 * a + 1], az = pos[3 * a + 2];
+    const ux = pos[3 * b] - ax, uy = pos[3 * b + 1] - ay, uz = pos[3 * b + 2] - az, vx = pos[3 * c] - ax, vy = pos[3 * c + 1] - ay, vz = pos[3 * c + 2] - az;
+    const out = (uy * vz - uz * vy) * ax + (uz * vx - ux * vz) * ay + (ux * vy - uy * vx) * az;
+    if (out >= 0) index.push(a, b, c); else index.push(a, c, b);
+  };
+  const ringIdx = rings.map((lat, r) => {
+    const n = Math.max(3, Math.round(2 * Math.PI * R * Math.cos(lat) / step(Math.abs(lat) * R)));
+    const off = (r % 2) * 0.5, first = pos.length / 3;
+    for (let k = 0; k < n; k++) vtx(lat, 2 * Math.PI * (k + off) / n);
+    return { first, n, off };
+  });
+  for (let r = 0; r < ringIdx.length - 1; r++) {
+    const A = ringIdx[r], B = ringIdx[r + 1];
+    const a = i => (i + A.off) / A.n, b = j => (j + B.off) / B.n;
+    const ia = i => A.first + (i % A.n), ib = j => B.first + (j % B.n);
+    for (let i = 0, j = 0; i < A.n || j < B.n;) {
+      if (j >= B.n || (i < A.n && a(i + 1) < b(j + 1))) { tri(ia(i), ia(i + 1), ib(j)); i++; }
+      else { tri(ia(i), ib(j + 1), ib(j)); j++; }
+    }
+  }
+  for (const [ring, y] of [[ringIdx[0], -1], [ringIdx[ringIdx.length - 1], 1]]) {     // pole caps
+    const p = pos.length / 3; pos.push(0, y, 0);
+    for (let k = 0; k < ring.n; k++) tri(ring.first + k, ring.first + (k + 1) % ring.n, p);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
+  geo.setIndex(new THREE.BufferAttribute(new Uint32Array(index), 1));
+  return geo;
+}
+// ground: an icosphere of the given detail, or latitude rings spaced by `step` (see ringSphere)
+async function buildGround({ detail, step = null, lit, shade, defs = [], lawn = null, water = false }) {
+  const geo = step ? ringSphere(step) : icosphere(1, detail);
   const pos = geo.attributes.position, n = pos.count;
   const aStone = new Float32Array(n), aRoad = new Float32Array(n), aLawn = new Float32Array(n);
   const d = new THREE.Vector3();
@@ -846,28 +893,54 @@ function polyAt(pts, x) {
   return pts[pts.length - 1][1];
 }
 // ---------- vegetation ----------
-function scatterDirs(count, minSep, keepM, maxPath, maxTry = 6000, accept = null) {
-  const out = [];
+// Minimum-spacing test for scattered directions: a hash grid on the unit sphere whose cells are as wide
+// as the spacing, so only the 27 cells round a point are checked. Same answer as testing every point.
+function spacing(minSep) {
+  const a = minSep * AW, cells = new Map(), c = v => Math.floor(v / a) + 512;
+  const key = (x, y, z) => (x * 1024 + y) * 1024 + z;
+  return {
+    clear(d) {
+      if (!minSep) return true;
+      const cx = c(d.x), cy = c(d.y), cz = c(d.z);
+      for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) for (let k = -1; k <= 1; k++) {
+        const list = cells.get(key(cx + i, cy + j, cz + k));
+        if (list) for (const o of list) if (o.angleTo(d) < a) return false;
+      }
+      return true;
+    },
+    add(d) {
+      if (!minSep) return;
+      const k = key(c(d.x), c(d.y), c(d.z));
+      let list = cells.get(k);
+      if (!list) cells.set(k, list = []);
+      list.push(d);
+    },
+  };
+}
+// density: optional d → [0, 1], the share of candidates kept there (vegetation thins away from the places)
+function scatterDirs(count, minSep, keepM, maxPath, maxTry = 6000, accept = null, density = null) {
+  const out = [], sep = spacing(minSep);
   for (let t = 0; t < maxTry && out.length < count; t++) {
     const u = rand() * 2 - 1, th = rand() * Math.PI * 2, s = Math.sqrt(1 - u * u);
     const d = new THREE.Vector3(s * Math.cos(th), u, s * Math.sin(th));
+    if (density && rand() >= density(d)) continue;
     if (accept ? !accept(d) : siteKeepout(d, keepM)) continue;
     if (pathWeight(d) > maxPath) continue;
     if (terrainH(d) < WATER + 0.12) continue;
-    if (minSep && out.some(o => o.angleTo(d) < minSep * AW)) continue;
-    out.push(d);
+    if (!sep.clear(d)) continue;
+    out.push(d); sep.add(d);
   }
   return out;
 }
 function scatterIn(s, count, x0, x1, z0, z1, ok, minSep = 0, wet = false) {
-  const out = [];
+  const out = [], sep = spacing(minSep);
   for (let t = 0; t < count * 60 && out.length < count; t++) {
     const p = { x: x0 + rand() * (x1 - x0), z: z0 + rand() * (z1 - z0) };
     if (!ok(p)) continue;
     const d = L(s, p.x, p.z);
     if (!wet && terrainH(d) < WATER + 0.12) continue;
-    if (minSep && out.some(o => o.angleTo(d) < minSep * AW)) continue;
-    out.push(d);
+    if (!sep.clear(d)) continue;
+    out.push(d); sep.add(d);
   }
   return out;
 }
@@ -1058,10 +1131,21 @@ resize();
 
 // ======================= 杭州星球 =======================
 async function buildHangzhou() {
-  R = 50; AW = 26 / R;
+  // R = 100 (was 50): room round the ring for new places. Everything sits within ~25 units of the ring
+  // road (the equator), so ground detail and vegetation are full in that band and thin toward the poles.
+  R = 100; AW = 26 / R;
   const AREA = (R / 26) ** 2;   // vegetation counts were tuned at R = 26
   WATER = -0.55;
   beginWalk();
+  const BAND = 24, FADE = 44;   // units from the equator: full detail inside BAND, coarse beyond FADE
+  const bandFade = z => sstep(BAND, FADE, z);
+  const fromRing = d => R * Math.abs(Math.asin(Math.max(-1, Math.min(1, d.y))));
+  const fill = floor => d => 1 - (1 - floor) * bandFade(fromRing(d));
+  const share = f => { let m = 0; for (let i = 0; i < 400; i++) m += f({ y: (i + 0.5) / 400 }); return m / 400; };   // mean over the sphere
+  const treeFill = fill(0.3), grassFill = fill(0.08);
+  const TREE_SHARE = share(treeFill), GRASS_SHARE = share(grassFill);
+  W.walkSpeed = 10; W.travelSpeed = 26;                       // units/s: keyboard walk, autopilot cruise
+  W.tagCos = [Math.cos(26.8 / R), Math.cos(22.5 / R)];        // stop and landmark labels show within ~27 / 22 units
   const MALL_NAME = '向上天街';      // fictional mall name
   // roadZ: how far the place's centre sits from the ring road; side: north (+1) or south (-1) of it.
   // The ring has room left between 天街 and 文体中心 and between 西湖 and home for new places.
@@ -1223,7 +1307,7 @@ LANDMARKS = [
   { name: '小瀛洲', s: LAKE, at: [XYZ.x, XYZ.z + 0.9], h: 1.9 },
 ];
 
-await buildGround({ detail: 160, lit: 0x8cc46a, shade: 0x4f8a6c, lawn: d => (inFence(local(HOME, d)) ? 1 : 0), water: true });
+await buildGround({ step: z => 0.4 + 1.2 * bandFade(z), lit: 0x8cc46a, shade: 0x4f8a6c, lawn: d => (inFence(local(HOME, d)) ? 1 : 0), water: true });
 // trees planted by the builders below (place, x, z, kind)
 const heroTrees = [];
 
@@ -1575,7 +1659,7 @@ await slice();
   ];
   // near trees (courtyards, plazas, islands) get detailed crowns; the many meadow and hill trees lighter ones
   const near = variants.map(() => []), far = variants.map(() => []);
-  const meadow = scatterDirs(Math.round(240 * AREA), 0.05, 0.5, 0.02, 90000);
+  const meadow = scatterDirs(Math.round(240 * AREA * TREE_SHARE), 0.05, 0.5, 0.02, 90000, null, treeFill);
   const forest = scatterIn(LAKE, 180, -18, 18, -16, 3.5, p => lakeHill(p) > 0.3 && Math.hypot(p.x - LEIFENG[0], p.z - LEIFENG[1]) > 1.6 && Math.hypot(p.x - BAOCHU[0], p.z - BAOCHU[1]) > 1.2, 0.032);
   const islets = scatterIn(XIXI, 40, -9.5, 9.5, -9.5, 5.4, p => Math.hypot(p.x, p.z) < 9.4 && !(p.z > 0.4 && Math.abs(p.x - 1) < 2.8) && !(p.z > -4.8 && p.z < 1.4 && p.x > -6.4 && p.x < 4.6) && polyD(p, BOARDWALK) > 1.0
     && !XIXI_HOUSES.some(([x, z, w, d]) => Math.abs(p.x - x) < w / 2 + 0.7 && Math.abs(p.z - z) < d / 2 + 0.9) && xixiWater(p) < 0.05, 0.05);
@@ -1645,7 +1729,7 @@ await slice();
   // bushes: meadow edges plus a hedge inside the courtyard railing
   {
     const bg = canopy([[0, 0.32, 0, 0.42], [0.36, 0.24, 0.1, 0.3], [-0.32, 0.26, -0.08, 0.32]], 41);
-    const bm = scatterDirs(Math.round(105 * AREA), 0.035, 0.3, 0.35, 40000).map(d => matrixOn(d, rand() * 6.28, 0.7 + rand() * 0.6, 0.08));
+    const bm = scatterDirs(Math.round(105 * AREA * TREE_SHARE), 0.035, 0.3, 0.35, 40000, null, treeFill).map(d => matrixOn(d, rand() * 6.28, 0.7 + rand() * 0.6, 0.08));
     const { x0, x1, z0, z1 } = HOME_FENCE;
     for (let x = x0 + 0.6; x <= x1 - 0.6; x += 0.95) { if (Math.abs(x) > HOME_GATE + 1.2) bm.push(matrixOn(L(HOME, x, z1 - 0.55), rand() * 6.28, 0.75, 0.08)); bm.push(matrixOn(L(HOME, x, z0 + 0.55), rand() * 6.28, 0.75, 0.08)); }
     for (let z = z0 + 1.4; z <= z1 - 0.9; z += 0.95) [x0 + 0.55, x1 - 0.55].forEach(x => bm.push(matrixOn(L(HOME, x, z), rand() * 6.28, 0.75, 0.08)));
@@ -1657,7 +1741,7 @@ await slice();
   }
 
   await slice();
-  const rockDirs = scatterDirs(Math.round(56 * AREA), 0.04, 0.3, 0.15, 30000);
+  const rockDirs = scatterDirs(Math.round(56 * AREA * TREE_SHARE), 0.04, 0.3, 0.15, 30000, null, treeFill);
   const rg = lump(0.5, 1, 0.35, 2.3); rg.scale(1, 0.62, 1);
   const rocks = new THREE.InstancedMesh(rg, toon(0xd8ceb6, { kind: 'ROCK', shade: 0x8f93a0, breakMul: 0.5, noiseScale: 1.6 }), rockDirs.length);
   rockDirs.forEach((d, i) => rocks.setMatrixAt(i, matrixOn(d, rand() * 6.28, 0.4 + rand() * 1.1, 0.12)));
@@ -1693,7 +1777,7 @@ await slice();
   const blade = (x, z, h, lean) => { const g = new THREE.ConeGeometry(0.05, h, 3, 1); g.translate(0, h / 2, 0); g.rotateZ(lean); g.translate(x, 0, z); return prep(g); };
   const tuft = mergeGeometries([blade(0, 0, 0.34, 0.1), blade(0.07, 0.03, 0.26, -0.35), blade(-0.06, 0.04, 0.24, 0.4), blade(0.01, -0.07, 0.22, -0.15)]);
   const tn = tuft.attributes.normal; for (let i = 0; i < tn.count; i++) tn.setXYZ(i, 0, 1, 0);
-  const grassDirs = scatterDirs(Math.round(2700 * AREA), 0, 0, 0.4, 160000, d => !walk.inFootprint(d, 0.15));
+  const grassDirs = scatterDirs(Math.round(2700 * AREA * GRASS_SHARE), 0, 0, 0.4, 160000, d => !walk.inFootprint(d, 0.15), grassFill);
   const grass = new THREE.InstancedMesh(tuft, toon(0x7cb85e, { shade: 0x4a8468, breakMul: 0.5 }), grassDirs.length);
   grassDirs.forEach((d, i) => grass.setMatrixAt(i, matrixOn(d, rand() * 6.28, 0.7 + rand() * 0.8)));
   grass.receiveShadow = true; grass.layers.set(1);
@@ -1701,7 +1785,7 @@ await slice();
 
   await slice();
   const fg = new THREE.IcosahedronGeometry(0.07, 0); fg.translate(0, 0.16, 0);
-  const flowerDirs = scatterDirs(Math.round(310 * AREA), 0, 0, 0.3, 40000, d => !walk.inFootprint(d, 0.15));
+  const flowerDirs = scatterDirs(Math.round(310 * AREA * GRASS_SHARE), 0, 0, 0.3, 40000, d => !walk.inFootprint(d, 0.15), grassFill);
   const flowers = new THREE.InstancedMesh(fg, toon(0xffffff, { shade: 0xb9b6c8, breakMul: 0 }), flowerDirs.length);
   const fc = [0xfaf6ee, 0xf3d35c, 0xe98a7a, 0xb9a3e3];
   const c = new THREE.Color();
@@ -2071,7 +2155,6 @@ const X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0);
 const qTmp = new THREE.Quaternion();
 let travel = null, activeZone = null, curStop = null, arriving = null;
 let moveSpeed = 0, turnLean = 0, zoomUser = 1;
-const WALK_V = 0.38;     // rad/s along the planet at full stride
 function rotatePlanet(yaw, pitch) {
   if (yaw) planet.quaternion.premultiply(qTmp.setFromAxisAngle(Y, yaw));
   if (pitch) planet.quaternion.premultiply(qTmp.setFromAxisAngle(X, pitch));
@@ -2167,7 +2250,7 @@ function startLeg(leg) {
   }
   const Tb = Math.abs(beta) > 0.02 ? 0.22 + Math.abs(beta) * 0.22 : 0.001;
   const t0 = leg.ease === 'in' || leg.ease === 'inout' ? Tb * 0.6 : 0;     // turn first, then set off
-  const Tw = Math.max(0.3, gamma * (leg.ease === 'lin' ? 1 : Math.PI / 2) / WALK_V);
+  const Tw = Math.max(0.3, gamma * R * (leg.ease === 'lin' ? 1 : Math.PI / 2) / W.travelSpeed);   // W.travelSpeed: units/s
   const Tt = beta2 ? 0.3 + Math.abs(beta2) * 0.3 : 0;
   travel = { q0, beta, gamma, beta2, ease: leg.ease, Tb, t0, Tw, Tt, t: 0, d1: 0, d2: 0, d3: 0 };
 }
@@ -2194,7 +2277,7 @@ canvas.addEventListener('pointermove', e => {
   drag.x = e.clientX; drag.y = e.clientY; drag.moved += Math.abs(dx) + Math.abs(dy);
   if (drag.moved > 5) {
     canvas.classList.add('dragging'); stopTravel(); setActive(null);
-    walkBy(dx * 0.004, dy * 0.0025);
+    walkBy(dx * 0.004, dy * 0.0125 * W.walkSpeed / R);
     moveSpeed = Math.min(1, moveSpeed + Math.abs(dy) * 0.02);
   }
 });
@@ -2293,6 +2376,7 @@ async function loadWorld(key) {
   seed = 7;
   W = { key, update: null, extras: [], ski: false, lawnEx: null, startLon: 0 };
   await PLANETS[key].build();
+  W.walkSpeed ??= 0.2 * R; W.travelSpeed ??= 0.38 * R; W.tagCos ??= [0.86, 0.9];
   G.uR.value = R; G.uWater.value = WATER;
   G.uYardEx.value.copy(W.lawnEx || new THREE.Vector3(0, 0, 1));
   aimSun();
@@ -2365,7 +2449,7 @@ function frame() {
   // keyboard walking
   const fw = (keys.has('w') || keys.has('arrowup') ? 1 : 0) - (keys.has('s') || keys.has('arrowdown') ? 1 : 0);
   const tr = (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0);
-  if (fw || tr) { walkBy(tr * 1.3 * dt, fw * 0.2 * dt); setActive(null); }
+  if (fw || tr) { walkBy(tr * 1.3 * dt, fw * W.walkSpeed / R * dt); setActive(null); }
   let walking = Math.abs(fw);
   turnLean += ((tr ? -tr * 0.35 : 0) - turnLean) * Math.min(1, dt * 6);
 
@@ -2385,7 +2469,7 @@ function frame() {
     const rate = Math.abs(tv.gamma * (p2 - tv.d2)) / dt;
     turnLean += (-Math.sign(tv.beta2) * 0.25 * Math.sin(Math.PI * p3) - turnLean) * Math.min(1, dt * 6);
     tv.d1 = p1; tv.d2 = p2; tv.d3 = p3;
-    walking = Math.max(Math.min(1, rate / 0.2), p3 > 0 && p3 < 1 ? 0.35 : 0);
+    walking = Math.max(Math.min(1, rate * R / W.walkSpeed), p3 > 0 && p3 < 1 ? 0.35 : 0);
     if (tv.t >= Math.max(tv.Tb, tv.t0 + tv.Tw + tv.Tt)) {
       travel = null;
       if (legs.length) startLeg(legs.shift()); else curStop = arriving;
@@ -2454,8 +2538,8 @@ function frame() {
       o.tag.style.pointerEvents = show && !o.tag.classList.contains('mini') ? 'auto' : 'none';
       if (show) o.tag.style.transform = `translate(${(tagPos.x * 0.5 + 0.5) * innerWidth}px, ${(-tagPos.y * 0.5 + 0.5) * innerHeight}px) translate(-50%, -100%)`;
     };
-    zones.forEach(z => placeTag(z, 0.86));
-    LANDMARKS.forEach(m => placeTag(m, 0.9));
+    zones.forEach(z => placeTag(z, W.tagCos[0]));
+    LANDMARKS.forEach(m => placeTag(m, W.tagCos[1]));
   }
 
   // fps + adaptive resolution (drops pixel ratio on slow GPUs, never below 1)
