@@ -53,6 +53,34 @@ it and to walk against it. The planet's rotation stays the source of truth for t
 (the autopilot drives it directly); `walkBy()` reads it as a pose, calls the controller and writes it
 back.
 
+## Done: a planet twice the size at the same cost (杭州, R 50 → 100)
+
+Measured before changing anything (headless Chromium, CPU build time; triangle and draw-call counts are
+hardware-independent): at R = 50 the five places together cost 0.13 s of a 1.4 s build. The rest was the
+uniform ground icosphere (1.0 s) and vegetation spread evenly over the whole sphere. Doubling R naively
+gave a 2.2–2.7 s build and 2.3M triangles a frame (4.5 s and 3.2M with the ground at today's density).
+
+Every place sits within ~25 units of the ring road (the equator), so detail now follows that band:
+
+- the ground is `ringSphere(step)`: latitude rings spaced 0.4 units inside the band, 1.6 near the poles,
+  neighbouring rings zipped together (watertight, no T-junctions);
+- vegetation keeps full density in the band and thins toward the poles (trees to 30 %, grass to 8 %);
+  totals are scaled by the mean density so the band looks as it did;
+- scatter spacing uses a hash grid instead of comparing every pair (same result, linear time);
+- culling patches grow with R (6 × 4² at R = 100);
+- walking, autopilot and label distances are per planet in units (`W.walkSpeed`, `W.travelSpeed`,
+  `W.tagCos`), so a bigger planet doesn't make the avatar run faster. Planets that don't set them keep
+  the old behaviour (the ski planet is unchanged).
+
+| | R = 50 before | R = 100 now |
+| --- | --- | --- |
+| build | 1.37–1.58 s | 1.48–1.63 s |
+| draw calls (home / lake / wide view) | 684 / 667 / 695 | 629 / 615 / 669 |
+| triangles drawn (same views) | 1.32M / 1.38M / 1.42M | 1.26M / 1.32M / 1.46M |
+
+Building places only when the avatar comes near is not worth it yet (they are 0.13 s); it becomes worth
+it once there are many more places, and the planet-module split below is the groundwork for it.
+
 ## Next
 
 1. **Pose and motion modes.** Make the pose `{ p, f }` the single source of truth and derive the planet
