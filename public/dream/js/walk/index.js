@@ -2,4 +2,5 @@
 // Pure ES modules with no three.js dependency, so they run unchanged in the page and in `node --test`.
 export { createWalkField } from './field.js';
 export { createController } from './controller.js';
+export { findPath } from './path.js';
 export * as shapes from './shapes.js';

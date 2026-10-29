@@ -126,3 +126,54 @@ test('inFootprint keeps the old square-cornered footprint test for scatter', () 
   assert.equal(f.inFootprint(at(5, 1.1), 0.15), true);
   assert.equal(f.inFootprint(at(5, 1.2), 0.15), false);
 });
+
+// ---------- click-to-walk routes ----------
+import { findPath } from '../public/dream/js/walk/index.js';
+/** follow a route with the controller like the app does: turn toward the next waypoint, walk */
+function follow(f, route, secs = 6) {
+  const ctl = createController(f);
+  return start => {
+    let ps = start, i = 0;
+    for (let k = 0; k < secs * 60 && i < route.length; k++) {
+      const w = route[i], t = normalize(tangent(ps.p, w)), right = cross(ps.f, ps.p);
+      const ang = Math.atan2(dot(t, right), dot(t, ps.f));
+      ps = ctl.move(ps, { turn: Math.max(-0.07, Math.min(0.07, ang)), forward: (10 / R / 60) * Math.max(0, Math.cos(ang)) });
+      if (Math.acos(Math.min(1, dot(ps.p, w))) * R < 0.3) i++;
+    }
+    return { ps, done: i >= route.length };
+  };
+}
+
+test('a route goes round a building instead of into it, and the controller can follow it', () => {
+  const f = world().footprint(SITE, shapes.box(-3, 3, -2, 2));
+  const route = findPath(f, at(0, 6), at(0, -6));
+  assert.ok(route && route.length >= 2, 'needs at least one corner');
+  assert.ok(route.every(w => f.clearance(w) >= 0));
+  const { ps, done } = follow(f, route)(pose(0, 6, 0, -1));
+  assert.ok(done, 'reached the end');
+  const p = f.local(SITE, ps.p);
+  assert.ok(Math.hypot(p.x, p.z + 6) < 0.5, `ended near the goal (${p.x.toFixed(2)}, ${p.z.toFixed(2)})`);
+});
+
+test('a route finds the gate in a railing', () => {
+  const f = world()
+    .barrier(SITE, shapes.polyline([[-10, 0], [-1.2, 0]], 0.1))
+    .barrier(SITE, shapes.polyline([[1.2, 0], [10, 0]], 0.1));
+  const route = findPath(f, at(-6, 3), at(-6, -3));
+  assert.ok(route);
+  const { ps, done } = follow(f, route, 8)(pose(-6, 3, 0, -1));
+  assert.ok(done && f.local(SITE, ps.p).z < -2.5, 'went through the gate and back along the far side');
+});
+
+test('clicking a building walks to the nearest spot beside it', () => {
+  const f = world().footprint(SITE, shapes.box(-3, 3, -2, 2));
+  const route = findPath(f, at(0, 6), at(0, 0));
+  assert.ok(route);
+  const end = f.local(SITE, route[route.length - 1]);
+  assert.ok(f.clearance(route[route.length - 1]) >= 0 && end.z > 1.9 && end.z < 2.6, `stops at the wall facing us (${end.x.toFixed(2)}, ${end.z.toFixed(2)})`);
+});
+
+test('a fenced-off goal is unreachable', () => {
+  const f = world().barrier(SITE, shapes.polyline([[-2, -2], [2, -2], [2, 2], [-2, 2], [-2, -2]], 0.1));
+  assert.equal(findPath(f, at(0, 6), at(0, 0)), null);
+});

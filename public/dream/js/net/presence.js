@@ -27,7 +27,7 @@ const round = v => v && [+v[0].toFixed(5), +v[1].toFixed(5), +v[2].toFixed(5)];
 /**
  * @param {object} o
  * @param {(key: string) => object} o.connect   makes a channel keyed by this visitor
- * @param {{ id: string, g: 'm'|'f', prov: string }} o.me
+ * @param {{ id: string, g: 'm'|'f', look?: object, prov: string }} o.me   look: the avatar's hairstyle and colours, passed through as is
  * @param {() => number} [o.now]
  */
 export function createPresence({ connect, me, now = () => Date.now() }) {
@@ -38,7 +38,7 @@ export function createPresence({ connect, me, now = () => Date.now() }) {
   const listeners = new Set();
   const emit = () => listeners.forEach(f => f());
 
-  const meta = () => ({ id: profile.id, g: profile.g, prov: profile.prov, planet, act, p: round(pose?.p), f: round(pose?.f), t: now() });
+  const meta = () => ({ id: profile.id, g: profile.g, look: profile.look, prov: profile.prov, planet, act, p: round(pose?.p), f: round(pose?.f), t: now() });
   const retrack = () => { if (joined) { posed = !!pose; channel.track(meta()); } };
 
   function onSync() {
@@ -50,7 +50,7 @@ export function createPresence({ connect, me, now = () => Date.now() }) {
       const m = [...metas].sort((a, b) => (a.act === 'active') - (b.act === 'active') || a.t - b.t).pop();
       seen.add(key);
       const old = peers.get(key);
-      const next = { id: key, g: m.g, prov: m.prov, planet: m.planet, act: m.act, p: m.p, f: m.f, t: m.t };
+      const next = { id: key, g: m.g, look: m.look, prov: m.prov, planet: m.planet, act: m.act, p: m.p, f: m.f, t: m.t };
       if (old && old.t > m.t && old.planet === m.planet) { next.p = old.p; next.f = old.f; next.t = old.t; }   // a newer live pose wins
       peers.set(key, next);
     }
