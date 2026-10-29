@@ -11,10 +11,13 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Masthead from '../components/Masthead.astro';
 import { SITE_URL, siteTitle } from '../lib/site';
+import { community } from '../lib/community-config';
 
 const title = siteTitle('梦想人生');
 const description = '在小星球上过你想要的生活：杭州星球有家、天街、文体中心、西溪湿地和西湖；滑雪星球有北海道的粉雪、羊蹄山和温泉，还有崇礼和雪如意。';
 const canonical = `${SITE_URL}/dream`;
+// who else is online (Realtime presence) runs on the community project; only its public URL and publishable key
+const realtime = community ? { url: community.url, key: community.key } : null;
 ---
 
 <BaseLayout title={title} description={description} canonicalUrl={canonical} ogUrl={canonical}>
@@ -43,15 +46,21 @@ const canonical = `${SITE_URL}/dream`;
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 </style>
 
-<script is:inline>
+<script is:inline define:vars={{ realtime }}>
   // Tell the scene how tall the masthead over it is, so it keeps its controls and framing
-  // clear of it, and hand it the keyboard so WASD works straight away.
+  // clear of it, hand it the Realtime config for the online count, and the keyboard so WASD works straight away.
   (() => {
     const frame = document.getElementById('dream-app');
     const head = document.querySelector('.masthead');
     if (!frame || !head) return;
     const send = () => frame.contentWindow && frame.contentWindow.postMessage({ type: 'dream:inset', top: Math.round(head.getBoundingClientRect().bottom) }, location.origin);
-    frame.addEventListener('load', () => { send(); frame.contentWindow.focus(); });
+    const ready = () => {
+      send();
+      if (realtime) frame.contentWindow.postMessage({ type: 'dream:config', realtime }, location.origin);
+      frame.contentWindow.focus();
+    };
+    frame.addEventListener('load', ready);
+    if (frame.contentDocument && frame.contentDocument.readyState === 'complete' && frame.contentDocument.URL !== 'about:blank') ready();
     if (window.ResizeObserver) new ResizeObserver(send).observe(head);
     window.addEventListener('resize', send);
   })();
