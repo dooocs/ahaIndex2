@@ -61,7 +61,7 @@ export const SHELVES: Shelf[] = [
   },
   {
     id: 'meet', href: '/meet', name: '相亲贴', desc: '给认真生活的开发者，认识一个对的人',
-    tab: '相亲贴', tabHref: '/meet', needsCommunity: true, hidden: true, paths: ['/meet'],
+    tab: '相亲贴', tabHref: '/meet', needsCommunity: true, paths: ['/meet'],
   },
   {
     id: 'dream', href: '/dream', name: '梦想人生', desc: '在小星球上逛逛你想要的生活：杭州的家和西湖，北海道和崇礼的雪场',
