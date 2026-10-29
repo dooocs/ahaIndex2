@@ -65,21 +65,6 @@
   .reset { margin-top: 6px; font: inherit; font-size: 12px; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--line); background: transparent; color: var(--ink); cursor: pointer; }
   .reset:focus-visible { outline: 2px solid var(--sun); }
 
-  .zones {
-    position: fixed; left: 50%; transform: translateX(-50%);
-    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-    display: flex; flex-wrap: wrap; justify-content: center; gap: 6px;
-    max-width: calc(100% - 32px);
-    padding: 6px; background: var(--card); border: 1px solid var(--line); border-radius: 12px;
-    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-  }
-  .zones button {
-    font: 400 16px/1 var(--display); letter-spacing: 0.08em;
-    padding: 9px 14px; border-radius: 8px; border: 0; background: transparent; color: var(--ink); cursor: pointer;
-  }
-  .zones button:hover { background: rgba(31, 111, 120, 0.1); }
-  .zones button[aria-pressed="true"] { background: var(--ink); color: #f4f7f2; }
-  .zones button:focus-visible { outline: 2px solid var(--sun); outline-offset: 1px; }
 
   .hint { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(76px + env(safe-area-inset-bottom, 0px)); font-size: 12px; color: var(--ink); opacity: 0.7; white-space: nowrap; pointer-events: none; }
 
@@ -93,16 +78,6 @@
   .tag.mini { font-size: 12px; letter-spacing: 0.06em; padding: 3px 6px 2px; border-width: 1.5px; background: rgba(251, 252, 247, 0.92); }
   .tag::after { content: ""; position: absolute; left: 50%; bottom: -7px; width: 2px; height: 6px; background: var(--ink); transform: translateX(-50%); }
 
-  .planets {
-    position: fixed; left: 50%; transform: translateX(-50%);
-    top: calc(14px + env(safe-area-inset-top, 0px) + var(--inset-top, 0px));
-    display: flex; gap: 4px; padding: 4px; background: var(--card); border: 1px solid var(--line); border-radius: 10px;
-    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-  }
-  .planets button { font: 400 14px/1 var(--display); letter-spacing: 0.08em; padding: 7px 12px; border: 0; border-radius: 7px; background: transparent; color: var(--ink); cursor: pointer; }
-  .planets button:hover { background: rgba(31, 111, 120, 0.1); }
-  .planets button[aria-pressed="true"] { background: var(--accent); color: #f4f7f2; }
-  .planets button:focus-visible { outline: 2px solid var(--sun); outline-offset: 1px; }
   #peer-tags { position: fixed; inset: 0; pointer-events: none; }
   .tag.peer { font: 500 11px/1 var(--body); letter-spacing: 0.04em; padding: 3px 5px 3px; border-width: 1.5px; background: rgba(251, 252, 247, 0.9); cursor: pointer; }
   .tag.peer:hover { background: #fff; }
@@ -115,7 +90,7 @@
   .bubble.mine { background: #fff7e0; }
   .bubble.mine::after { background: #fff7e0; }
   .say {
-    position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(84px + env(safe-area-inset-bottom, 0px)); width: min(440px, calc(100vw - 32px));
+    position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(20px + env(safe-area-inset-bottom, 0px)); width: min(440px, calc(100vw - 32px));
     display: grid; gap: 8px; padding: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 12px;
     backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); font: 14px/1.3 var(--body); color: var(--ink);
   }
@@ -131,7 +106,7 @@
   .say-row button { font: 14px/1 var(--body); padding: 8px 14px; border: 0; border-radius: 8px; background: var(--accent); color: #f4f7f2; cursor: pointer; }
   .say.nope { animation: nope .3s; }
   @keyframes nope { 25% { transform: translateX(calc(-50% - 6px)); } 75% { transform: translateX(calc(-50% + 6px)); } }
-  .inbox { position: fixed; right: 14px; top: calc(104px + env(safe-area-inset-top, 0px) + var(--inset-top, 0px)); width: 260px; display: flex; flex-direction: column; gap: 6px; }
+  .inbox { position: fixed; right: 14px; top: calc(58px + env(safe-area-inset-top, 0px) + var(--inset-top, 0px)); width: 260px; display: flex; flex-direction: column; gap: 6px; }
   .note { padding: 8px 10px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; font: 13px/1.45 var(--body); color: var(--ink); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
   .note p { margin: 0 0 6px; word-break: break-word; }
   .note div { display: flex; justify-content: flex-end; gap: 6px; }
@@ -143,7 +118,15 @@
     display: flex; flex-direction: column; align-items: flex-end; gap: 6px; font: 400 14px/1 var(--display); color: var(--ink);
   }
   .online, .who { display: flex; align-items: center; gap: 8px; padding: 7px 10px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
-  .online[hidden] { display: none; }
+  .online[hidden], .who[hidden] { display: none; }
+  .company-row { display: flex; align-items: center; gap: 6px; }
+  .me-btn {
+    width: 30px; height: 30px; display: grid; place-items: center; padding: 0; cursor: pointer;
+    font: italic 600 15px/1 Georgia, "Times New Roman", serif; color: var(--ink);
+    background: var(--card); border: 1px solid var(--line); border-radius: 50%; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  }
+  .me-btn:hover, .me-btn[aria-expanded="true"] { background: var(--accent); border-color: var(--accent); color: #f4f7f2; }
+  .me-btn:focus-visible { outline: 2px solid var(--sun); outline-offset: 1px; }
   .online .dot { width: 8px; height: 8px; border-radius: 50%; background: #3fb36b; box-shadow: 0 0 0 3px rgba(63, 179, 107, 0.2); }
   .online small { font-size: 12px; opacity: 0.7; }
   .who { padding: 4px 4px 4px 10px; gap: 4px; }
@@ -164,7 +147,6 @@
   @media (max-width: 640px) {
     .panel { width: 190px; }
     .hint { display: none; }
-    .zones button { padding: 8px 10px; font-size: 15px; }
   }
   @media (prefers-reduced-motion: reduce) { .veil, .tag, .sw input, .sw input::after { transition: none; } }
 </style>
@@ -194,7 +176,6 @@
   </div>
 </details>
 
-<nav class="planets" id="planets" aria-label="星球"></nav>
 <form class="say" id="say" hidden autocomplete="off">
   <div class="say-head"><span id="say-to">说点什么</span><button type="button" id="say-close" aria-label="关闭">×</button></div>
   <div class="say-quick" id="say-quick"></div>
@@ -202,13 +183,15 @@
 </form>
 <div class="inbox" id="inbox" aria-live="polite"></div>
 <aside class="company" aria-label="在线">
-  <div class="online" id="online" hidden><span class="dot"></span><span id="online-count">1 人在线</span><small id="online-sub"></small></div>
-  <div class="who" id="who" role="group" aria-label="我的形象"><span>我是</span><button type="button" data-kind="m">男生</button><button type="button" data-kind="f">女生</button><button type="button" id="reroll" title="随机换一套发型和衣服" aria-label="换一套">换一套</button></div>
+  <div class="company-row">
+    <div class="online" id="online" hidden><span class="dot"></span><span id="online-count">1 人在线</span><small id="online-sub"></small></div>
+    <button type="button" class="me-btn" id="me-btn" aria-expanded="false" aria-controls="who" title="我的形象">i</button>
+  </div>
+  <div class="who" id="who" role="group" aria-label="我的形象" hidden><span>我是</span><button type="button" data-kind="m">男生</button><button type="button" data-kind="f">女生</button><button type="button" id="reroll" title="随机换一套发型和衣服" aria-label="换一套">换一套</button></div>
 </aside>
 <div class="veil on" id="veil">正在生成星球…</div>
 
-<p class="hint">拖动转动星球 · WASD / 方向键行走 · 点击区域前往</p>
-<nav class="zones" id="zones" aria-label="区域"></nav>
+<p class="hint">拖动转动星球 · WASD / 方向键或点击地面行走 · 点标签前往</p>
 
 <script>if (/[?&]debug\b/.test(location.search)) document.documentElement.classList.add('debug');</script>
 <script type="importmap">
@@ -1481,7 +1464,7 @@ await slice();
 // via: points walked through after leaving the ring road; stand/look: where to stop and what to face
 zones = [
   { name: '家', s: HOME, via: [[0, 5.2], [0, 3.3]], stand: [0, 2.7], look: [0, -5.7], zoom: 2.1, label: [0, -5.7], h: 6.9 },
-  { name: '车子', s: HOME, via: [[0, 5.2], [0.8, 3.95], [4.6, 3.95]], stand: [7.4, 3.0], look: CAR, zoom: 1.0, label: CAR, h: 1.9 },
+  { name: '车子', noTag: true, s: HOME, via: [[0, 5.2], [0.8, 3.95], [4.6, 3.95]], stand: [7.4, 3.0], look: CAR, zoom: 1.0, label: CAR, h: 1.9 },
   { name: '天街', s: MALL, via: [], stand: [0.9, 3.0], look: [0, -1.8], zoom: 1.75, label: [0, -0.6], h: 5.9 },
   { name: '文体中心', s: SPORTS, via: [], stand: [0.9, 4.4], look: [0, -1], zoom: 1.85, label: [0, -1], h: 5.9 },
   { name: '西溪湿地', s: XIXI, via: [[0.4, 6.0], [2.2, 4.2], [1.2, 2.4]], stand: [1.0, 1.25], look: [-1.2, -3.2], zoom: 1.35, label: [0.1, -3.4], h: 3.2 },
@@ -2535,19 +2518,19 @@ function followRoute(dt) {
 }
 
 // ---------- HUD ----------
-const zoneNav = document.getElementById('zones');
 const labels = document.getElementById('labels');
 let zoneButtons = [];
+// Stops have no menu: people find them by walking round. Each stop's label (except those marked noTag)
+// still floats over it and takes you there when clicked.
 function buildHud() {
-  zoneNav.innerHTML = ''; labels.innerHTML = '';
-  zoneButtons = zones.map((z, i) => {
-  const b = document.createElement('button'); b.type = 'button'; b.textContent = z.name; b.setAttribute('aria-pressed', 'false');
-  b.addEventListener('click', () => travelTo(i)); zoneNav.appendChild(b);
-  const t = document.createElement('div'); t.className = 'tag'; t.textContent = z.name; t.addEventListener('click', () => travelTo(i));
-  labels.appendChild(t); z.tag = t;
-  const d = P(z.s, z.label); z.tagLocal = d.multiplyScalar(R + Math.max(terrainH(d), WATER) + z.h);
-  return b;
-});
+  labels.innerHTML = '';
+  zones.forEach((z, i) => {
+    z.tag = null;
+    if (z.noTag) return;
+    const t = document.createElement('div'); t.className = 'tag'; t.textContent = z.name; t.addEventListener('click', () => travelTo(i));
+    labels.appendChild(t); z.tag = t;
+    const d = P(z.s, z.label); z.tagLocal = d.multiplyScalar(R + Math.max(terrainH(d), WATER) + z.h);
+  });
 LANDMARKS.forEach(m => {
   const t = document.createElement('div'); t.className = 'tag mini'; t.textContent = m.name;
   labels.appendChild(t); m.tag = t;
@@ -2653,13 +2636,8 @@ async function switchPlanet(key) {
   switching = false;
   setTimeout(() => { if (!travel && activeZone === null && !switching) travelTo(0); }, 900);
 }
-const planetNav = document.getElementById('planets');
-const planetButtons = Object.entries(PLANETS).map(([key, p]) => {
-  const b = document.createElement('button'); b.type = 'button'; b.dataset.planet = key; b.textContent = `${p.name}星球`;
-  b.setAttribute('aria-pressed', 'false'); b.addEventListener('click', () => switchPlanet(key));
-  planetNav.appendChild(b);
-  return b;
-});
+// one planet on show for now: no switcher (the ski planet is still there with ?planet=ski)
+const planetButtons = [];
 
 // ---------- company: other visitors on the planets right now ----------
 // Presence (js/net/presence.js) says who is online and where; this draws them as small people with
@@ -2740,6 +2718,11 @@ const company = (() => {
   kinds.forEach(b => b.addEventListener('click', () => { if (b.dataset.kind !== myLook.g) wear({ ...myLook, g: b.dataset.kind }); }));
   sw('reroll').addEventListener('click', () => wear(randomLook(myLook.g)));
   showKind();
+  // the picker opens from the (i) and closes on a click anywhere else
+  const meBtn = sw('me-btn'), whoBox = sw('who');
+  const showWho = open => { whoBox.hidden = !open; meBtn.setAttribute('aria-expanded', open ? 'true' : 'false'); };
+  meBtn.addEventListener('click', () => showWho(whoBox.hidden));
+  addEventListener('pointerdown', e => { if (!whoBox.hidden && !e.target.closest('.company')) showWho(false); });
 
   // ---------- messages: click someone (their person or their tag), say something ----------
   // Emoji and short phrases are one click; free text up to 60 characters. Delivery and limits live in
@@ -2889,7 +2872,8 @@ const company = (() => {
     },
   };
 })();
-if (/[?&]presence=local\b/.test(location.search)) company.useTransport(createLocalConnect());
+// ?presence=local: tabs of this browser over BroadcastChannel; add &broadcast=0 to act like a server that drops broadcasts
+if (/[?&]presence=local\b/.test(location.search)) company.useTransport(createLocalConnect({ broadcast: !/[?&]broadcast=0\b/.test(location.search) }));
 addEventListener('message', e => {
   if (e.origin !== location.origin || !e.data || e.data.type !== 'dream:config' || !e.data.realtime) return;
   const { url, key } = e.data.realtime;
@@ -3007,7 +2991,7 @@ function frame() {
       o.tag.style.pointerEvents = show && !o.tag.classList.contains('mini') ? 'auto' : 'none';
       if (show) o.tag.style.transform = `translate(${(tagPos.x * 0.5 + 0.5) * innerWidth}px, ${(-tagPos.y * 0.5 + 0.5) * innerHeight}px) translate(-50%, -100%)`;
     };
-    zones.forEach(z => placeTag(z, W.tagCos[0]));
+    zones.forEach(z => z.tag && placeTag(z, W.tagCos[0]));
     LANDMARKS.forEach(m => placeTag(m, W.tagCos[1]));
   }
 

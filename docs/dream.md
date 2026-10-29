@@ -127,6 +127,13 @@ the shared channel that only the addressee shows — a nudge, not a private mess
 channel says is present, at most one every 1.2 s, cleaned (control and bidi characters out, whitespace
 squeezed, capped without splitting emoji) and always rendered as text. A word filter is still to come.
 
+Delivery takes two paths, deduped by message id: a broadcast (instant) and the sender's presence state,
+which carries their last few messages for a minute. Broadcasts are sent with server acks; after two
+failures poses also move to presence (about once a second). The Realtime client speaks protocol 1.0.0
+(JSON frames): the client's default 2.0.0 sends broadcasts as binary frames, which the hosted Realtime
+dropped while presence kept working — online counts were right but messages never arrived.
+Try it locally with `?presence=local&broadcast=0`.
+
 ## Next
 
 1. **Pose and motion modes.** Make the pose `{ p, f }` the single source of truth and derive the planet

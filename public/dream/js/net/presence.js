@@ -16,6 +16,8 @@ export const AWAY_AFTER = 5 * 60e3;          // tab hidden for this long → lea
 export const POSE_EVERY = 200;               // ms between pose messages while moving (5 a second)
 export const MSG_MAX = 60;                   // characters per message
 export const SAY_EVERY = 1200;               // ms between messages from one person
+export const OUTBOX_TTL = 60e3;              // messages also ride in my presence for this long (see say)
+export const SLOW_POSE_EVERY = 1000;         // pose updates through presence when broadcasts don't get through
 
 /** A message as it may be shown: control characters out, whitespace squeezed, capped. */
 export const cleanText = text => Array.from(String(text ?? '').replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e]/g, ' ').replace(/\s+/g, ' ').trim()).slice(0, MSG_MAX).join('').trim();
@@ -44,8 +46,19 @@ export function createPresence({ connect, me, now = () => Date.now() }) {
   const emit = () => listeners.forEach(f => f());
   let lastSay = -Infinity;
   const seenMsg = new Set();
+  // Messages travel two ways: a broadcast (instant) and my presence state (the last few, for a minute),
+  // so they arrive even where broadcasts are dropped; receivers dedupe by message id. Broadcasts are sent
+  // with server acks; after two that fail, poses also go through presence (slower, about once a second).
+  let out = [], bcastOk = true, bcastFails = 0;
+  const fresh = () => { const t = now(); out = out.filter(m => t - m.t < OUTBOX_TTL).slice(-5); return out; };
+  function bcast(event, payload) {
+    const failed = () => { if (++bcastFails >= 2 && bcastOk) { bcastOk = false; emit(); } };
+    let r;
+    try { r = channel.send({ type: 'broadcast', event, payload }); } catch { failed(); return; }
+    Promise.resolve(r).then(res => { if (res === 'ok') bcastFails = 0; else failed(); }, failed);
+  }
 
-  const meta = () => ({ id: profile.id, g: profile.g, look: profile.look, prov: profile.prov, planet, act, p: round(pose?.p), f: round(pose?.f), t: now() });
+  const meta = () => ({ id: profile.id, g: profile.g, look: profile.look, prov: profile.prov, planet, act, p: round(pose?.p), f: round(pose?.f), t: now(), out: fresh() });
   const retrack = () => { if (joined) { posed = !!pose; channel.track(meta()); } };
 
   function onSync() {
@@ -60,6 +73,7 @@ export function createPresence({ connect, me, now = () => Date.now() }) {
       const next = { id: key, g: m.g, look: m.look, prov: m.prov, planet: m.planet, act: m.act, p: m.p, f: m.f, t: m.t };
       if (old && old.t > m.t && old.planet === m.planet) { next.p = old.p; next.f = old.f; next.t = old.t; }   // a newer live pose wins
       peers.set(key, next);
+      if (Array.isArray(m.out)) for (const x of m.out) if (x && x.to === profile.id) deliver(key, x);
     }
     for (const key of [...peers.keys()]) if (!seen.has(key)) peers.delete(key);
     emit();
@@ -71,13 +85,14 @@ export function createPresence({ connect, me, now = () => Date.now() }) {
     emit();
   }
 
-  function onMsg({ payload: m }) {
-    // only messages to me, from someone the channel says is here, once each
-    if (!m || m.to !== profile.id || !peers.has(m.from) || seenMsg.has(m.mid)) return;
+  // only messages to me, from someone the channel says is here, once each (whichever way they came)
+  function deliver(from, m) {
+    if (!m || m.to !== profile.id || !peers.has(from) || !m.mid || seenMsg.has(m.mid)) return;
     seenMsg.add(m.mid);
     const text = cleanText(m.text);
-    if (text) inbox.forEach(f => f({ from: m.from, text, t: m.t }));
+    if (text) inbox.forEach(f => f({ from, text, t: m.t }));
   }
+  const onMsg = ({ payload: m }) => m && deliver(m.from, m);
 
   return {
     /** Join (idempotent). Call after the first real interaction, so crawlers never count. */
@@ -103,6 +118,8 @@ export function createPresence({ connect, me, now = () => Date.now() }) {
     },
     get started() { return !!channel; },
     get joined() { return joined; },
+    /** false once broadcasts have failed: poses and messages then go through presence */
+    get broadcastOk() { return bcastOk; },
     setPlanet(key) { if (key !== planet) { planet = key; retrack(); } },
     setProfile(p) { Object.assign(profile, p); retrack(); },
     setActivity(a) { if (a !== act) { act = a; retrack(); emit(); } },
@@ -112,9 +129,10 @@ export function createPresence({ connect, me, now = () => Date.now() }) {
       if (!joined) { moving = isMoving; return; }
       if (!posed) retrack();                       // joined before my first pose: say where I stand
       const t = now();
-      if (isMoving && t - lastSent >= POSE_EVERY) {
+      if (isMoving && t - lastSent >= (bcastOk ? POSE_EVERY : SLOW_POSE_EVERY)) {
         lastSent = t;
-        channel.send({ type: 'broadcast', event: 'pose', payload: { id: profile.id, planet, p: round(p), f: round(f), t } });
+        if (bcastOk) bcast('pose', { id: profile.id, planet, p: round(p), f: round(f), t });
+        else retrack();
       }
       if (moving && !isMoving) retrack();
       moving = isMoving;
@@ -128,7 +146,10 @@ export function createPresence({ connect, me, now = () => Date.now() }) {
       const t = now(), clean = cleanText(text);
       if (!joined || !clean || !peers.has(to) || t - lastSay < SAY_EVERY) return null;
       lastSay = t;
-      channel.send({ type: 'broadcast', event: 'msg', payload: { from: profile.id, to, text: clean, t, mid: `${profile.id}:${t}` } });
+      const m = { from: profile.id, to, text: clean, t, mid: `${profile.id}:${t}` };
+      out.push(m);
+      retrack();                                    // the reliable way
+      bcast('msg', m);                              // the fast way
       return clean;
     },
     /** cb({ from, text, t }) for each message to me */

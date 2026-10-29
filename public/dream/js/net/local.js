@@ -2,7 +2,8 @@
 // Same channel subset as presence.js expects; used with ?presence=local for development and the
 // browser tests. Like the real server it drops anyone it hasn't heard from for `timeout` ms.
 
-export function createLocalConnect({ name = 'dream-presence', heartbeat = 2000, timeout = 6000 } = {}) {
+// broadcast: false drops every broadcast and reports an error, like a server that won't relay them.
+export function createLocalConnect({ name = 'dream-presence', heartbeat = 2000, timeout = 6000, broadcast = true } = {}) {
   return function connect(key) {
     const bc = new BroadcastChannel(name);
     const others = new Map();        // key → { meta, seen }
@@ -43,7 +44,7 @@ export function createLocalConnect({ name = 'dream-presence', heartbeat = 2000, 
         return Promise.resolve('ok');
       },
       untrack() { mine = null; clearInterval(beat); beat = null; post({ k: 'leave', key }); sync(); return Promise.resolve('ok'); },
-      send({ event, payload }) { post({ k: 'bc', key, event, payload }); return Promise.resolve('ok'); },
+      send({ event, payload }) { if (!broadcast) return Promise.resolve('error'); post({ k: 'bc', key, event, payload }); return Promise.resolve('ok'); },
       presenceState() {
         const s = {};
         for (const [k, o] of others) s[k] = [o.meta];
