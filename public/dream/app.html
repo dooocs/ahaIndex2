@@ -165,7 +165,7 @@
 <nav class="planets" id="planets" aria-label="星球"></nav>
 <aside class="company" aria-label="在线">
   <div class="online" id="online" hidden><span class="dot"></span><span id="online-count">1 人在线</span><small id="online-sub"></small></div>
-  <div class="who" id="who" role="group" aria-label="我的形象"><span>我是</span><button type="button" data-kind="m">男生</button><button type="button" data-kind="f">女生</button></div>
+  <div class="who" id="who" role="group" aria-label="我的形象"><span>我是</span><button type="button" data-kind="m">男生</button><button type="button" data-kind="f">女生</button><button type="button" id="reroll" title="随机换一套发型和衣服" aria-label="换一套">换一套</button></div>
 </aside>
 <div class="veil on" id="veil">正在生成星球…</div>
 
@@ -183,7 +183,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 // Where the avatar can stand and how it moves: plain JS, no three.js, unit-tested in tests/dream-walk.test.mjs
-import { createWalkField, createController, shapes } from './js/walk/index.js';
+import { createWalkField, createController, findPath, shapes } from './js/walk/index.js';
 // Who else is here: presence (transport-agnostic), a BroadcastChannel stand-in for ?presence=local, IP → province
 import { createPresence, activityOf } from './js/net/presence.js';
 import { createLocalConnect } from './js/net/local.js';
@@ -972,59 +972,88 @@ function scatterIn(s, count, x0, x1, z0, z1, ok, minSep = 0, wet = false) {
 }
 const leafTints = [0xffffff, 0xf2f7ea, 0xe6f0de, 0xfaf3df];
 
-// ---------- avatars: two original characters, each built once and cloned for every person ----------
-// 'm': undercut with a bleached-yellow swept crest, mustard sweater, satchel
-// 'f': chestnut bob with a fringe and a high ponytail, sage cardigan, navy pleated skirt, satchel
+// ---------- avatars: everyone gets their own look ----------
+// A look is { g: 'm'|'f', h: hairstyle 0–3, hc: hair colour, t: top, b: trousers/skirt, s: shoes } as palette
+// indices, rolled once per visitor and kept in this browser. Bodies (one per g) and hairstyles (four per g)
+// are built once; a person is a clone of the body plus a clone of the hairstyle, with materials swapped per
+// colour slot (toon() caches materials by colour, so a crowd shares a handful). Every design is original.
 // The parts the animation moves are named (legL, legR, body, armL, armR, hair, ski) so a clone finds its own.
-const AVATAR_SCALE = 0.85;         // was 1.15: smaller people make the places read bigger and leave room for company
-const avatarModels = {};
-function avatarModel(kind) {
-  if (avatarModels[kind]) return avatarModels[kind];
-  const F = kind === 'f';
-  const C = F
-    ? { leg: 0x4b4a5c, sock: 0x4b4a5c, shoe: 0xc8604f, top: 0x93b59a, hem: 0x34405e, skin: 0xf3c9a8, hair: 0x5b3b2f, hairHi: 0x7b5242, tie: 0xe07a5f }
-    : { leg: 0x6f7d4a, sock: 0xf6f1e6, shoe: 0x2f7f86, top: 0xe2a93b, hem: 0xc98c2e, skin: 0xf3c9a8 };
-  const o = { local: true, breakMul: 0.3 };
+const AVATAR_SCALE = 0.85;         // smaller people make the places read bigger and leave room for company
+const LOOK = {
+  top: [0xe2a93b, 0x93b59a, 0xe07a5f, 0x6fa8dc, 0xb39ddb, 0xf0e2c4, 0x4f7c5a, 0x3d5a80],
+  bottom: [0x6f7d4a, 0x34405e, 0x4a6fa5, 0x4b4a5c, 0xb59f74, 0x7d3c48],
+  shoes: [0x2f7f86, 0xc8604f, 0xf2f0ea, 0x2e3238, 0xd9a441],
+  hair: [0x2e2a2b, 0x5b3b2f, 0x7b5242, 0xe3b23c, 0xa8664a],      // black, chestnut, brown, bleached, copper
+  styles: 4,
+};
+const pick = n => Math.floor(Math.random() * n);
+const randomLook = g => ({ g, h: pick(LOOK.styles), hc: pick(LOOK.hair.length), t: pick(LOOK.top.length), b: pick(LOOK.bottom.length), s: pick(LOOK.shoes.length) });
+const defaultLook = g => (g === 'f' ? { g, h: 0, hc: 1, t: 1, b: 1, s: 1 } : { g: 'm', h: 0, hc: 3, t: 0, b: 0, s: 0 });   // the two original characters
+const lookKey = l => `${l.g}${l.h}${l.hc}${l.t}${l.b}${l.s}`;
+function validLook(l) {
+  if (!l || (l.g !== 'm' && l.g !== 'f')) return null;
+  const ok = (v, n) => Number.isInteger(v) && v >= 0 && v < n;
+  return ok(l.h, LOOK.styles) && ok(l.hc, LOOK.hair.length) && ok(l.t, LOOK.top.length) && ok(l.b, LOOK.bottom.length) && ok(l.s, LOOK.shoes.length)
+    ? { g: l.g, h: l.h, hc: l.hc, t: l.t, b: l.b, s: l.s } : null;
+}
+const tint = (hex, k) => new THREE.Color(hex).lerp(new THREE.Color(k > 0 ? 0xffffff : 0x000000), Math.abs(k)).getHex();
+const AV_O = { local: true, breakMul: 0.3 };
+const slot = (m, name) => { m.userData.slot = name; return m; };
+const avatarBodies = {};
+function avatarBody(g) {
+  if (avatarBodies[g]) return avatarBodies[g];
+  const F = g === 'f', o = AV_O, SKIN = 0xf3c9a8;
   const root = new THREE.Group();
   const cap = (r, l, hex) => mesh(new THREE.CapsuleGeometry(r, l, 4, 12), hex, o);
   const legPivot = s => {
     const p = new THREE.Group(); p.name = s < 0 ? 'legL' : 'legR'; p.position.set(s * 0.11, 0.5, 0);
-    const leg = cap(0.075, 0.28, C.leg); leg.position.y = -0.2;
-    p.add(leg, cyl(0.07, 0.07, 0.08, C.sock, 0, -0.39, 0, 10, o), box(0.13, 0.09, 0.22, C.shoe, 0, -0.47, 0.03, o));
+    const leg = F ? cap(0.075, 0.28, 0x4b4a5c) : slot(cap(0.075, 0.28, 0x6f7d4a), 'bottom'); leg.position.y = -0.2;   // tights under a skirt, or trousers
+    p.add(leg, cyl(0.07, 0.07, 0.08, F ? 0x4b4a5c : 0xf6f1e6, 0, -0.39, 0, 10, o), slot(box(0.13, 0.09, 0.22, 0x2f7f86, 0, -0.47, 0.03, o), 'shoes'));
     const ski = box(0.1, 0.03, 1.1, 0xd4574a, 0, -0.53, 0.14, o); ski.name = 'ski'; ski.visible = false; p.add(ski);
     return p;
   };
   const body = new THREE.Group(); body.name = 'body'; body.position.y = 0.5;
-  const torso = cap(0.17, 0.2, C.top); torso.position.y = 0.2;
-  const hem = F ? cyl(0.19, 0.27, 0.2, C.hem, 0, 0.0, 0, 16, o) : cyl(0.19, 0.2, 0.07, C.hem, 0, 0.04, 0, 14, o);   // skirt or sweater hem
-  const head = ball(0.19, C.skin, 0, 0.6, 0, o);
-  const hair = new THREE.Group(); hair.name = 'hair'; hair.position.set(0, 0.6, 0);
-  const parts = [torso, hem, head];
-  if (F) {
-    // bob: a shell over the top, sides and back with the face left open, a fringe over the brow,
-    // and a ponytail high on the crown (in `hair`, so it swings while running)
-    const shell = mesh(new THREE.SphereGeometry(0.212, 26, 16, Math.PI / 2 + 0.78, Math.PI * 2 - 1.56, 0, 2.15), C.hair, o);
-    shell.position.set(0, 0.6, -0.008);
-    const fringe = mesh(new THREE.SphereGeometry(0.216, 22, 10, Math.PI / 2 - 0.85, 1.7, 0, 0.98), C.hair, o);
-    fringe.position.set(0, 0.6, 0.004);
-    const tie = ball(0.045, C.tie, 0, 0.15, -0.13, o);
-    const tail = cap(0.065, 0.2, C.hairHi); tail.position.set(0, 0.06, -0.24); tail.rotation.x = 0.75;
-    hair.add(tie, tail);
-    parts.push(shell, fringe);
-  } else {
-    // short undercut cap + an asymmetric crown of spiky locks swept up and to one side, bleached yellow,
-    // a shade lighter at the tips, over dark shaved sides. Locks radiate outward rather than straight
-    // back, so the silhouette reads from behind, where the camera usually is.
-    const hairCap = mesh(new THREE.SphereGeometry(0.198, 24, 14, 0, Math.PI * 2, 0, 1.5), 0x3d4356, o);
-    hairCap.position.y = 0.6; hairCap.rotation.x = -0.7;
+  const torso = slot(cap(0.17, 0.2, 0xe2a93b), 'top'); torso.position.y = 0.2;
+  const hem = F ? slot(cyl(0.19, 0.27, 0.2, 0x34405e, 0, 0.0, 0, 16, o), 'bottom') : slot(cyl(0.19, 0.2, 0.07, 0xc98c2e, 0, 0.04, 0, 14, o), 'topDark');
+  const head = ball(0.19, SKIN, 0, 0.6, 0, o);
+  const hair = new THREE.Group(); hair.name = 'hair'; hair.position.set(0, 0.6, 0);      // the part of the hairstyle that sways
+  const bag = box(0.08, 0.2, 0.22, 0x8a5a34, 0.21, 0.08, 0.02, o);
+  const strap = box(0.03, 0.5, 0.04, 0x8a5a34, 0.03, 0.27, -0.15, o); strap.rotation.z = 0.62;
+  body.add(torso, hem, head, hair, bag, strap);
+  const armPivot = s => {
+    const p = new THREE.Group(); p.name = s < 0 ? 'armL' : 'armR'; p.position.set(s * 0.22, 0.34, 0);
+    const arm = slot(cap(0.055, 0.22, 0xe2a93b), 'top'); arm.position.y = -0.15;
+    p.add(arm, ball(0.055, SKIN, 0, -0.32, 0, o)); p.rotation.z = s * 0.12;
+    const pole = cyl(0.014, 0.014, 0.95, 0x3a3f46, 0, -0.62, 0.06, 6, o); pole.name = 'ski'; pole.rotation.x = 0.3; pole.visible = false; p.add(pole);
+    return p;
+  };
+  body.add(armPivot(-1), armPivot(1));
+  root.add(legPivot(-1), legPivot(1), body);
+  return (avatarBodies[g] = root);
+}
+// Hairstyles, relative to the head centre: `fixed` sits on the head, `swing` sways while running.
+// Slots: hair (the colour), hairHi (lighter: tips, strands), hairLo (darker: shaved sides).
+const hairStyles = {};
+function hairStyle(g, h) {
+  const key = g + h;
+  if (hairStyles[key]) return hairStyles[key];
+  const o = AV_O, fixed = new THREE.Group(), swing = new THREE.Group();
+  const shell = (thetaLen, gap = 1.56, r = 0.212) => { const m = slot(mesh(new THREE.SphereGeometry(r, 26, 16, Math.PI / 2 + gap / 2, Math.PI * 2 - gap, 0, thetaLen), 0, o), 'hair'); m.position.z = -0.008; return m; };
+  const fringe = (start = Math.PI / 2 - 0.85, len = 1.7, down = 0.98) => slot(mesh(new THREE.SphereGeometry(0.216, 22, 10, start, len, 0, down), 0, o), 'hair');
+  const cap = (thetaLen = 1.5, tilt = -0.7, r = 0.198, s = 'hairLo') => { const m = slot(mesh(new THREE.SphereGeometry(r, 24, 14, 0, Math.PI * 2, 0, thetaLen), 0, o), s); m.rotation.x = tilt; return m; };
+  const merged = (geos, s) => slot(mesh(mergeGeometries(geos.map(prep)), 0, o), s);
+  if (g === 'm' && h === 0) {
+    // swept crest: an asymmetric crown of spiky locks swept up and to one side, a shade lighter at the
+    // tips, over shaved sides; locks radiate outward so the silhouette reads from behind
+    fixed.add(cap());
     const dark = [], tips = [];
     const sweep = new THREE.Vector3(0.55, 0.7, -0.3).normalize();
     const N = 96, ga = Math.PI * (3 - Math.sqrt(5));
     for (let i = 0; i < N; i++) {
       const y = 1 - (i + 0.5) / N * 2, rr = Math.sqrt(1 - y * y), th = i * ga;
       const n = new THREE.Vector3(Math.cos(th) * rr, y, Math.sin(th) * rr);
-      if (n.y < 0.5) continue;                         // spikes on the crown only; sides and back stay short
-      if (n.z > 0.3 && n.y < 0.82) continue;           // keep the face clear
+      if (n.y < 0.5) continue;
+      if (n.z > 0.3 && n.y < 0.82) continue;
       const up = Math.min(1, n.y), side = Math.max(0, n.dot(sweep));
       const len = 0.13 + 0.3 * up * up + 0.06 * side, rad = 0.05 + 0.035 * up;
       const ax1 = n.clone().addScaledVector(sweep, 0.55).normalize();
@@ -1034,31 +1063,64 @@ function avatarModel(kind) {
       b.translate(0, len * 0.275, 0); b.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(UP, ax1)); b.translate(at.x, at.y, at.z);
       const t = new THREE.ConeGeometry(rad * 0.5, len * 0.5, 7);
       t.translate(0, len * 0.25, 0); t.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(UP, ax2)); t.translate(mid.x, mid.y, mid.z);
-      dark.push(prep(b)); tips.push(prep(t));
+      dark.push(b); tips.push(t);
     }
-    hair.add(mesh(mergeGeometries(dark), 0xe3b23c, o), mesh(mergeGeometries(tips), 0xf8e27e, o));
-    parts.push(hairCap);
+    swing.add(merged(dark, 'hair'), merged(tips, 'hairHi'));
+  } else if (g === 'm' && h === 1) {
+    fixed.add(cap(1.62, -0.45, 0.203, 'hair'));                                   // buzz cut
+  } else if (g === 'm' && h === 2) {
+    // curly top: a crown of round curls over a short cap
+    fixed.add(cap(1.5, -0.6, 0.2, 'hair'));
+    const a = [], b = [];
+    for (let i = 0; i < 22; i++) {
+      const th = i * 2.399, y = 0.55 + 0.45 * ((i * 0.618) % 1), rr = Math.sqrt(1 - y * y);
+      const n = new THREE.Vector3(Math.cos(th) * rr, y, Math.sin(th) * rr - 0.15).normalize();
+      const c = new THREE.IcosahedronGeometry(0.068 + 0.02 * ((i * 0.37) % 1), 1); c.translate(n.x * 0.19, n.y * 0.19, n.z * 0.19);
+      (i % 3 ? a : b).push(c);
+    }
+    swing.add(merged(a, 'hair'), merged(b, 'hairHi'));
+  } else if (g === 'm') {
+    // side part: short cap, a swoop combed over to one side and a little lift at the front
+    fixed.add(cap(1.55, -0.55, 0.2, 'hair'));
+    const swoop = new THREE.CapsuleGeometry(0.07, 0.22, 4, 10); swoop.rotateZ(Math.PI / 2); swoop.rotateY(0.35); swoop.translate(-0.03, 0.17, 0.05);
+    const lift = new THREE.ConeGeometry(0.06, 0.14, 8); lift.rotateX(0.9); lift.translate(0.06, 0.19, 0.12);
+    swing.add(merged([swoop], 'hair'), merged([lift], 'hairHi'));
+  } else if (h === 0) {
+    // bob with a fringe and a high ponytail
+    fixed.add(shell(2.15), fringe());
+    const tie = ball(0.045, 0xe07a5f, 0, 0.15, -0.13, o);
+    const tail = slot(mesh(new THREE.CapsuleGeometry(0.065, 0.2, 4, 12), 0, o), 'hairHi'); tail.position.set(0, 0.06, -0.24); tail.rotation.x = 0.75;
+    swing.add(tie, tail);
+  } else if (h === 1) {
+    // long and straight, down the back
+    fixed.add(shell(2.2), fringe());
+    const back = slot(mesh(new THREE.CapsuleGeometry(0.14, 0.24, 4, 14), 0, o), 'hair'); back.scale.set(1.25, 1, 0.5); back.position.set(0, -0.2, -0.12);
+    swing.add(back);
+  } else if (h === 2) {
+    // twin buns
+    fixed.add(shell(2.0), fringe());
+    [-1, 1].forEach(sd => { const bun = slot(mesh(new THREE.IcosahedronGeometry(0.09, 2), 0, o), 'hairHi'); bun.position.set(sd * 0.13, 0.15, -0.04); swing.add(bun); });
+  } else {
+    // pixie: short all round, fringe swept to one side, a little tuft on top
+    fixed.add(shell(1.8, 1.7, 0.207), fringe(Math.PI / 2 - 0.35, 1.25, 0.9));
+    const tuft = slot(mesh(new THREE.ConeGeometry(0.05, 0.13, 8), 0, o), 'hairHi'); tuft.position.set(0.04, 0.22, -0.02); tuft.rotation.z = -0.5;
+    swing.add(tuft);
   }
-  const bag = box(0.08, 0.2, 0.22, 0x8a5a34, 0.21, 0.08, 0.02, o);
-  const strap = box(0.03, 0.5, 0.04, 0x8a5a34, 0.03, 0.27, -0.15, o); strap.rotation.z = 0.62;
-  body.add(...parts, hair, bag, strap);
-  const armPivot = s => {
-    const p = new THREE.Group(); p.name = s < 0 ? 'armL' : 'armR'; p.position.set(s * 0.22, 0.34, 0);
-    const arm = cap(0.055, 0.22, C.top); arm.position.y = -0.15;
-    p.add(arm, ball(0.055, C.skin, 0, -0.32, 0, o)); p.rotation.z = s * 0.12;
-    const pole = cyl(0.014, 0.014, 0.95, 0x3a3f46, 0, -0.62, 0.06, 6, o); pole.name = 'ski'; pole.rotation.x = 0.3; pole.visible = false; p.add(pole);
-    return p;
-  };
-  body.add(armPivot(-1), armPivot(1));
-  root.add(legPivot(-1), legPivot(1), body);
-  return (avatarModels[kind] = root);
+  fixed.position.set(0, 0.6, 0);
+  return (hairStyles[key] = { fixed, swing });
 }
-/** A person: a clone of the model (geometry and materials shared) and handles on its moving parts. */
-function makeAvatar(kind) {
-  const root = avatarModel(kind).clone();
+/** A person with this look: clones share geometry and materials. */
+function makeAvatar(look) {
+  look = validLook(look) || defaultLook('m');
+  const root = avatarBody(look.g).clone();
   root.scale.setScalar(AVATAR_SCALE);
-  const a = { root, kind, ski: [] };
+  const a = { root, look, key: lookKey(look), ski: [] };
   root.traverse(o => { if (o.name === 'ski') a.ski.push(o); else if (o.name) a[o.name] = o; });
+  const style = hairStyle(look.g, look.h);
+  a.body.add(style.fixed.clone()); a.hair.add(style.swing.clone());
+  const hc = LOOK.hair[look.hc], top = LOOK.top[look.t];
+  const colours = { top, topDark: tint(top, -0.12), bottom: LOOK.bottom[look.b], shoes: LOOK.shoes[look.s], hair: hc, hairHi: tint(hc, 0.3), hairLo: tint(hc, -0.45) };
+  root.traverse(o => { if (o.isMesh && o.userData.slot) o.material = toon(colours[o.userData.slot], AV_O); });
   return a;
 }
 /** Run cycle (or ski glide). k: 0 standing … 1 full stride; phase: stride phase; t: seconds, for idle breathing. */
@@ -1076,19 +1138,23 @@ function poseAvatar(a, k, phase, t, ski) {
     a.body.position.y = 0.5 + Math.abs(Math.cos(phase)) * 0.06 * k + Math.sin(t * 2) * 0.006 * (1 - k);
     a.body.rotation.x = 0.18 * k;
   }
-  a.hair.rotation.x = -0.12 * k + Math.sin(phase * 2) * (a.kind === 'f' ? 0.12 : 0.04) * k + Math.sin(t * 1.6) * 0.012 * (1 - k);
+  a.hair.rotation.x = -0.12 * k + Math.sin(phase * 2) * (a.look.g === 'f' ? 0.12 : 0.04) * k + Math.sin(t * 1.6) * 0.012 * (1 - k);
 }
 // me: the visitor's own avatar; the choice of character is remembered in this browser
 const store = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* blocked */ } } };
-let me = makeAvatar(store.get('dream:gender') === 'f' ? 'f' : 'm');
+// me: the visitor's own avatar; the look is rolled on the first visit and kept in this browser
+let myLook = (() => { try { return validLook(JSON.parse(store.get('dream:look'))); } catch { return null; } })()
+  || randomLook(store.get('dream:gender') === 'f' ? 'f' : 'm');
+store.set('dream:look', JSON.stringify(myLook));
+let me = makeAvatar(myLook);
 scene.add(me.root);
-function setMyKind(kind) {
-  if (kind === me.kind) return;
+function setMyLook(look) {
+  myLook = look;
+  store.set('dream:look', JSON.stringify(look));
   const old = me;
-  me = makeAvatar(kind);
+  me = makeAvatar(look);
   me.root.position.copy(old.root.position); me.root.rotation.copy(old.root.rotation);
   scene.remove(old.root); scene.add(me.root);
-  store.set('dream:gender', kind);
 }
 
 // ---------- render targets & composite ----------
@@ -2239,6 +2305,7 @@ async function buildSki() {
 const X = new THREE.Vector3(1, 0, 0), Y = new THREE.Vector3(0, 1, 0);
 const qTmp = new THREE.Quaternion();
 let travel = null, activeZone = null, curStop = null, arriving = null;
+let autoWalk = null;     // click to walk: { route: Vector3[], i, best, bestT } (see walkTo)
 let moveSpeed = 0, turnLean = 0, zoomUser = 1;
 function rotatePlanet(yaw, pitch) {
   if (yaw) planet.quaternion.premultiply(qTmp.setFromAxisAngle(Y, yaw));
@@ -2288,6 +2355,7 @@ function ringRoute(fromLon, toIdx) {
 }
 function travelTo(i) {
   if (building) return;
+  autoWalk = null;
   const z = zones[i], here = avatarLocalDir(), route = [];
   if (curStop != null && zones[curStop].s === z.s) {
     // another stop at the same place: walk straight across
@@ -2320,7 +2388,7 @@ function travelTo(i) {
   startLeg(legs.shift());
   setActive(i);
 }
-function stopTravel() { travel = null; legs = []; curStop = null; }
+function stopTravel() { travel = null; legs = []; curStop = null; autoWalk = null; }
 const EASE = { inout: x => 0.5 - 0.5 * Math.cos(Math.PI * x), in: x => 1 - Math.cos(Math.PI * x / 2), out: x => Math.sin(Math.PI * x / 2), lin: x => x };
 function startLeg(leg) {
   const q0 = planet.quaternion.clone();
@@ -2373,16 +2441,56 @@ canvas.addEventListener('pointerup', e => {
     ndcV.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
     ray.setFromCamera(ndcV, camera);
     const hit = ray.intersectObject(planet, true)[0];
-    if (hit) {
-      const lp = planet.worldToLocal(hit.point.clone()).normalize();
-      let best = -1, bd = 0.24 * AW;
-      zones.forEach((z, i) => { const a = lp.angleTo(P(z.s, z.label)); if (a < bd) { bd = a; best = i; } });
-      if (best >= 0) travelTo(best);
-    }
+    if (hit) walkTo(planet.worldToLocal(hit.point.clone()).normalize());     // stops are reached from their labels and buttons
   }
   drag = null;
 });
 canvas.addEventListener('wheel', e => { zoomUser = Math.min(1.6, Math.max(0.6, zoomUser * (1 + e.deltaY * 0.001))); e.preventDefault(); }, { passive: false });
+
+// ---------- click to walk ----------
+// A click on the ground plans a route round buildings, water and railings (js/walk/path.js) and the
+// avatar follows it through the same controller as the keys; a ring marks the spot. Keys, a drag or a
+// stop button take over at any time. A spot that can't be reached flashes the ring and nothing moves.
+const overlay = new THREE.Group();            // pinned to the planet surface but not part of the planet
+scene.add(overlay);
+const marker = new THREE.Mesh(new THREE.RingGeometry(0.16, 0.26, 32).rotateX(-Math.PI / 2),
+  new THREE.MeshBasicMaterial({ color: 0xfbfcf7, transparent: true, depthWrite: false }));
+marker.visible = false; marker.renderOrder = 2;
+overlay.add(marker);
+function placeMarker(d, ok) {
+  marker.position.copy(d).multiplyScalar(R + walk.surfaceH(d) + 0.05);
+  marker.quaternion.setFromUnitVectors(Y, d);
+  marker.material.color.set(ok ? 0xfbfcf7 : 0xe07a5f);
+  marker.userData = { t0: elapsed, ok };
+  marker.visible = true;
+}
+function walkTo(dir) {
+  const route = findPath(walk, avatarLocalDir(), dir);
+  if (!route) { placeMarker(dir, false); return false; }
+  stopTravel(); setActive(null);
+  autoWalk = { route: route.map(v => new THREE.Vector3(v.x, v.y, v.z)), i: 0, best: Infinity, bestT: elapsed };
+  placeMarker(autoWalk.route[autoWalk.route.length - 1], true);
+  return true;
+}
+const rightTmp = new THREE.Vector3();
+/** One frame of following the route; returns how much of a stride this frame was (for the run cycle). */
+function followRoute(dt) {
+  const pose = readPose(), w = autoWalk.route[autoWalk.i];
+  const toward = w.clone().addScaledVector(pose.p, -w.dot(pose.p));
+  const ang = Math.atan2(toward.dot(rightTmp.crossVectors(pose.f, pose.p)), toward.dot(pose.f));
+  const go = Math.max(0, Math.cos(ang)) ** 2;                 // slow down for sharp turns
+  walkBy(Math.max(-5 * dt, Math.min(5 * dt, ang)), W.walkSpeed / R * dt * go);
+  turnLean += (-Math.sign(ang) * 0.35 * Math.min(1, Math.abs(ang)) - turnLean) * Math.min(1, dt * 6);
+  const last = autoWalk.i === autoWalk.route.length - 1, left = pose.p.angleTo(w) * R;
+  if (left < (last ? 0.2 : 0.45)) {
+    if (last) autoWalk = null; else autoWalk.i++;
+  } else {
+    const toEnd = pose.p.angleTo(autoWalk.route[autoWalk.route.length - 1]) * R;    // give up if no progress for a while
+    if (toEnd < autoWalk.best - 0.05) { autoWalk.best = toEnd; autoWalk.bestT = elapsed; }
+    else if (elapsed - autoWalk.bestT > 1.2) autoWalk = null;
+  }
+  return go;
+}
 
 // ---------- HUD ----------
 const zoneNav = document.getElementById('zones');
@@ -2546,7 +2654,7 @@ const company = (() => {
   }
   function ensure() {
     if (presence || !connect) return;
-    presence = createPresence({ connect, me: { id: visitorId, g: me.kind, prov: province } });
+    presence = createPresence({ connect, me: { id: visitorId, g: myLook.g, look: myLook, prov: province } });
     presence.onChange(hud);
     if (planetKey) presence.setPlanet(planetKey);
     if (interacted && !away) presence.start();
@@ -2578,13 +2686,16 @@ const company = (() => {
   }, 1000);
 
   // my character: 男生 / 女生
-  const showKind = () => ui.who.forEach(b => b.setAttribute('aria-pressed', b.dataset.kind === me.kind ? 'true' : 'false'));
-  ui.who.forEach(b => b.addEventListener('click', () => {
-    setMyKind(b.dataset.kind);
-    me.ski.forEach(m => { m.visible = !!(W && W.ski); });
+  // my look: 男生 / 女生 keeps the colours and hairstyle number; 换一套 rolls a new one
+  const kinds = ui.who.filter(b => b.dataset.kind);
+  const showKind = () => kinds.forEach(b => b.setAttribute('aria-pressed', b.dataset.kind === myLook.g ? 'true' : 'false'));
+  const wear = look => {
+    setMyLook(look);
     showKind();
-    if (presence) presence.setProfile({ g: me.kind });
-  }));
+    if (presence) presence.setProfile({ g: look.g, look });
+  };
+  kinds.forEach(b => b.addEventListener('click', () => { if (b.dataset.kind !== myLook.g) wear({ ...myLook, g: b.dataset.kind }); }));
+  sw('reroll').addEventListener('click', () => wear(randomLook(myLook.g)));
   showKind();
 
   function drop(id) {
@@ -2610,12 +2721,13 @@ const company = (() => {
       const ease = 1 - Math.exp(-dt * 8);
       for (const q of list.slice(0, MAX_SHOWN)) {
         let e = shown.get(q.id);
-        if (e && e.kind !== q.g) { drop(q.id); e = null; }
+        const look = validLook(q.look) || defaultLook(q.g === 'f' ? 'f' : 'm');
+        if (e && e.a.key !== lookKey(look)) { drop(q.id); e = null; }
         const P = v3(q.p), Fh = v3(q.f);
         if (!e) {
-          const a = makeAvatar(q.g === 'f' ? 'f' : 'm');
+          const a = makeAvatar(look);
           const tag = document.createElement('div'); tag.className = 'tag mini peer'; tagLayer.appendChild(tag);
-          e = { a, tag, kind: q.g, p: P.clone(), f: Fh.clone(), k: 0, phase: Math.random() * 6 };
+          e = { a, tag, p: P.clone(), f: Fh.clone(), k: 0, phase: Math.random() * 6 };
           group.add(a.root); shown.set(q.id, e);
         }
         const before = e.p.clone();
@@ -2681,6 +2793,16 @@ function frame() {
   if (fw || tr) { walkBy(tr * 1.3 * dt, fw * W.walkSpeed / R * dt); setActive(null); }
   let walking = Math.abs(fw);
   turnLean += ((tr ? -tr * 0.35 : 0) - turnLean) * Math.min(1, dt * 6);
+  if (autoWalk && !travel) walking = Math.max(walking, followRoute(dt));
+  overlay.quaternion.copy(planet.quaternion);
+  if (marker.visible) {
+    const age = elapsed - marker.userData.t0, done = marker.userData.ok ? !autoWalk : age > 0.6;
+    marker.userData.fade = done ? (marker.userData.fade ?? age) : undefined;
+    const fadeT = done ? age - marker.userData.fade : 0;
+    marker.material.opacity = Math.max(0, 0.9 - fadeT * 2.5);
+    marker.scale.setScalar(1 + 0.12 * Math.sin(age * 6));
+    if (marker.material.opacity <= 0) marker.visible = false;
+  }
 
   if (travel) {
     const tv = travel;

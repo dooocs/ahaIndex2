@@ -105,6 +105,19 @@ Who counts as online:
 `/dream` hands the scene the community project's public URL and publishable key (`dream:config`); without
 them there is no company and the scene works as before.
 
+## Done: looks and click-to-walk
+
+- **Looks.** Every visitor rolls a look on the first visit — `{ g, h, hc, t, b, s }`: 男生/女生, one of four
+  hairstyles each, hair colour, top, trousers/skirt and shoes from curated palettes — kept in this browser and
+  sent with presence, so others see the same person. 换一套 rolls again. Bodies (per g) and hairstyles (per
+  g × style) are built once; a person is a clone with materials swapped per colour slot, and `toon()` caches
+  materials by colour, so a crowd shares a handful.
+- **Click to walk.** A click on the ground plans a route with `js/walk/path.js` (A* on a small grid laid on the
+  tangent plane between the two points, cells tested lazily against the WalkField, no corner cutting, then
+  string-pulled) and the avatar follows it through the same controller as the keys. Clicking a building or
+  the water walks to the nearest standable spot on the near side; an unreachable spot flashes the ring.
+  Keys, a drag or a stop button take over at any time. Stops are still reached from their labels and buttons.
+
 ## Next
 
 1. **Pose and motion modes.** Make the pose `{ p, f }` the single source of truth and derive the planet

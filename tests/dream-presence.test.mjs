@@ -23,13 +23,14 @@ function world() {
 }
 const P = [0, 1, 0], F = [0, 0, -1];
 
-test('two visitors see each other, with province, gender and planet', async () => {
+test('two visitors see each other, with province, look and planet', async () => {
   const w = world();
-  const a = w.join('a', { prov: '浙江' }), b = w.join('b', { g: 'f', prov: '广东' });
+  const a = w.join('a', { prov: '浙江' }), b = w.join('b', { g: 'f', prov: '广东', look: { g: 'f', h: 2, hc: 0, t: 3, b: 1, s: 4 } });
   await wait(80);
   assert.deepEqual(a.counts(), { online: 2, active: 2 });
   const [peer] = a.peers();
   assert.equal(peer.id, 'b'); assert.equal(peer.prov, '广东'); assert.equal(peer.g, 'f'); assert.equal(peer.planet, 'hangzhou');
+  assert.deepEqual(peer.look, { g: 'f', h: 2, hc: 0, t: 3, b: 1, s: 4 }, 'look passes through');
   w.done();
 });
 
