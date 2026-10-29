@@ -8,9 +8,12 @@ export function createSupabaseConnect({ url, key, topic = 'dream-world' }) {
   const client = new RealtimeClient(`${url.replace(/^http/, 'ws').replace(/\/+$/, '')}/realtime/v1`, {
     params: { apikey: key, eventsPerSecond: 10 },
     heartbeatIntervalMs: 15000,
+    // JSON frames (protocol 1.0.0). The client's default 2.0.0 sends broadcasts as binary frames, which an
+    // older Realtime server (such as a hosted one that lags upstream) drops while presence still works.
+    vsn: '1.0.0',
   });
   return presenceKey => {
-    const channel = client.channel(topic, { config: { presence: { key: presenceKey }, broadcast: { self: false } } });
+    const channel = client.channel(topic, { config: { presence: { key: presenceKey }, broadcast: { self: false, ack: true } } });
     const api = {
       on(type, filter, cb) { channel.on(type, filter, cb); return api; },
       subscribe(cb) { channel.subscribe(cb); return api; },

@@ -7,8 +7,8 @@ import { createLocalConnect } from '../public/dream/js/net/local.js';
 
 const wait = ms => new Promise(r => setTimeout(r, ms));
 let n = 0;
-function world() {
-  const connect = createLocalConnect({ name: `t${++n}`, heartbeat: 60, timeout: 250 });
+function world({ broadcast = true } = {}) {
+  const connect = createLocalConnect({ name: `t${++n}`, heartbeat: 60, timeout: 250, broadcast });
   const made = [];
   const join = (id, extra = {}) => {
     const conns = [];
@@ -177,4 +177,42 @@ test('text is cleaned: control characters out, whitespace squeezed, capped witho
   const long = '😀'.repeat(MSG_MAX + 5);
   assert.equal(Array.from(cleanText(long)).length, MSG_MAX);
   assert.ok(cleanText(long).endsWith('😀'));
+});
+
+test('where broadcasts are dropped, messages still arrive through presence, once', async () => {
+  const w = world({ broadcast: false });
+  const a = w.join('a'), b = w.join('b');
+  await wait(80);
+  const got = [];
+  b.onMessage(m => got.push(m.text));
+  assert.ok(a.say('b', '收到吗？'));
+  await wait(150);                                                    // the next heartbeat carries it too: still once
+  assert.deepEqual(got, ['收到吗？']);
+  w.done();
+});
+
+test('where broadcasts are dropped, poses fall back to presence after two failures', async () => {
+  const w = world({ broadcast: false });
+  const a = w.join('a'), b = w.join('b');
+  await wait(80);
+  a.move([0, 1, 0], F, true); await wait(SAY_EVERY / 4);
+  a.move([0, 1, -0.01], F, true); await wait(30);
+  assert.equal(a.broadcastOk, false);
+  await wait(1000);
+  a.move([0.5, 1, 0], F, true);                                       // through presence now (about once a second)
+  await wait(60);
+  assert.deepEqual(b.peers()[0].p, [0.5, 1, 0]);
+  w.done();
+});
+
+test('with working broadcasts both paths deliver a message only once', async () => {
+  const w = world();
+  const a = w.join('a'), b = w.join('b');
+  await wait(80);
+  const got = [];
+  b.onMessage(m => got.push(m.text));
+  a.say('b', 'hi');
+  await wait(200);
+  assert.deepEqual(got, ['hi']);
+  w.done();
 });
