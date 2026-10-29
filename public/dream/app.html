@@ -160,6 +160,8 @@
 <script type="module">
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+// Where the avatar can stand and how it moves: plain JS, no three.js, unit-tested in tests/dream-walk.test.mjs
+import { createWalkField, createController, shapes } from './js/walk/index.js';
 
 // Authored hex colours are used as-is in every shader (no sRGB conversion), so the
 // palette on screen is exactly the palette written here.
@@ -301,8 +303,9 @@ const pathWeight = d => Math.max(roadW(d), stoneW(d));
 
 // ---------- per-planet state: each planet's builder fills these in ----------
 let sites = [], zones = [], LANDMARKS = [];
-let ROADS = [], STONES = [], STONE_RECTS = [], STONE_CIRCS = [], WALKWAYS = [], FOOT = [];
-let terrainH = () => 0, siteKeepout = () => false, blockExtra = () => false;
+let ROADS = [], STONES = [], STONE_RECTS = [], STONE_CIRCS = [];
+let terrainH = () => 0, siteKeepout = () => false;
+let walk = null, walker = null;   // the planet's WalkField and the avatar's controller (see beginWalk)
 let W = null;            // the planet being shown: { key, update, extras, ski, lawnEx, startLon }
 
 // places sit just off the ring road (the equator) and face it; roadZ is the distance from it
@@ -317,36 +320,17 @@ function makeSites(defs) {
   });
 }
 
-// ---------- decks and bridges over water (the avatar can stand on these) ----------
-function addWalk(s, a, b, hw, rise, flatH = null) {
-  const h0 = flatH ?? Math.max(terrainH(L(s, ...a)), WATER + 0.3), h1 = flatH ?? Math.max(terrainH(L(s, ...b)), WATER + 0.3);
-  const w = { s, a, b, hw, h0, h1, rise };
-  WALKWAYS.push(w);
-  return w;
-}
-const walkH = (w, t) => w.h0 + (w.h1 - w.h0) * t + w.rise * Math.sin(Math.PI * t);
-function walkwayH(d) {
-  let best = -Infinity;
-  for (const w of WALKWAYS) {
-    const p = local(w.s, d);
-    if (p && segD(p, w.a, w.b) < w.hw) best = Math.max(best, walkH(w, segT(p, w.a, w.b)));
-  }
-  return best;
-}
-const surfaceH = d => Math.max(terrainH(d), walkwayH(d));
-function onFoot(d, m = 0) {
-  for (const f of FOOT) {
-    const p = local(f.s, d);
-    if (!p) continue;
-    if (f.rect && inRect(p, f.rect[0] - m, f.rect[1] + m, f.rect[2] - m, f.rect[3] + m)) return true;
-    if (f.circ && Math.hypot(p.x - f.circ[0], p.z - f.circ[1]) < f.circ[2] + m) return true;
-  }
-  return false;
-}
-function blockedMove(from, to) {
-  if (surfaceH(to) < WATER + 0.05) return true;
-  if (onFoot(to, 0.1)) return true;
-  return blockExtra(from, to);
+// ---------- walking: one WalkField per planet (js/walk) ----------
+// A builder calls beginWalk() once R and WATER are set, then declares on `walk`:
+//   walk.footprint(site, shapes.box | shapes.circle)   buildings and props (also keep vegetation off)
+//   walk.barrier(site, shapes.polyline)                railings
+//   walk.deck(site, a, b, hw, rise, flatH?)            boardwalks and bridges over water
+// The field answers surfaceH / clearance / inFootprint; the controller does collide-and-slide.
+const terrainArg = new THREE.Vector3();
+function beginWalk() {
+  walk = createWalkField({ radius: R, water: WATER, bodyRadius: 0.1 });
+  walk.setTerrain(d => terrainH(terrainArg.set(d.x, d.y, d.z)));   // terrainH is set later in the builder
+  walker = createController(walk);
 }
 
 // ---------- shaders ----------
@@ -808,7 +792,7 @@ function buildArchBridge(w, width, color = 0xd5d0c5) {
   const len = Math.hypot(b[0] - a[0], b[1] - a[1]), fx = (b[0] - a[0]) / len, fz = (b[1] - a[1]) / len;
   const N = 14, seg = len / N;
   for (let i = 0; i < N; i++) {
-    const t0 = i / N, t1 = (i + 1) / N, h0 = walkH(w, t0), h1 = walkH(w, t1), slope = Math.atan2(h1 - h0, seg);
+    const t0 = i / N, t1 = (i + 1) / N, h0 = w.heightAt(t0), h1 = w.heightAt(t1), slope = Math.atan2(h1 - h0, seg);
     const k = kit(s, a[0] + (b[0] - a[0]) * (t0 + t1) / 2, a[1] + (b[1] - a[1]) * (t0 + t1) / 2, fx, fz, { h: (h0 + h1) / 2 });
     const deck = new THREE.BoxGeometry(width, 0.18, seg * 1.06 / Math.cos(slope)); deck.rotateX(-slope); deck.translate(0, -0.09, 0);
     k.add(deck, color);
@@ -816,7 +800,7 @@ function buildArchBridge(w, width, color = 0xd5d0c5) {
   }
   // the arch ring on both faces, springing from the water
   const mid = kit(s, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, fx, fz, { h: WATER });
-  const rr = Math.min(len * 0.3, walkH(w, 0.5) - WATER - 0.22);
+  const rr = Math.min(len * 0.3, w.heightAt(0.5) - WATER - 0.22);
   [-1, 1].forEach(sd => { const t = new THREE.TorusGeometry(rr, 0.07, 6, 18, Math.PI); t.rotateY(Math.PI / 2); t.translate(sd * (width / 2 - 0.04), 0, 0); mid.add(t, color); });
 }
 // ---------- 西湖: causeways, bridges, pagodas, 三潭印月 ----------
@@ -1077,6 +1061,7 @@ async function buildHangzhou() {
   R = 50; AW = 26 / R;
   const AREA = (R / 26) ** 2;   // vegetation counts were tuned at R = 26
   WATER = -0.55;
+  beginWalk();
   const MALL_NAME = '向上天街';      // fictional mall name
   // roadZ: how far the place's centre sits from the ring road; side: north (+1) or south (-1) of it.
   // The ring has room left between 天街 and 文体中心 and between 西湖 and home for new places.
@@ -1091,6 +1076,8 @@ async function buildHangzhou() {
 
 // 小区: three 12-floor towers round a courtyard, behind a railing with a gate on the road side
 const HOME_FENCE = { x0: -9.6, x1: 9.6, z0: -8.6, z1: 4.4 }, HOME_GATE = 1.2;
+// the railing all round the courtyard except the gate: drawn by buildHome, walked against via walk.barrier
+const HOME_RAIL = (({ x0, x1, z0, z1 }, gw) => [[-gw, z1], [x0, z1], [x0, z0], [x1, z0], [x1, z1], [gw, z1]])(HOME_FENCE, HOME_GATE + 0.55);
 const TOWERS = [[-5.9, -3.6], [0, -5.7], [5.9, -3.6]], TOWER = { w: 3.3, d: 2.3, floors: 12, fh: 0.46 };
 const CAR = [4.6, 2.2], FOUNTAIN = [0, 0.5];
 // 天街
@@ -1191,21 +1178,31 @@ terrainH = function (d, w = pathWeight(d)) {
   return h;
 };
 const DECK_H = WATER + 0.42;
-for (let i = 0; i < BOARDWALK.length - 1; i++) addWalk(XIXI, BOARDWALK[i], BOARDWALK[i + 1], 0.42, 0, DECK_H);
-addWalk(XIXI, [0.3, 1.0], [1.7, 1.0], 0.7, 0, DECK_H);
-const XIXI_BRIDGE = addWalk(XIXI, [3.4, 0.5], [3.4, -2.0], 0.4, 0.7);
-const DUANQIAO = addWalk(LAKE, [6.75, 1.35], [6.75, 3.45], 0.45, 0.45);
-const SUDI_WALKS = SUDI_BRIDGES.map(xb => addWalk(LAKE, [xb - 0.8, sudiZ(xb - 0.8)], [xb + 0.8, sudiZ(xb + 0.8)], 0.36, 0.38));
+for (let i = 0; i < BOARDWALK.length - 1; i++) walk.deck(XIXI, BOARDWALK[i], BOARDWALK[i + 1], 0.42, 0, DECK_H);
+walk.deck(XIXI, [0.3, 1.0], [1.7, 1.0], 0.7, 0, DECK_H);
+const XIXI_BRIDGE = walk.deck(XIXI, [3.4, 0.5], [3.4, -2.0], 0.4, 0.7);
+const DUANQIAO = walk.deck(LAKE, [6.75, 1.35], [6.75, 3.45], 0.45, 0.45);
+const SUDI_WALKS = SUDI_BRIDGES.map(xb => walk.deck(LAKE, [xb - 0.8, sudiZ(xb - 0.8)], [xb + 0.8, sudiZ(xb + 0.8)], 0.36, 0.38));
 await slice();
-// ---------- building footprints: block walking, keep grass off floors ----------
-TOWERS.forEach(([x, z]) => FOOT.push({ s: HOME, rect: [x - 1.75, x + 1.75, z - 1.25, z + 1.8] }));
-FOOT.push({ s: HOME, circ: [FOUNTAIN[0], FOUNTAIN[1], 1.3] }, { s: HOME, rect: [1.7, 2.8, HOME_FENCE.z1 + 0.3, HOME_FENCE.z1 + 1.3] }, { s: HOME, rect: [CAR[0] - 0.75, CAR[0] + 0.75, CAR[1] - 1.25, CAR[1] + 1.25] });
-FOOT.push({ s: MALL, rect: [MALL_BOX.x0 - 0.1, MALL_BOX.x1 + 0.1, MALL_BOX.z0 - 0.1, MALL_BOX.z1 + 0.15] }, { s: MALL, circ: [0, -0.6, 2.1] });
-FOOT.push({ s: SPORTS, circ: [DRUM.cx, DRUM.cz, DRUM.r + 0.12] });
-XIXI_HOUSES.forEach(([x, z, w, d]) => FOOT.push({ s: XIXI, rect: [x - w / 2 - 0.15, x + w / 2 + 0.15, z - d / 2 - 0.1, z + d / 2 + 0.1] }));
-FOOT.push({ s: LAKE, circ: [LEIFENG[0], LEIFENG[1], 1.3] }, { s: LAKE, circ: [BAOCHU[0], BAOCHU[1], 0.7] });
+// ---------- what blocks walking: building footprints (also keep grass off floors), the railing ----------
+{
+  const box = (s, x0, x1, z0, z1) => walk.footprint(s, shapes.box(x0, x1, z0, z1));
+  const disc = (s, x, z, r) => walk.footprint(s, shapes.circle(x, z, r));
+  TOWERS.forEach(([x, z]) => box(HOME, x - 1.75, x + 1.75, z - 1.25, z + 1.8));
+  disc(HOME, FOUNTAIN[0], FOUNTAIN[1], 1.3);
+  box(HOME, 1.7, 2.8, HOME_FENCE.z1 + 0.3, HOME_FENCE.z1 + 1.3);
+  box(HOME, CAR[0] - 0.75, CAR[0] + 0.75, CAR[1] - 1.25, CAR[1] + 1.25);
+  box(MALL, MALL_BOX.x0 - 0.1, MALL_BOX.x1 + 0.1, MALL_BOX.z0 - 0.1, MALL_BOX.z1 + 0.15);
+  disc(MALL, 0, -0.6, 2.1);
+  disc(SPORTS, DRUM.cx, DRUM.cz, DRUM.r + 0.12);
+  XIXI_HOUSES.forEach(([x, z, w, d]) => box(XIXI, x - w / 2 - 0.15, x + w / 2 + 0.15, z - d / 2 - 0.1, z + d / 2 + 0.1));
+  disc(LAKE, LEIFENG[0], LEIFENG[1], 1.3);
+  disc(LAKE, BAOCHU[0], BAOCHU[1], 0.7);
+  // the courtyard railing is the same polyline that buildHome draws; the gate pillars close its ends
+  walk.barrier(HOME, shapes.polyline(HOME_RAIL, 0.1));
+  [-1, 1].forEach(sd => walk.barrier(HOME, shapes.box(sd * (HOME_GATE + 0.28) - 0.3, sd * (HOME_GATE + 0.28) + 0.3, HOME_FENCE.z1 - 0.3, HOME_FENCE.z1 + 0.3)));
+}
 const inFence = p => inRect(p, HOME_FENCE.x0, HOME_FENCE.x1, HOME_FENCE.z0, HOME_FENCE.z1);
-blockExtra = (from, to) => { const a = local(HOME, from), b = local(HOME, to); return !!(a && b && inFence(a) !== inFence(b) && Math.abs(b.x) > HOME_GATE - 0.2); };
 await slice();
 // ---------- stops shown in the HUD, and smaller landmark tags ----------
 // via: points walked through after leaving the ring road; stand/look: where to stop and what to face
@@ -1260,8 +1257,7 @@ function buildTower(x, z) {
 function buildHome() {
   TOWERS.forEach(([x, z]) => buildTower(x, z));
   // railing on a low stone base, all round the courtyard except the gate
-  const { x0, x1, z0, z1 } = HOME_FENCE, gw = HOME_GATE + 0.55;
-  const run = [[-gw, z1], [x0, z1], [x0, z0], [x1, z0], [x1, z1], [gw, z1]];
+  const { z1 } = HOME_FENCE, run = HOME_RAIL;
   const bars = [], baseG = new THREE.BoxGeometry(0.2, 0.3, 1), railG = new THREE.BoxGeometry(0.05, 0.05, 1), postG = new THREE.BoxGeometry(0.16, 1.15, 0.16);
   for (let i = 0; i < run.length - 1; i++) {
     const [ax, az] = run[i], [bx, bz] = run[i + 1];
@@ -1697,7 +1693,7 @@ await slice();
   const blade = (x, z, h, lean) => { const g = new THREE.ConeGeometry(0.05, h, 3, 1); g.translate(0, h / 2, 0); g.rotateZ(lean); g.translate(x, 0, z); return prep(g); };
   const tuft = mergeGeometries([blade(0, 0, 0.34, 0.1), blade(0.07, 0.03, 0.26, -0.35), blade(-0.06, 0.04, 0.24, 0.4), blade(0.01, -0.07, 0.22, -0.15)]);
   const tn = tuft.attributes.normal; for (let i = 0; i < tn.count; i++) tn.setXYZ(i, 0, 1, 0);
-  const grassDirs = scatterDirs(Math.round(2700 * AREA), 0, 0, 0.4, 160000, d => !onFoot(d, 0.15));
+  const grassDirs = scatterDirs(Math.round(2700 * AREA), 0, 0, 0.4, 160000, d => !walk.inFootprint(d, 0.15));
   const grass = new THREE.InstancedMesh(tuft, toon(0x7cb85e, { shade: 0x4a8468, breakMul: 0.5 }), grassDirs.length);
   grassDirs.forEach((d, i) => grass.setMatrixAt(i, matrixOn(d, rand() * 6.28, 0.7 + rand() * 0.8)));
   grass.receiveShadow = true; grass.layers.set(1);
@@ -1705,7 +1701,7 @@ await slice();
 
   await slice();
   const fg = new THREE.IcosahedronGeometry(0.07, 0); fg.translate(0, 0.16, 0);
-  const flowerDirs = scatterDirs(Math.round(310 * AREA), 0, 0, 0.3, 40000, d => !onFoot(d, 0.15));
+  const flowerDirs = scatterDirs(Math.round(310 * AREA), 0, 0, 0.3, 40000, d => !walk.inFootprint(d, 0.15));
   const flowers = new THREE.InstancedMesh(fg, toon(0xffffff, { shade: 0xb9b6c8, breakMul: 0 }), flowerDirs.length);
   const fc = [0xfaf6ee, 0xf3d35c, 0xe98a7a, 0xb9a3e3];
   const c = new THREE.Color();
@@ -1722,6 +1718,7 @@ W.startLon = -12;
 // ======================= 滑雪星球: 北海道 + 羊蹄山 + 崇礼 + 雪如意 =======================
 async function buildSki() {
   R = 40; AW = 26 / R; WATER = -6;            // no open water on this planet
+  beginWalk();
   const HW = u => u / 23.9;                    // half-width in units → the width unit arcsIn expects
   sites = makeSites([
     { key: 'hokkaido', roadZ: 6.2, side: 1, lon: 0 },
@@ -1786,13 +1783,18 @@ async function buildSki() {
     cho: [[-7.4, -0.6, 2.6, 1.8, 1.6, 0x3d4148], [7.0, -0.8, 3.0, 2.0, 2.2, 0x3d4148], [8.9, 2.7, 1.8, 1.6, 1.4, 0x5c3f36]],
   };
   const HOTEL = [7.4, -0.6, 3.4, 2.2, 2.9];
-  VILLAGE.hok.forEach(([x, z, w, d]) => FOOT.push({ s: HOK, rect: [x - w / 2 - 0.2, x + w / 2 + 0.2, z - d / 2 - 0.2, z + d / 2 + 0.2] }));
-  VILLAGE.cho.forEach(([x, z, w, d]) => FOOT.push({ s: CHO, rect: [x - w / 2 - 0.2, x + w / 2 + 0.2, z - d / 2 - 0.2, z + d / 2 + 0.2] }));
-  FOOT.push({ s: HOK, rect: [HOTEL[0] - HOTEL[2] / 2 - 0.2, HOTEL[0] + HOTEL[2] / 2 + 0.2, HOTEL[1] - HOTEL[3] / 2 - 0.2, HOTEL[1] + HOTEL[3] / 2 + 0.2] });
-  FOOT.push({ s: HOK, circ: [ONSEN[0], ONSEN[1], 1.45] });
-  LIFTS.forEach(l => FOOT.push({ s: l.s, rect: [l.x - 1.0, l.x + 1.0, l.z0 - 0.8, l.z0 + 0.9] }));
-  FOOT.push({ s: RUY, circ: [0, RING.z, 1.2] }, { s: RUY, rect: [2.4, 3.4, -6.7, -5.7] });
-  [-1, 1].forEach(sd => FOOT.push({ s: RUY, rect: sd < 0 ? [-5.4, -3.0, -0.8, 3.6] : [3.0, 5.4, -0.8, 3.6] }));
+  {
+    const box = (s, x0, x1, z0, z1) => walk.footprint(s, shapes.box(x0, x1, z0, z1));
+    VILLAGE.hok.forEach(([x, z, w, d]) => box(HOK, x - w / 2 - 0.2, x + w / 2 + 0.2, z - d / 2 - 0.2, z + d / 2 + 0.2));
+    VILLAGE.cho.forEach(([x, z, w, d]) => box(CHO, x - w / 2 - 0.2, x + w / 2 + 0.2, z - d / 2 - 0.2, z + d / 2 + 0.2));
+    box(HOK, HOTEL[0] - HOTEL[2] / 2 - 0.2, HOTEL[0] + HOTEL[2] / 2 + 0.2, HOTEL[1] - HOTEL[3] / 2 - 0.2, HOTEL[1] + HOTEL[3] / 2 + 0.2);
+    walk.footprint(HOK, shapes.circle(ONSEN[0], ONSEN[1], 1.45));
+    LIFTS.forEach(l => box(l.s, l.x - 1.0, l.x + 1.0, l.z0 - 0.8, l.z0 + 0.9));
+    walk.footprint(RUY, shapes.circle(0, RING.z, 1.2));
+    box(RUY, 2.4, 3.4, -6.7, -5.7);
+    box(RUY, -5.4, -3.0, -0.8, 3.6);
+    box(RUY, 3.0, 5.4, -0.8, 3.6);
+  }
 
   zones = [
     { name: '北海道', s: HOK, via: [], stand: [0.6, 3.6], look: [0.6, -14], zoom: 2.4, label: [0.6, -12], h: 6.5 },
@@ -1967,7 +1969,7 @@ async function buildSki() {
   {
     const liftLane = (d) => LIFTS.some(l => { const p = local(l.s, d); return p && Math.abs(p.x - l.x) < 1.4 && p.z < l.z0 + 1 && p.z > l.z1 - 1; });
     const clear = d => {
-      if (stoneW(d) > 0.45 || roadW(d) > 0.02 || onFoot(d, 0.6) || liftLane(d)) return false;
+      if (stoneW(d) > 0.45 || roadW(d) > 0.02 || walk.inFootprint(d, 0.6) || liftLane(d)) return false;
       let p;
       if ((p = local(HOK, d)) && (inRect(p, -10.5, 10.5, -1.8, HOK.roadZ + 1) || yoteiView(p))) return false;
       if ((p = local(CHO, d)) && inRect(p, -10.5, 10.5, -1.8, CHO.roadZ + 1)) return false;
@@ -2077,17 +2079,31 @@ function rotatePlanet(yaw, pitch) {
   post.uniforms.uSkyDrift.value += pitch;
 }
 function avatarLocalDir() { return new THREE.Vector3(0, 1, 0).applyQuaternion(planet.quaternion.clone().invert()); }
-// free walking: undo a step that would end in water, inside a building, or through the railing
-function tryRotate(yaw, pitch) {
-  const from = avatarLocalDir(), q = planet.quaternion.clone();
-  const sy = post.uniforms.uSkyYaw.value, sd = post.uniforms.uSkyDrift.value;
-  rotatePlanet(yaw, pitch);
-  if (pitch && blockedMove(from, avatarLocalDir())) {
-    planet.quaternion.copy(q); post.uniforms.uSkyYaw.value = sy; post.uniforms.uSkyDrift.value = sd;
-    rotatePlanet(yaw, 0);
-    return false;
-  }
-  return true;
+
+// Free walking. The planet's rotation stays the single source of truth for where the avatar is
+// (the autopilot below drives it directly); for a free step it is read out as a pose
+// { p: position, f: heading } in planet space, handed to the controller (collide-and-slide in
+// js/walk), and written back. The avatar sits at world +Y facing world −Z, so the planet's
+// rotation is the one taking p → +Y, f → −Z and right = f × p → +X.
+const NEG_Z = new THREE.Vector3(0, 0, -1), poseQ = new THREE.Quaternion(), poseM = new THREE.Matrix4();
+const poseV = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
+function readPose() {
+  poseQ.copy(planet.quaternion).invert();
+  return { p: Y.clone().applyQuaternion(poseQ), f: NEG_Z.clone().applyQuaternion(poseQ) };
+}
+function writePose({ p, f }) {
+  const [P, F, Rt] = poseV;
+  P.set(p.x, p.y, p.z); F.set(f.x, f.y, f.z); Rt.crossVectors(F, P);
+  poseM.makeBasis(Rt, P, F.negate());            // world → planet space
+  planet.quaternion.setFromRotationMatrix(poseM).invert();
+}
+/** turn: radians, > 0 to the right; forward: radians of arc. Returns false if something got in the way. */
+function walkBy(turn, forward) {
+  const r = walker.move(readPose(), { turn, forward });
+  writePose(r);
+  post.uniforms.uSkyYaw.value += turn;
+  post.uniforms.uSkyDrift.value += r.advanced;
+  return !r.blocked;
 }
 
 // A trip is a queue of legs along the ring road: out of the current place, node to node
@@ -2178,7 +2194,7 @@ canvas.addEventListener('pointermove', e => {
   drag.x = e.clientX; drag.y = e.clientY; drag.moved += Math.abs(dx) + Math.abs(dy);
   if (drag.moved > 5) {
     canvas.classList.add('dragging'); stopTravel(); setActive(null);
-    tryRotate(dx * 0.004, dy * 0.0025);
+    walkBy(dx * 0.004, dy * 0.0025);
     moveSpeed = Math.min(1, moveSpeed + Math.abs(dy) * 0.02);
   }
 });
@@ -2269,8 +2285,8 @@ async function loadWorld(key) {
   building = true;
   disposeWorld();
   sites = []; zones = []; LANDMARKS = [];
-  ROADS = []; STONES = []; STONE_RECTS = []; STONE_CIRCS = []; WALKWAYS = []; FOOT = [];
-  terrainH = () => 0; siteKeepout = () => false; blockExtra = () => false;
+  ROADS = []; STONES = []; STONE_RECTS = []; STONE_CIRCS = []; walk = walker = null;
+  terrainH = () => 0; siteKeepout = () => false;
   blobGeos.length = 0; batches.clear();
   planet = new THREE.Group();
   scene.add(planet);
@@ -2349,7 +2365,7 @@ function frame() {
   // keyboard walking
   const fw = (keys.has('w') || keys.has('arrowup') ? 1 : 0) - (keys.has('s') || keys.has('arrowdown') ? 1 : 0);
   const tr = (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0);
-  if (fw || tr) { tryRotate(tr * 1.3 * dt, fw * 0.2 * dt); setActive(null); }
+  if (fw || tr) { walkBy(tr * 1.3 * dt, fw * 0.2 * dt); setActive(null); }
   let walking = Math.abs(fw);
   turnLean += ((tr ? -tr * 0.35 : 0) - turnLean) * Math.min(1, dt * 6);
 
@@ -2380,7 +2396,7 @@ function frame() {
   // avatar stands on whatever ground is under the north pole right now
   invQ.copy(planet.quaternion).invert();
   avatarDir.set(0, 1, 0).applyQuaternion(invQ);
-  avatar.position.set(0, R + surfaceH(avatarDir), 0);
+  avatar.position.set(0, R + walk.surfaceH(avatarDir), 0);
   camLift += (avatar.position.y - R - camLift) * Math.min(1, dt * 2.5);
   avatar.rotation.y = Math.PI + turnLean;   // modelled facing +z; turn to face away from camera
 
