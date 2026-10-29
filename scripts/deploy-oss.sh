@@ -119,6 +119,14 @@ if [[ "${SKIP_CDN:-0}" != 1 && "$TARGET" == oss && -z "$PREFIX" ]]; then
   fi
 fi
 
+# 4b. IndexNow: tell Bing & co. which pages changed (after the CDN serves them).
+#     Production daily/feed deploys only; a full rebuild changes every object
+#     without the content changing, which is not what IndexNow is for.
+#     Never fails the deploy.
+if [[ "${SKIP_INDEXNOW:-0}" != 1 && "$TARGET" == oss && -z "$PREFIX" && "$MODE" != full ]]; then
+  node scripts/lib/indexnow.mjs --urls "$WORK/cdn-urls.txt" --dist "$DIST" || true
+fi
+
 # 5. Objects that no deploy writes any more (old asset hashes, removed pages).
 if [[ "$MODE" == full && "$CLEANUP" != none ]]; then
   [[ -f "$INVENTORY" ]] || { echo "Cleanup needs the bucket inventory ($INVENTORY)" >&2; exit 1; }
