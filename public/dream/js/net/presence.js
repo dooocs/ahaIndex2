@@ -14,6 +14,11 @@
 export const IDLE_AFTER = 2 * 60e3;          // no input for this long → idle
 export const AWAY_AFTER = 5 * 60e3;          // tab hidden for this long → leave the channel
 export const POSE_EVERY = 200;               // ms between pose messages while moving (5 a second)
+export const MSG_MAX = 60;                   // characters per message
+export const SAY_EVERY = 1200;               // ms between messages from one person
+
+/** A message as it may be shown: control characters out, whitespace squeezed, capped. */
+export const cleanText = text => Array.from(String(text ?? '').replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e]/g, ' ').replace(/\s+/g, ' ').trim()).slice(0, MSG_MAX).join('').trim();
 
 /** 'active' | 'idle' | 'away' from what the page knows about the person in front of it. */
 export function activityOf({ visible, hiddenSince = 0, lastInput, now }) {
@@ -35,8 +40,10 @@ export function createPresence({ connect, me, now = () => Date.now() }) {
   let pose = null, moving = false, lastSent = 0, posed = false;   // posed: presence carries a pose
   const profile = { ...me };
   const peers = new Map();       // id → { id, g, prov, planet, act, p, f, t }
-  const listeners = new Set();
+  const listeners = new Set(), inbox = new Set();
   const emit = () => listeners.forEach(f => f());
+  let lastSay = -Infinity;
+  const seenMsg = new Set();
 
   const meta = () => ({ id: profile.id, g: profile.g, look: profile.look, prov: profile.prov, planet, act, p: round(pose?.p), f: round(pose?.f), t: now() });
   const retrack = () => { if (joined) { posed = !!pose; channel.track(meta()); } };
@@ -64,6 +71,14 @@ export function createPresence({ connect, me, now = () => Date.now() }) {
     emit();
   }
 
+  function onMsg({ payload: m }) {
+    // only messages to me, from someone the channel says is here, once each
+    if (!m || m.to !== profile.id || !peers.has(m.from) || seenMsg.has(m.mid)) return;
+    seenMsg.add(m.mid);
+    const text = cleanText(m.text);
+    if (text) inbox.forEach(f => f({ from: m.from, text, t: m.t }));
+  }
+
   return {
     /** Join (idempotent). Call after the first real interaction, so crawlers never count. */
     start() {
@@ -71,6 +86,7 @@ export function createPresence({ connect, me, now = () => Date.now() }) {
       channel = connect(profile.id);
       channel.on('presence', { event: 'sync' }, onSync);
       channel.on('broadcast', { event: 'pose' }, onPose);
+      channel.on('broadcast', { event: 'msg' }, onMsg);
       channel.subscribe(status => {
         if (status === 'SUBSCRIBED') { joined = true; retrack(); emit(); }
         else if (status === 'CLOSED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') { joined = false; emit(); }
@@ -103,6 +119,20 @@ export function createPresence({ connect, me, now = () => Date.now() }) {
       if (moving && !isMoving) retrack();
       moving = isMoving;
     },
+    /**
+     * Say something to one person. Returns the text as sent, or null (not joined, too soon, empty, or
+     * they're not here). Delivery is a broadcast on the shared channel that only the addressee shows,
+     * so it is a nudge, not a private message.
+     */
+    say(to, text) {
+      const t = now(), clean = cleanText(text);
+      if (!joined || !clean || !peers.has(to) || t - lastSay < SAY_EVERY) return null;
+      lastSay = t;
+      channel.send({ type: 'broadcast', event: 'msg', payload: { from: profile.id, to, text: clean, t, mid: `${profile.id}:${t}` } });
+      return clean;
+    },
+    /** cb({ from, text, t }) for each message to me */
+    onMessage(f) { inbox.add(f); return () => inbox.delete(f); },
     /** Everyone else, on any planet. */
     peers: () => [...peers.values()],
     /** Head counts including me once I have joined. */

@@ -118,6 +118,15 @@ them there is no company and the scene works as before.
   the water walks to the nearest standable spot on the near side; an unreachable spot flashes the ring.
   Keys, a drag or a stop button take over at any time. Stops are still reached from their labels and buttons.
 
+## Done: saying hello
+
+Click someone (their person or their province tag) to open a small composer: one-click emoji and phrases,
+or up to 60 characters of free text. They see a bubble over your head and a note they can reply to or mute
+(muted people are remembered per browser). `presence.say(to, text)` / `onMessage` carry it: a broadcast on
+the shared channel that only the addressee shows — a nudge, not a private message — from someone the
+channel says is present, at most one every 1.2 s, cleaned (control and bidi characters out, whitespace
+squeezed, capped without splitting emoji) and always rendered as text. A word filter is still to come.
+
 ## Next
 
 1. **Pose and motion modes.** Make the pose `{ p, f }` the single source of truth and derive the planet

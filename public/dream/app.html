@@ -104,7 +104,39 @@
   .planets button[aria-pressed="true"] { background: var(--accent); color: #f4f7f2; }
   .planets button:focus-visible { outline: 2px solid var(--sun); outline-offset: 1px; }
   #peer-tags { position: fixed; inset: 0; pointer-events: none; }
-  .tag.peer { font: 400 11px/1 var(--display); letter-spacing: 0.06em; padding: 3px 5px 2px; border-width: 1.5px; background: rgba(251, 252, 247, 0.9); pointer-events: none; cursor: default; }
+  .tag.peer { font: 500 11px/1 var(--body); letter-spacing: 0.04em; padding: 3px 5px 3px; border-width: 1.5px; background: rgba(251, 252, 247, 0.9); cursor: pointer; }
+  .tag.peer:hover { background: #fff; }
+  .bubble {
+    position: absolute; left: 0; top: 0; max-width: 220px; padding: 6px 10px; pointer-events: none;
+    font: 13px/1.4 var(--body); color: var(--ink); background: #fff; border: 2px solid var(--ink); border-radius: 12px;
+    white-space: normal; word-break: break-word; transition: opacity .2s;
+  }
+  .bubble::after { content: ""; position: absolute; left: 50%; bottom: -8px; width: 10px; height: 10px; background: #fff; border-right: 2px solid var(--ink); border-bottom: 2px solid var(--ink); transform: translateX(-50%) rotate(45deg); }
+  .bubble.mine { background: #fff7e0; }
+  .bubble.mine::after { background: #fff7e0; }
+  .say {
+    position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(84px + env(safe-area-inset-bottom, 0px)); width: min(440px, calc(100vw - 32px));
+    display: grid; gap: 8px; padding: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); font: 14px/1.3 var(--body); color: var(--ink);
+  }
+  .say[hidden] { display: none; }
+  .say-head { display: flex; align-items: center; justify-content: space-between; font: 400 15px/1 var(--display); letter-spacing: 0.06em; }
+  .say-head button { border: 0; background: transparent; font-size: 18px; line-height: 1; cursor: pointer; color: var(--ink-soft); padding: 2px 6px; }
+  .say-quick { display: flex; flex-wrap: wrap; gap: 6px; }
+  .say-quick button { font: 13px/1 var(--body); padding: 6px 9px; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--ink); cursor: pointer; }
+  .say-quick button:hover { border-color: var(--accent); }
+  .say-row { display: flex; gap: 6px; }
+  .say-row input { flex: 1; min-width: 0; font: 14px/1 var(--body); padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink); }
+  .say-row input:focus-visible { outline: 2px solid var(--sun); outline-offset: 0; }
+  .say-row button { font: 14px/1 var(--body); padding: 8px 14px; border: 0; border-radius: 8px; background: var(--accent); color: #f4f7f2; cursor: pointer; }
+  .say.nope { animation: nope .3s; }
+  @keyframes nope { 25% { transform: translateX(calc(-50% - 6px)); } 75% { transform: translateX(calc(-50% + 6px)); } }
+  .inbox { position: fixed; right: 14px; top: calc(104px + env(safe-area-inset-top, 0px) + var(--inset-top, 0px)); width: 260px; display: flex; flex-direction: column; gap: 6px; }
+  .note { padding: 8px 10px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; font: 13px/1.45 var(--body); color: var(--ink); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+  .note p { margin: 0 0 6px; word-break: break-word; }
+  .note div { display: flex; justify-content: flex-end; gap: 6px; }
+  .note button { font: 12px/1 var(--body); padding: 5px 9px; border: 1px solid var(--line); border-radius: 6px; background: #fff; color: var(--ink); cursor: pointer; }
+  .note button[data-a="reply"] { background: var(--accent); border-color: var(--accent); color: #f4f7f2; }
   .tag.peer.idle { color: var(--ink-soft, #6b7378); border-style: dashed; }
   .company {
     position: fixed; right: 14px; top: calc(14px + env(safe-area-inset-top, 0px) + var(--inset-top, 0px));
@@ -163,6 +195,12 @@
 </details>
 
 <nav class="planets" id="planets" aria-label="星球"></nav>
+<form class="say" id="say" hidden autocomplete="off">
+  <div class="say-head"><span id="say-to">说点什么</span><button type="button" id="say-close" aria-label="关闭">×</button></div>
+  <div class="say-quick" id="say-quick"></div>
+  <div class="say-row"><input id="say-text" maxlength="60" placeholder="说点什么…（回车发送）" enterkeyhint="send"><button type="submit">发送</button></div>
+</form>
+<div class="inbox" id="inbox" aria-live="polite"></div>
 <aside class="company" aria-label="在线">
   <div class="online" id="online" hidden><span class="dot"></span><span id="online-count">1 人在线</span><small id="online-sub"></small></div>
   <div class="who" id="who" role="group" aria-label="我的形象"><span>我是</span><button type="button" data-kind="m">男生</button><button type="button" data-kind="f">女生</button><button type="button" id="reroll" title="随机换一套发型和衣服" aria-label="换一套">换一套</button></div>
@@ -2440,8 +2478,12 @@ canvas.addEventListener('pointerup', e => {
   if (drag && drag.moved <= 5 && !building) {
     ndcV.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
     ray.setFromCamera(ndcV, camera);
-    const hit = ray.intersectObject(planet, true)[0];
-    if (hit) walkTo(planet.worldToLocal(hit.point.clone()).normalize());     // stops are reached from their labels and buttons
+    const peer = company.pick(ray);
+    if (peer) company.openSay(peer);                                          // clicked someone: say hello
+    else {
+      const hit = ray.intersectObject(planet, true)[0];
+      if (hit) walkTo(planet.worldToLocal(hit.point.clone()).normalize());   // stops are reached from their labels and buttons
+    }
   }
   drag = null;
 });
@@ -2656,6 +2698,7 @@ const company = (() => {
     if (presence || !connect) return;
     presence = createPresence({ connect, me: { id: visitorId, g: myLook.g, look: myLook, prov: province } });
     presence.onChange(hud);
+    presence.onMessage(onMessage);
     if (planetKey) presence.setPlanet(planetKey);
     if (interacted && !away) presence.start();
   }
@@ -2698,6 +2741,76 @@ const company = (() => {
   sw('reroll').addEventListener('click', () => wear(randomLook(myLook.g)));
   showKind();
 
+  // ---------- messages: click someone (their person or their tag), say something ----------
+  // Emoji and short phrases are one click; free text up to 60 characters. Delivery and limits live in
+  // presence.js (say / onMessage). The other person sees a bubble over your head and a note they can
+  // reply to or mute. Muted people are remembered in this browser.
+  const QUICK = ['👋', '👍', '❤️', '😄', '🎉', '你好呀', '一起逛逛？', '这里好美', '你从哪来？', '晚安'];
+  const say = { form: sw('say'), to: sw('say-to'), text: sw('say-text'), quick: sw('say-quick'), close: sw('say-close') };
+  const inboxEl = sw('inbox');
+  const muted = new Set((() => { try { return JSON.parse(store.get('dream:muted')) || []; } catch { return []; } })());
+  const bubbles = new Map();                  // 'me' | peer id → { el, until }
+  let sayTo = null;
+  const peerOf = id => presence && presence.peers().find(p => p.id === id);
+  const nameOf = q => `${q && q.prov && q.prov !== '未知' ? `来自${q.prov}` : '远方'}的朋友`;
+  QUICK.forEach(t => {
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = t;
+    b.addEventListener('click', () => send(t)); say.quick.appendChild(b);
+  });
+  function openSay(id) {
+    const q = peerOf(id);
+    if (!q || muted.has(id)) return;
+    begin();
+    sayTo = id;
+    say.to.textContent = `对${nameOf(q)}说`;
+    say.form.hidden = false;
+    say.text.focus();
+  }
+  function closeSay() { say.form.hidden = true; sayTo = null; say.text.blur(); }
+  function send(text) {
+    const sent = presence && sayTo ? presence.say(sayTo, text) : null;
+    if (!sent) { say.form.classList.remove('nope'); void say.form.offsetWidth; say.form.classList.add('nope'); return; }
+    showBubble('me', sent);
+    say.text.value = '';
+  }
+  say.form.addEventListener('submit', e => { e.preventDefault(); send(say.text.value); });
+  say.close.addEventListener('click', closeSay);
+  addEventListener('keydown', e => { if (e.key === 'Escape' && !say.form.hidden) closeSay(); });
+  function showBubble(key, text) {
+    let b = bubbles.get(key);
+    if (!b) { const el = document.createElement('div'); el.className = key === 'me' ? 'bubble mine' : 'bubble'; tagLayer.appendChild(el); b = { el }; bubbles.set(key, b); }
+    b.el.textContent = text;
+    b.until = performance.now() + 7000;
+  }
+  function onMessage(m) {
+    if (muted.has(m.from)) return;
+    showBubble(m.from, m.text);
+    const card = document.createElement('div'); card.className = 'note';
+    card.innerHTML = '<p></p><div><button type="button" data-a="mute">屏蔽</button><button type="button" data-a="reply">回复</button></div>';
+    card.querySelector('p').textContent = `${nameOf(peerOf(m.from))}：${m.text}`;
+    card.addEventListener('click', e => {
+      const a = e.target.dataset && e.target.dataset.a;
+      if (a === 'reply') openSay(m.from);
+      if (a === 'mute') {
+        muted.add(m.from); store.set('dream:muted', JSON.stringify([...muted].slice(-200)));
+        const b = bubbles.get(m.from); if (b) b.until = 0;
+        if (sayTo === m.from) closeSay();
+      }
+      if (a) card.remove();
+    });
+    inboxEl.prepend(card);
+    while (inboxEl.children.length > 4) inboxEl.lastChild.remove();
+    setTimeout(() => card.remove(), 45000);
+  }
+  const bubbleAt = (el, v) => {        // v: world position over a head
+    const vis = v.y / v.length() > W.tagCos[0];
+    v.project(camera);
+    const sy = (-v.y * 0.5 + 0.5) * innerHeight;
+    const show = vis && v.z < 1 && Math.abs(v.x) < 1.05 && sy > insetTop + 36 && sy < innerHeight + 20;
+    el.style.opacity = show ? '1' : '0';
+    if (show) el.style.transform = `translate(${(v.x * 0.5 + 0.5) * innerWidth}px, ${sy}px) translate(-50%, calc(-100% - 10px))`;
+  };
+
   function drop(id) {
     const e = shown.get(id);
     group.remove(e.a.root); e.tag.remove(); shown.delete(id);
@@ -2706,6 +2819,12 @@ const company = (() => {
     useTransport(fn) { if (!connect) { connect = fn; ensure(); } },
     setPlanet(key) { planetKey = key; if (presence) presence.setPlanet(key); },
     get presence() { return presence; },
+    /** the person under a ray (a canvas click), if any */
+    pick(ray) {
+      for (const h of ray.intersectObject(group, true)) for (let o = h.object; o; o = o.parent) if (o.userData.peerId) return o.userData.peerId;
+      return null;
+    },
+    openSay,
     /** per frame, before rendering: report my pose, move everyone else */
     update(dt, t) {
       if (presence && presence.started) {
@@ -2726,7 +2845,8 @@ const company = (() => {
         const P = v3(q.p), Fh = v3(q.f);
         if (!e) {
           const a = makeAvatar(look);
-          const tag = document.createElement('div'); tag.className = 'tag mini peer'; tagLayer.appendChild(tag);
+          const tag = document.createElement('div'); tag.className = 'tag mini peer'; tag.title = '和 TA 打个招呼'; tagLayer.appendChild(tag);
+          const id = q.id; tag.addEventListener('click', () => openSay(id)); a.root.userData.peerId = id;
           e = { a, tag, p: P.clone(), f: Fh.clone(), k: 0, phase: Math.random() * 6 };
           group.add(a.root); shown.set(q.id, e);
         }
@@ -2755,7 +2875,16 @@ const company = (() => {
         const sy = (-tmp.y * 0.5 + 0.5) * innerHeight;
         const show = vis && tmp.z < 1 && Math.abs(tmp.x) < 1.05 && sy > insetTop + 36 && sy < innerHeight + 20;
         e.tag.style.opacity = show ? '1' : '0';
+        e.tag.style.pointerEvents = show ? 'auto' : 'none';
         if (show) e.tag.style.transform = `translate(${(tmp.x * 0.5 + 0.5) * innerWidth}px, ${sy}px) translate(-50%, -100%)`;
+      }
+      const now = performance.now();
+      for (const [key, b] of bubbles) {
+        const e = key === 'me' ? null : shown.get(key);
+        if (now > b.until || (key !== 'me' && !e)) { b.el.remove(); bubbles.delete(key); continue; }
+        if (key === 'me') tmp.set(0, me.root.position.y + TAG_UP + 0.25, 0);
+        else tmp.copy(e.p).multiplyScalar(R + walk.surfaceH(e.p) + TAG_UP + 0.25).applyQuaternion(group.quaternion);
+        bubbleAt(b.el, tmp);
       }
     },
   };

@@ -129,3 +129,52 @@ test('activity: active, idle after no input or a hidden tab, away after a long-h
   assert.equal(activityOf({ visible: false, hiddenSince: now - 1000, lastInput: now, now }), 'idle');
   assert.equal(activityOf({ visible: false, hiddenSince: now - AWAY_AFTER, lastInput: now, now }), 'away');
 });
+
+// ---------- messages ----------
+import { cleanText, MSG_MAX, SAY_EVERY } from '../public/dream/js/net/presence.js';
+
+test('a message reaches only the person it is for, once', async () => {
+  const w = world();
+  const a = w.join('a'), b = w.join('b'), c = w.join('c');
+  await wait(80);
+  const got = { b: [], c: [] };
+  b.onMessage(m => got.b.push(m)); c.onMessage(m => got.c.push(m));
+  assert.equal(a.say('b', '  你好呀 👋 '), '你好呀 👋');
+  await wait(40);
+  assert.deepEqual(got.b.map(m => [m.from, m.text]), [['a', '你好呀 👋']]);
+  assert.equal(got.c.length, 0);
+  w.done();
+});
+
+test('sending is rate-limited, and empty or absent-recipient messages are not sent', async () => {
+  const w = world();
+  const a = w.join('a'), b = w.join('b');
+  await wait(80);
+  assert.ok(a.say('b', 'one'));
+  assert.equal(a.say('b', 'two'), null, 'too soon');
+  assert.equal(a.say('nobody', 'hi'), null, 'not here');
+  await wait(SAY_EVERY + 20);
+  assert.equal(a.say('b', '   '), null, 'empty');
+  assert.ok(a.say('b', 'three'));
+  w.done();
+});
+
+test('messages from someone not in the channel are ignored', async () => {
+  const w = world();
+  const b = w.join('b');
+  await wait(80);
+  let count = 0; b.onMessage(() => count++);
+  const stray = createLocalConnect({ name: `t${n}` })('x');            // same channel as b, but x never joined
+  stray.send({ event: 'msg', payload: { from: 'x', to: 'b', text: 'hi', t: 1, mid: 'x:1' } });
+  await wait(40);
+  assert.equal(count, 0);
+  stray.unsubscribe();
+  w.done();
+});
+
+test('text is cleaned: control characters out, whitespace squeezed, capped without breaking emoji', () => {
+  assert.equal(cleanText('a\u0000b\n\n c‮'), 'a b c');
+  const long = '😀'.repeat(MSG_MAX + 5);
+  assert.equal(Array.from(cleanText(long)).length, MSG_MAX);
+  assert.ok(cleanText(long).endsWith('😀'));
+});
