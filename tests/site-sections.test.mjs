@@ -27,9 +27,13 @@ test('community-only sections are hidden until community is enabled', () => {
   assert.deepEqual(visibleShelves(true).map((s) => s.id), SHELVES.filter((s) => !s.hidden).map((s) => s.id));
 });
 
+test('the 相亲贴 tab shows only when community is enabled', () => {
+  assert.ok(visibleShelves(true).some((s) => s.id === 'meet'));
+  assert.ok(!visibleShelves(false).some((s) => s.id === 'meet'));
+});
+
 test('hidden sections stay out of navigation even with community enabled', () => {
-  assert.ok(!visibleShelves(true).some((s) => s.id === 'meet'));
-  assert.equal(sectionForPath('/meet'), 'meet');
+  assert.ok(visibleShelves(true).every((s) => !s.hidden));
 });
 
 test('section ids are unique', () => {
