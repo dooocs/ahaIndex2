@@ -103,6 +103,23 @@
   .planets button:hover { background: rgba(31, 111, 120, 0.1); }
   .planets button[aria-pressed="true"] { background: var(--accent); color: #f4f7f2; }
   .planets button:focus-visible { outline: 2px solid var(--sun); outline-offset: 1px; }
+  #peer-tags { position: fixed; inset: 0; pointer-events: none; }
+  .tag.peer { font: 400 11px/1 var(--display); letter-spacing: 0.06em; padding: 3px 5px 2px; border-width: 1.5px; background: rgba(251, 252, 247, 0.9); pointer-events: none; cursor: default; }
+  .tag.peer.idle { color: var(--ink-soft, #6b7378); border-style: dashed; }
+  .company {
+    position: fixed; right: 14px; top: calc(14px + env(safe-area-inset-top, 0px) + var(--inset-top, 0px));
+    display: flex; flex-direction: column; align-items: flex-end; gap: 6px; font: 400 14px/1 var(--display); color: var(--ink);
+  }
+  .online, .who { display: flex; align-items: center; gap: 8px; padding: 7px 10px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+  .online[hidden] { display: none; }
+  .online .dot { width: 8px; height: 8px; border-radius: 50%; background: #3fb36b; box-shadow: 0 0 0 3px rgba(63, 179, 107, 0.2); }
+  .online small { font-size: 12px; opacity: 0.7; }
+  .who { padding: 4px 4px 4px 10px; gap: 4px; }
+  .who span { font-size: 12px; opacity: 0.7; margin-right: 2px; }
+  .who button { font: inherit; letter-spacing: 0.06em; padding: 6px 10px; border: 0; border-radius: 7px; background: transparent; color: var(--ink); cursor: pointer; }
+  .who button:hover { background: rgba(31, 111, 120, 0.1); }
+  .who button[aria-pressed="true"] { background: var(--accent); color: #f4f7f2; }
+  .who button:focus-visible { outline: 2px solid var(--sun); outline-offset: 1px; }
   .veil {
     position: fixed; inset: 0; display: grid; place-items: center; pointer-events: none;
     background: var(--sky); color: var(--ink); font: 400 22px/1 var(--display); letter-spacing: 0.12em;
@@ -123,6 +140,7 @@
 <body>
 <div id="stage"><canvas id="c" aria-label="梦想星球 3D 场景"></canvas></div>
 <div id="labels" aria-hidden="true"></div>
+<div id="peer-tags" aria-hidden="true"></div>
 
 <header class="brand">
   <h1>梦想星球</h1>
@@ -145,6 +163,10 @@
 </details>
 
 <nav class="planets" id="planets" aria-label="星球"></nav>
+<aside class="company" aria-label="在线">
+  <div class="online" id="online" hidden><span class="dot"></span><span id="online-count">1 人在线</span><small id="online-sub"></small></div>
+  <div class="who" id="who" role="group" aria-label="我的形象"><span>我是</span><button type="button" data-kind="m">男生</button><button type="button" data-kind="f">女生</button></div>
+</aside>
 <div class="veil on" id="veil">正在生成星球…</div>
 
 <p class="hint">拖动转动星球 · WASD / 方向键行走 · 点击区域前往</p>
@@ -162,6 +184,10 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 // Where the avatar can stand and how it moves: plain JS, no three.js, unit-tested in tests/dream-walk.test.mjs
 import { createWalkField, createController, shapes } from './js/walk/index.js';
+// Who else is here: presence (transport-agnostic), a BroadcastChannel stand-in for ?presence=local, IP → province
+import { createPresence, activityOf } from './js/net/presence.js';
+import { createLocalConnect } from './js/net/local.js';
+import { lookupProvince } from './js/net/province.js';
 
 // Authored hex colours are used as-is in every shader (no sRGB conversion), so the
 // palette on screen is exactly the palette written here.
@@ -946,26 +972,51 @@ function scatterIn(s, count, x0, x1, z0, z1, ok, minSep = 0, wet = false) {
 }
 const leafTints = [0xffffff, 0xf2f7ea, 0xe6f0de, 0xfaf3df];
 
-// ---------- avatar (original character: undercut with a bleached-yellow swept crest, mustard sweater, satchel) ----------
-const avatar = new THREE.Group();
-const AV = {};
-{
+// ---------- avatars: two original characters, each built once and cloned for every person ----------
+// 'm': undercut with a bleached-yellow swept crest, mustard sweater, satchel
+// 'f': chestnut bob with a fringe and a high ponytail, sage cardigan, navy pleated skirt, satchel
+// The parts the animation moves are named (legL, legR, body, armL, armR, hair, ski) so a clone finds its own.
+const AVATAR_SCALE = 0.85;         // was 1.15: smaller people make the places read bigger and leave room for company
+const avatarModels = {};
+function avatarModel(kind) {
+  if (avatarModels[kind]) return avatarModels[kind];
+  const F = kind === 'f';
+  const C = F
+    ? { leg: 0x4b4a5c, sock: 0x4b4a5c, shoe: 0xc8604f, top: 0x93b59a, hem: 0x34405e, skin: 0xf3c9a8, hair: 0x5b3b2f, hairHi: 0x7b5242, tie: 0xe07a5f }
+    : { leg: 0x6f7d4a, sock: 0xf6f1e6, shoe: 0x2f7f86, top: 0xe2a93b, hem: 0xc98c2e, skin: 0xf3c9a8 };
   const o = { local: true, breakMul: 0.3 };
+  const root = new THREE.Group();
   const cap = (r, l, hex) => mesh(new THREE.CapsuleGeometry(r, l, 4, 12), hex, o);
-  const legPivot = s => { const p = new THREE.Group(); p.position.set(s * 0.11, 0.5, 0); const leg = cap(0.075, 0.28, 0x6f7d4a); leg.position.y = -0.2; const sock = cyl(0.07, 0.07, 0.08, 0xf6f1e6, 0, -0.39, 0, 10, o); const shoe = box(0.13, 0.09, 0.22, 0x2f7f86, 0, -0.47, 0.03, o); p.add(leg, sock, shoe); return p; };
-  AV.legL = legPivot(-1); AV.legR = legPivot(1);
-  AV.body = new THREE.Group(); AV.body.position.y = 0.5;
-  const torso = cap(0.17, 0.2, 0xe2a93b); torso.position.y = 0.2;
-  const hem = cyl(0.19, 0.2, 0.07, 0xc98c2e, 0, 0.04, 0, 14, o);
-  const head = ball(0.19, 0xf3c9a8, 0, 0.6, 0, o);
-  // hair: short undercut cap + an asymmetric crown of spiky locks swept up and to one side,
-  // bleached yellow, a shade lighter at the tips, over dark shaved sides. Locks radiate outward rather than straight back,
-  // so the silhouette reads from behind, where the camera usually is. The crown sits in its own
-  // group so it can lean back in the wind while running.
-  const hairCap = mesh(new THREE.SphereGeometry(0.198, 24, 14, 0, Math.PI * 2, 0, 1.5), 0x3d4356, o);   // shaved sides, a shade lighter
-  hairCap.position.y = 0.6; hairCap.rotation.x = -0.7;
-  AV.crest = new THREE.Group(); AV.crest.position.set(0, 0.6, 0);
-  {
+  const legPivot = s => {
+    const p = new THREE.Group(); p.name = s < 0 ? 'legL' : 'legR'; p.position.set(s * 0.11, 0.5, 0);
+    const leg = cap(0.075, 0.28, C.leg); leg.position.y = -0.2;
+    p.add(leg, cyl(0.07, 0.07, 0.08, C.sock, 0, -0.39, 0, 10, o), box(0.13, 0.09, 0.22, C.shoe, 0, -0.47, 0.03, o));
+    const ski = box(0.1, 0.03, 1.1, 0xd4574a, 0, -0.53, 0.14, o); ski.name = 'ski'; ski.visible = false; p.add(ski);
+    return p;
+  };
+  const body = new THREE.Group(); body.name = 'body'; body.position.y = 0.5;
+  const torso = cap(0.17, 0.2, C.top); torso.position.y = 0.2;
+  const hem = F ? cyl(0.19, 0.27, 0.2, C.hem, 0, 0.0, 0, 16, o) : cyl(0.19, 0.2, 0.07, C.hem, 0, 0.04, 0, 14, o);   // skirt or sweater hem
+  const head = ball(0.19, C.skin, 0, 0.6, 0, o);
+  const hair = new THREE.Group(); hair.name = 'hair'; hair.position.set(0, 0.6, 0);
+  const parts = [torso, hem, head];
+  if (F) {
+    // bob: a shell over the top, sides and back with the face left open, a fringe over the brow,
+    // and a ponytail high on the crown (in `hair`, so it swings while running)
+    const shell = mesh(new THREE.SphereGeometry(0.212, 26, 16, Math.PI / 2 + 0.78, Math.PI * 2 - 1.56, 0, 2.15), C.hair, o);
+    shell.position.set(0, 0.6, -0.008);
+    const fringe = mesh(new THREE.SphereGeometry(0.216, 22, 10, Math.PI / 2 - 0.85, 1.7, 0, 0.98), C.hair, o);
+    fringe.position.set(0, 0.6, 0.004);
+    const tie = ball(0.045, C.tie, 0, 0.15, -0.13, o);
+    const tail = cap(0.065, 0.2, C.hairHi); tail.position.set(0, 0.06, -0.24); tail.rotation.x = 0.75;
+    hair.add(tie, tail);
+    parts.push(shell, fringe);
+  } else {
+    // short undercut cap + an asymmetric crown of spiky locks swept up and to one side, bleached yellow,
+    // a shade lighter at the tips, over dark shaved sides. Locks radiate outward rather than straight
+    // back, so the silhouette reads from behind, where the camera usually is.
+    const hairCap = mesh(new THREE.SphereGeometry(0.198, 24, 14, 0, Math.PI * 2, 0, 1.5), 0x3d4356, o);
+    hairCap.position.y = 0.6; hairCap.rotation.x = -0.7;
     const dark = [], tips = [];
     const sweep = new THREE.Vector3(0.55, 0.7, -0.3).normalize();
     const N = 96, ga = Math.PI * (3 - Math.sqrt(5));
@@ -985,25 +1036,59 @@ const AV = {};
       t.translate(0, len * 0.25, 0); t.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(UP, ax2)); t.translate(mid.x, mid.y, mid.z);
       dark.push(prep(b)); tips.push(prep(t));
     }
-    AV.crest.add(mesh(mergeGeometries(dark), 0xe3b23c, o), mesh(mergeGeometries(tips), 0xf8e27e, o));
+    hair.add(mesh(mergeGeometries(dark), 0xe3b23c, o), mesh(mergeGeometries(tips), 0xf8e27e, o));
+    parts.push(hairCap);
   }
   const bag = box(0.08, 0.2, 0.22, 0x8a5a34, 0.21, 0.08, 0.02, o);
   const strap = box(0.03, 0.5, 0.04, 0x8a5a34, 0.03, 0.27, -0.15, o); strap.rotation.z = 0.62;
-  AV.body.add(torso, hem, head, hairCap, AV.crest, bag, strap);
-  const armPivot = s => { const p = new THREE.Group(); p.position.set(s * 0.22, 0.34, 0); const a = cap(0.055, 0.22, 0xe2a93b); a.position.y = -0.15; const hand = ball(0.055, 0xf3c9a8, 0, -0.32, 0, o); p.add(a, hand); p.rotation.z = s * 0.12; return p; };
-  AV.armL = armPivot(-1); AV.armR = armPivot(1);
-  AV.body.add(AV.armL, AV.armR);
-  avatar.add(AV.legL, AV.legR, AV.body);
-  avatar.scale.setScalar(1.15);
-  scene.add(avatar);
+  body.add(...parts, hair, bag, strap);
+  const armPivot = s => {
+    const p = new THREE.Group(); p.name = s < 0 ? 'armL' : 'armR'; p.position.set(s * 0.22, 0.34, 0);
+    const arm = cap(0.055, 0.22, C.top); arm.position.y = -0.15;
+    p.add(arm, ball(0.055, C.skin, 0, -0.32, 0, o)); p.rotation.z = s * 0.12;
+    const pole = cyl(0.014, 0.014, 0.95, 0x3a3f46, 0, -0.62, 0.06, 6, o); pole.name = 'ski'; pole.rotation.x = 0.3; pole.visible = false; p.add(pole);
+    return p;
+  };
+  body.add(armPivot(-1), armPivot(1));
+  root.add(legPivot(-1), legPivot(1), body);
+  return (avatarModels[kind] = root);
 }
-
-// ski gear, shown on the ski planet
-AV.ski = [];
-{
-  const o = { local: true, breakMul: 0.3 };
-  [AV.legL, AV.legR].forEach(pv => { const s = box(0.1, 0.03, 1.1, 0xd4574a, 0, -0.53, 0.14, o); s.visible = false; pv.add(s); AV.ski.push(s); });
-  [AV.armL, AV.armR].forEach(pv => { const pole = cyl(0.014, 0.014, 0.95, 0x3a3f46, 0, -0.62, 0.06, 6, o); pole.rotation.x = 0.3; pole.visible = false; pv.add(pole); AV.ski.push(pole); });
+/** A person: a clone of the model (geometry and materials shared) and handles on its moving parts. */
+function makeAvatar(kind) {
+  const root = avatarModel(kind).clone();
+  root.scale.setScalar(AVATAR_SCALE);
+  const a = { root, kind, ski: [] };
+  root.traverse(o => { if (o.name === 'ski') a.ski.push(o); else if (o.name) a[o.name] = o; });
+  return a;
+}
+/** Run cycle (or ski glide). k: 0 standing … 1 full stride; phase: stride phase; t: seconds, for idle breathing. */
+function poseAvatar(a, k, phase, t, ski) {
+  const s = Math.sin(phase);
+  a.ski.forEach(m => { m.visible = ski; });
+  if (ski) {        // gliding on skis: knees bent, poles planted in turn
+    a.legL.rotation.x = 0.15 + s * 0.06 * k; a.legR.rotation.x = 0.15 - s * 0.06 * k;
+    a.armL.rotation.x = -0.25 - Math.max(0, s) * 0.7 * k; a.armR.rotation.x = -0.25 - Math.max(0, -s) * 0.7 * k;
+    a.body.position.y = 0.46 + Math.sin(t * 2) * 0.006 * (1 - k);
+    a.body.rotation.x = 0.12 + 0.22 * k;
+  } else {
+    a.legL.rotation.x = s * 0.95 * k; a.legR.rotation.x = -s * 0.95 * k;
+    a.armL.rotation.x = -s * 0.9 * k; a.armR.rotation.x = s * 0.9 * k;
+    a.body.position.y = 0.5 + Math.abs(Math.cos(phase)) * 0.06 * k + Math.sin(t * 2) * 0.006 * (1 - k);
+    a.body.rotation.x = 0.18 * k;
+  }
+  a.hair.rotation.x = -0.12 * k + Math.sin(phase * 2) * (a.kind === 'f' ? 0.12 : 0.04) * k + Math.sin(t * 1.6) * 0.012 * (1 - k);
+}
+// me: the visitor's own avatar; the choice of character is remembered in this browser
+const store = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch { /* blocked */ } } };
+let me = makeAvatar(store.get('dream:gender') === 'f' ? 'f' : 'm');
+scene.add(me.root);
+function setMyKind(kind) {
+  if (kind === me.kind) return;
+  const old = me;
+  me = makeAvatar(kind);
+  me.root.position.copy(old.root.position); me.root.rotation.copy(old.root.rotation);
+  scene.remove(old.root); scene.add(me.root);
+  store.set('dream:gender', kind);
 }
 
 // ---------- render targets & composite ----------
@@ -2381,7 +2466,6 @@ async function loadWorld(key) {
   G.uYardEx.value.copy(W.lawnEx || new THREE.Vector3(0, 0, 1));
   aimSun();
   renderer.shadowMap.needsUpdate = true;
-  AV.ski.forEach(m => { m.visible = W.ski; });
   toggles.blob();
   buildHud();
   // start on the ring road a little before the first stop, facing it
@@ -2391,6 +2475,7 @@ async function loadWorld(key) {
   const look = zones[0].s.node.clone().applyQuaternion(planet.quaternion);
   rotatePlanet(Math.atan2(look.x, -look.z), 0);
   planetButtons.forEach(b => b.setAttribute('aria-pressed', b.dataset.planet === key ? 'true' : 'false'));
+  company.setPlanet(key);
   // Where the browser can link shaders in the background (KHR_parallel_shader_compile), link every
   // shader the new planet needs before its first frame, so that frame doesn't stall the page. Without
   // it, compiling ahead only moves the wait, so the first frame compiles as it always has, still
@@ -2424,6 +2509,150 @@ const planetButtons = Object.entries(PLANETS).map(([key, p]) => {
   b.setAttribute('aria-pressed', 'false'); b.addEventListener('click', () => switchPlanet(key));
   planetNav.appendChild(b);
   return b;
+});
+
+// ---------- company: other visitors on the planets right now ----------
+// Presence (js/net/presence.js) says who is online and where; this draws them as small people with
+// their province over their heads, shows the head count, and decides when *I* count as here:
+// only after a real interaction (so crawlers never show up), idle when the tab is hidden or untouched
+// for a while, gone when it has been hidden for long or closes. Transport: Supabase Realtime when the
+// page hands us the community project's config (dream:config from /dream), BroadcastChannel between
+// tabs with ?presence=local, otherwise none.
+const visitorId = (() => {
+  let v = store.get('dream:vid');
+  if (!v) { v = crypto.randomUUID ? crypto.randomUUID() : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`; store.set('dream:vid', v); }
+  return v;
+})();
+const company = (() => {
+  const ui = { online: sw('online'), count: sw('online-count'), sub: sw('online-sub'), who: [...document.querySelectorAll('#who button')] };
+  const tagLayer = sw('peer-tags');
+  const group = new THREE.Group();            // follows the planet's rotation; not inside `planet`, so planet disposal never touches the shared avatar geometry
+  scene.add(group);
+  const shown = new Map();                    // id → { a, tag, p, f, k, phase, kind }
+  const MAX_SHOWN = 30, TAG_UP = 1.15;
+  let connect = null, presence = null, interacted = false, away = false;
+  let lastInput = performance.now(), hiddenSince = document.hidden ? performance.now() : 0, province = '未知', planetKey = null;
+  const v3 = a => new THREE.Vector3(a[0], a[1], a[2]).normalize();
+  const basis = new THREE.Matrix4(), xAxis = new THREE.Vector3(), tmp = new THREE.Vector3();
+
+  function hud() {
+    const joined = presence && presence.joined;
+    ui.online.hidden = !joined;
+    if (joined) {
+      const { online, active } = presence.counts();
+      ui.count.textContent = `${online} 人在线`;
+      ui.sub.textContent = online > active ? `${active} 人在逛` : '';
+    }
+  }
+  function ensure() {
+    if (presence || !connect) return;
+    presence = createPresence({ connect, me: { id: visitorId, g: me.kind, prov: province } });
+    presence.onChange(hud);
+    if (planetKey) presence.setPlanet(planetKey);
+    if (interacted && !away) presence.start();
+  }
+  function begin() {
+    lastInput = performance.now();
+    if (interacted) return;
+    interacted = true;
+    lookupProvince().then(p => { province = p; if (presence) presence.setProfile({ prov: p }); });
+    ensure();
+    if (presence) presence.start();
+  }
+  // a real interaction: anything that moves, travels or chooses
+  addEventListener('keydown', begin, true);
+  addEventListener('pointerdown', begin, true);
+  addEventListener('pointermove', () => { lastInput = performance.now(); }, { passive: true });
+  addEventListener('wheel', () => { lastInput = performance.now(); }, { passive: true });
+  document.addEventListener('visibilitychange', () => {
+    const now = performance.now();
+    if (document.hidden) { hiddenSince = now; return; }
+    lastInput = now;
+    if (away && presence) { away = false; presence.start(); }
+  });
+  addEventListener('pagehide', () => { if (presence) presence.stop(); });
+  setInterval(() => {
+    if (!presence || !presence.started) return;
+    const a = activityOf({ visible: !document.hidden, hiddenSince, lastInput, now: performance.now() });
+    if (a === 'away') { away = true; presence.stop(); } else presence.setActivity(a);
+  }, 1000);
+
+  // my character: 男生 / 女生
+  const showKind = () => ui.who.forEach(b => b.setAttribute('aria-pressed', b.dataset.kind === me.kind ? 'true' : 'false'));
+  ui.who.forEach(b => b.addEventListener('click', () => {
+    setMyKind(b.dataset.kind);
+    me.ski.forEach(m => { m.visible = !!(W && W.ski); });
+    showKind();
+    if (presence) presence.setProfile({ g: me.kind });
+  }));
+  showKind();
+
+  function drop(id) {
+    const e = shown.get(id);
+    group.remove(e.a.root); e.tag.remove(); shown.delete(id);
+  }
+  return {
+    useTransport(fn) { if (!connect) { connect = fn; ensure(); } },
+    setPlanet(key) { planetKey = key; if (presence) presence.setPlanet(key); },
+    get presence() { return presence; },
+    /** per frame, before rendering: report my pose, move everyone else */
+    update(dt, t) {
+      if (presence && presence.started) {
+        const pose = readPose();
+        presence.move([pose.p.x, pose.p.y, pose.p.z], [pose.f.x, pose.f.y, pose.f.z], moveSpeed > 0.08 || !!travel);
+      }
+      group.quaternion.copy(planet.quaternion);
+      const here = avatarDir;
+      const list = presence ? presence.peers().filter(q => q.planet === W.key && q.p && q.f) : [];
+      list.sort((a, b) => here.angleTo(v3(a.p)) - here.angleTo(v3(b.p)));
+      const keep = new Set(list.slice(0, MAX_SHOWN).map(q => q.id));
+      for (const id of [...shown.keys()]) if (!keep.has(id)) drop(id);
+      const ease = 1 - Math.exp(-dt * 8);
+      for (const q of list.slice(0, MAX_SHOWN)) {
+        let e = shown.get(q.id);
+        if (e && e.kind !== q.g) { drop(q.id); e = null; }
+        const P = v3(q.p), Fh = v3(q.f);
+        if (!e) {
+          const a = makeAvatar(q.g === 'f' ? 'f' : 'm');
+          const tag = document.createElement('div'); tag.className = 'tag mini peer'; tagLayer.appendChild(tag);
+          e = { a, tag, kind: q.g, p: P.clone(), f: Fh.clone(), k: 0, phase: Math.random() * 6 };
+          group.add(a.root); shown.set(q.id, e);
+        }
+        const before = e.p.clone();
+        e.p.lerp(P, ease).normalize();
+        e.f.lerp(Fh, ease); e.f.addScaledVector(e.p, -e.f.dot(e.p)).normalize();
+        const speed = before.angleTo(e.p) * R / Math.max(dt, 1e-3);
+        e.k += (Math.min(1, speed / W.walkSpeed) - e.k) * Math.min(1, dt * 8);
+        e.phase += dt * (4 + e.k * 7);
+        e.a.root.position.copy(e.p).multiplyScalar(R + walk.surfaceH(e.p));
+        xAxis.crossVectors(e.p, e.f);
+        basis.makeBasis(xAxis, e.p, e.f);       // modelled facing +z: +z → heading, +y → up
+        e.a.root.quaternion.setFromRotationMatrix(basis);
+        poseAvatar(e.a, e.k, e.phase, t, W.ski);
+        const label = q.act === 'idle' ? `${q.prov || '未知'} · 挂机` : (q.prov || '未知');
+        if (e.tag.textContent !== label) e.tag.textContent = label;
+        e.tag.classList.toggle('idle', q.act === 'idle');
+      }
+    },
+    /** per frame, after rendering: put each name tag over its person */
+    placeTags() {
+      for (const e of shown.values()) {
+        tmp.copy(e.p).multiplyScalar(R + walk.surfaceH(e.p) + TAG_UP).applyQuaternion(group.quaternion);
+        const vis = tmp.y / tmp.length() > W.tagCos[0];
+        tmp.project(camera);
+        const sy = (-tmp.y * 0.5 + 0.5) * innerHeight;
+        const show = vis && tmp.z < 1 && Math.abs(tmp.x) < 1.05 && sy > insetTop + 36 && sy < innerHeight + 20;
+        e.tag.style.opacity = show ? '1' : '0';
+        if (show) e.tag.style.transform = `translate(${(tmp.x * 0.5 + 0.5) * innerWidth}px, ${sy}px) translate(-50%, -100%)`;
+      }
+    },
+  };
+})();
+if (/[?&]presence=local\b/.test(location.search)) company.useTransport(createLocalConnect());
+addEventListener('message', e => {
+  if (e.origin !== location.origin || !e.data || e.data.type !== 'dream:config' || !e.data.realtime) return;
+  const { url, key } = e.data.realtime;
+  if (url && key) import('./js/net/supabase.js').then(m => company.useTransport(m.createSupabaseConnect({ url, key }))).catch(() => { /* realtime unavailable: no company */ });
 });
 
 // ---------- loop ----------
@@ -2480,24 +2709,12 @@ function frame() {
   // avatar stands on whatever ground is under the north pole right now
   invQ.copy(planet.quaternion).invert();
   avatarDir.set(0, 1, 0).applyQuaternion(invQ);
-  avatar.position.set(0, R + walk.surfaceH(avatarDir), 0);
-  camLift += (avatar.position.y - R - camLift) * Math.min(1, dt * 2.5);
-  avatar.rotation.y = Math.PI + turnLean;   // modelled facing +z; turn to face away from camera
+  me.root.position.set(0, R + walk.surfaceH(avatarDir), 0);
+  camLift += (me.root.position.y - R - camLift) * Math.min(1, dt * 2.5);
+  me.root.rotation.y = Math.PI + turnLean;   // modelled facing +z; turn to face away from camera
 
   runPhase += dt * (4 + moveSpeed * 7);
-  const sw1 = Math.sin(runPhase), k = moveSpeed;
-  if (W.ski) {        // gliding on skis: knees bent, poles planted in turn
-    AV.legL.rotation.x = 0.15 + sw1 * 0.06 * k; AV.legR.rotation.x = 0.15 - sw1 * 0.06 * k;
-    AV.armL.rotation.x = -0.25 - Math.max(0, sw1) * 0.7 * k; AV.armR.rotation.x = -0.25 - Math.max(0, -sw1) * 0.7 * k;
-    AV.body.position.y = 0.46 + Math.sin(elapsed * 2) * 0.006 * (1 - k);
-    AV.body.rotation.x = 0.12 + 0.22 * k;
-  } else {
-    AV.legL.rotation.x = sw1 * 0.95 * k; AV.legR.rotation.x = -sw1 * 0.95 * k;
-    AV.armL.rotation.x = -sw1 * 0.9 * k; AV.armR.rotation.x = sw1 * 0.9 * k;
-    AV.body.position.y = 0.5 + Math.abs(Math.cos(runPhase)) * 0.06 * k + Math.sin(elapsed * 2) * 0.006 * (1 - k);
-    AV.body.rotation.x = 0.18 * k;
-  }
-  AV.crest.rotation.x = -0.12 * k + Math.sin(runPhase * 2) * 0.04 * k + Math.sin(elapsed * 1.6) * 0.012 * (1 - k);
+  poseAvatar(me, moveSpeed, runPhase, elapsed, W.ski);
 
   // camera pulls back at big places, closer while walking
   const zt = flyZoom ?? (travel || curStop == null ? 1.35 : zones[curStop].zoom) * zoomUser;
@@ -2505,6 +2722,7 @@ function frame() {
   placeCamera();
   if (W.update) W.update(elapsed);
 
+  company.update(dt, elapsed);
   planet.updateMatrixWorld();
   G.uPlanetInv.value.copy(planet.matrixWorld).invert();
   G.uTime.value = elapsed;
@@ -2541,6 +2759,8 @@ function frame() {
     zones.forEach(z => placeTag(z, W.tagCos[0]));
     LANDMARKS.forEach(m => placeTag(m, W.tagCos[1]));
   }
+
+  company.placeTags();
 
   // fps + adaptive resolution (drops pixel ratio on slow GPUs, never below 1)
   frames++; fpsT += dt;

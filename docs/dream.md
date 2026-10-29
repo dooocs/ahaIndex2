@@ -81,6 +81,30 @@ Every place sits within ~25 units of the ring road (the equator), so detail now 
 Building places only when the avatar comes near is not worth it yet (they are 0.13 s); it becomes worth
 it once there are many more places, and the planet-module split below is the groundwork for it.
 
+## Done: who else is here (`public/dream/js/net/`)
+
+A head count in the top-right corner and every other visitor on the same planet as a small person with
+their province overhead. Visitors choose 男生 / 女生 (remembered per browser); both characters are
+original designs built once and cloned per person (`avatarModel` / `makeAvatar` / `poseAvatar`).
+
+| module | owns |
+| --- | --- |
+| `presence.js` | who is online and where: joins a channel keyed by a per-browser visitor id (so tabs count once), streams poses at most 5×/s while moving, puts the resting pose into presence when stopping, `activityOf` decides active / idle / away |
+| `supabase.js` | the production transport: Supabase Realtime presence + broadcast on the community project (`vendor/realtime-js-2.103.0.min.js`, bundled from `@supabase/realtime-js` with `esbuild entry.js --bundle --format=esm --minify`) |
+| `local.js` | the same channel over BroadcastChannel between tabs (`?presence=local`), with heartbeat and timeout like the server |
+| `province.js` | IP → province via a keyless JSONP lookup (whois.pconline.com.cn) run inside a sandboxed, opaque-origin iframe; cached a day; 未知 when it fails |
+
+Who counts as online:
+
+- you join only after a real interaction (a key, a click or a drag), so crawlers never count;
+- closing the tab leaves at once (`pagehide` → untrack, socket closed); a lost connection leaves when
+  the server's heartbeat times out;
+- idle (shown as "· 挂机", dashed label, counted apart) after 2 minutes without input or while the tab
+  is hidden; after 5 minutes hidden you leave, and rejoin when the tab comes back.
+
+`/dream` hands the scene the community project's public URL and publishable key (`dream:config`); without
+them there is no company and the scene works as before.
+
 ## Next
 
 1. **Pose and motion modes.** Make the pose `{ p, f }` the single source of truth and derive the planet
