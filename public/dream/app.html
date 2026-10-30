@@ -353,7 +353,7 @@ let sites = [], zones = [], LANDMARKS = [];
 let ROADS = [], STONES = [], STONE_RECTS = [], STONE_CIRCS = [];
 let terrainH = () => 0, siteKeepout = () => false;
 let walk = null, walker = null;   // the planet's WalkField and the avatar's controller (see beginWalk)
-let W = null;            // the planet being shown: { key, update, extras, ski, lawnEx, startLon }
+let W = null;            // the planet being shown: { key, update, extras, ski, lawnEx, startLon, spawn }
 
 // places sit just off the ring road (the equator) and face it; roadZ is the distance from it
 function makeSites(defs) {
@@ -1969,6 +1969,8 @@ await slice();
 W.update = t => updateBoats(t);
 W.lawnEx = HOME.ex.clone();
 W.startLon = -12;
+// arrivals stand outside the 小区 gate, looking in at the courtyard and the towers
+W.spawn = { s: HOME, at: [0, HOME_FENCE.z1 + 0.9], look: [0, 0] };
 }
 
 // ======================= 滑雪星球: 北海道 + 羊蹄山 + 崇礼 + 雪如意 =======================
@@ -2601,12 +2603,18 @@ async function loadWorld(key) {
   renderer.shadowMap.needsUpdate = true;
   toggles.blob();
   buildHud();
-  // start on the ring road a little before the first stop, facing it
+  // start at the planet's spawn point if it has one; otherwise on the ring road a little before the
+  // first stop, facing it (and the autopilot then walks there)
   travel = null; legs = []; curStop = null; arriving = null; setActive(null);
   post.uniforms.uSkyYaw.value = 0; post.uniforms.uSkyDrift.value = 0;
-  planet.quaternion.setFromUnitVectors(sph(0, W.startLon), new THREE.Vector3(0, 1, 0));
-  const look = zones[0].s.node.clone().applyQuaternion(planet.quaternion);
-  rotatePlanet(Math.atan2(look.x, -look.z), 0);
+  if (W.spawn) {
+    const { s, at, look } = W.spawn, p = P(s, at), q = P(s, look);
+    writePose({ p, f: q.addScaledVector(p, -q.dot(p)).normalize() });
+  } else {
+    planet.quaternion.setFromUnitVectors(sph(0, W.startLon), new THREE.Vector3(0, 1, 0));
+    const look = zones[0].s.node.clone().applyQuaternion(planet.quaternion);
+    rotatePlanet(Math.atan2(look.x, -look.z), 0);
+  }
   planetButtons.forEach(b => b.setAttribute('aria-pressed', b.dataset.planet === key ? 'true' : 'false'));
   company.setPlanet(key);
   // Where the browser can link shaders in the background (KHR_parallel_shader_compile), link every
@@ -2634,7 +2642,7 @@ async function switchPlanet(key) {
   camZoom = 4.2; flyZoom = null; camLift = 0;
   veil.classList.remove('on');
   switching = false;
-  setTimeout(() => { if (!travel && activeZone === null && !switching) travelTo(0); }, 900);
+  setTimeout(() => { if (!W.spawn && !travel && activeZone === null && !switching) travelTo(0); }, 900);
 }
 // one planet on show for now: no switcher (the ski planet is still there with ?planet=ski)
 const planetButtons = [];
@@ -3013,7 +3021,7 @@ function frame() {
   const start = /[?&]planet=ski\b/.test(location.search) ? 'ski' : 'hangzhou';
   loadWorld(start).then(() => {
     requestAnimationFrame(() => veil.classList.remove('on'));
-    setTimeout(() => { if (!travel && activeZone === null) travelTo(0); }, 700);
+    setTimeout(() => { if (!W.spawn && !travel && activeZone === null) travelTo(0); }, 700);
   });
   frame();
 }
