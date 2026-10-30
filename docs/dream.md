@@ -134,6 +134,15 @@ failures poses also move to presence (about once a second). The Realtime client 
 dropped while presence kept working — online counts were right but messages never arrived.
 Try it locally with `?presence=local&broadcast=0`.
 
+## Done: gestures that can't make you jump
+
+Moving only ever happens at walking speed (keys, or a tap and its route). One finger or the mouse: a tap
+walks or greets; a drag turns you on the spot, eased and capped at 6 rad/s, with each pointer event's
+contribution clamped, so a fast flick turns smoothly instead of throwing you across the map. Two fingers:
+pinch to zoom only, and the gesture stays a pinch until every finger is up, so lifting one finger never
+becomes a drag or a tap. The wheel zooms. (Before, a vertical drag walked you by the drag distance, and
+two fingers fed the same drag from two places at once.)
+
 ## Next
 
 1. **Pose and motion modes.** Make the pose `{ p, f }` the single source of truth and derive the planet
