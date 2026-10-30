@@ -177,3 +177,15 @@ test('a fenced-off goal is unreachable', () => {
   const f = world().barrier(SITE, shapes.polyline([[-2, -2], [2, -2], [2, 2], [-2, 2], [-2, -2]], 0.1));
   assert.equal(findPath(f, at(0, 6), at(0, 0)), null);
 });
+
+test('occluderHeight: the tallest footprint with a height that covers a point', () => {
+  const f = world()
+    .footprint(SITE, shapes.box(-2, 2, -2, 2), { h: 6 })
+    .footprint(SITE, shapes.circle(0, 0, 1), { h: 9 })
+    .footprint(SITE, shapes.box(5, 6, 0, 1));                         // no height: never hides the avatar
+  assert.equal(f.occluderHeight(at(0, 0)), 9);
+  assert.equal(f.occluderHeight(at(1.5, 1.5)), 6);
+  assert.equal(f.occluderHeight(at(5.5, 0.5)), 0);
+  assert.equal(f.occluderHeight(at(3, 3)), 0);
+  assert.equal(f.inFootprint(at(5.5, 0.5)), true, 'still a footprint for walking and scatter');
+});

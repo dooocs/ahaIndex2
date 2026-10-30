@@ -134,14 +134,28 @@ failures poses also move to presence (about once a second). The Realtime client 
 dropped while presence kept working — online counts were right but messages never arrived.
 Try it locally with `?presence=local&broadcast=0`.
 
-## Done: gestures that can't make you jump
+## Done: a view and a body (game-style controls)
 
-Moving only ever happens at walking speed (keys, or a tap and its route). One finger or the mouse: a tap
-walks or greets; a drag turns you on the spot, eased and capped at 6 rad/s, with each pointer event's
-contribution clamped, so a fast flick turns smoothly instead of throwing you across the map. Two fingers:
-pinch to zoom only, and the gesture stays a pinch until every finger is up, so lifting one finger never
-becomes a drag or a tap. The wheel zooms. (Before, a vertical drag walked you by the drag distance, and
-two fingers fed the same drag from two places at once.)
+The camera and the avatar are separate. The **body** is where the avatar stands and which way it faces;
+walking, collisions, routes and presence use it. The **view** is which way the camera looks along the
+ground, plus pitch and zoom; the planet's rotation is the view (p → +Y, view → −Z) and the model turns
+by the angle between them. Moving is camera-relative: a direction on screen becomes a direction on the
+ground, the body walks that way at walking speed and turns to face it, and the view is parallel-carried
+along the same step. While you walk away from the camera (or follow a clicked route) the view drifts back
+behind you, unless you turned it by hand in the last 2 s.
+
+| | desktop | phone |
+| --- | --- | --- |
+| move | WASD / arrows, camera-relative | bottom half: a translucent stick appears where the thumb lands |
+| look | drag with the mouse (yaw + pitch) | top half: drag |
+| zoom | wheel | pinch (two fingers in the top half) |
+| go there / say hello | click | tap anywhere |
+
+`js/input/gestures.js` gives each pointer a role when it goes down (mouse → look; touch above the
+split → look, below → stick) and keeps it until it lifts, so a thumb on the stick and a finger turning the
+view work together and nothing can make the avatar jump. Footprints can carry a height (`{ h }`); the
+camera walks back along the ground behind the avatar and, if something tall would hide it, comes forward
+at the same height and aims nearer (`occluderHeight`, no mesh raycasts).
 
 ## Next
 
