@@ -150,9 +150,9 @@ behind you, unless you turned it by hand in the last 2 s.
 
 | | desktop | phone |
 | --- | --- | --- |
-| move | WASD / arrows, camera-relative | bottom half: a translucent stick appears where the thumb lands |
-| look | drag with the mouse (yaw + pitch) | top half: drag |
-| zoom | wheel | pinch (two fingers in the top half) |
+| move | WASD / arrows, camera-relative | bottom third: a translucent stick appears where the thumb lands |
+| look | drag with the mouse (yaw + pitch) | top two thirds: drag |
+| zoom | wheel | pinch (two fingers in the top two thirds) |
 | go there / say hello | click | tap anywhere |
 
 `js/input/gestures.js` gives each pointer a role when it goes down (mouse → look; touch above the

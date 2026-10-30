@@ -91,7 +91,8 @@
   }
   .stick:not(.on) .knob { transform: none !important; transition: transform .2s; }
   .touch-hint {
-    position: fixed; left: 50%; top: calc(var(--inset-top, 0px) + (100vh - var(--inset-top, 0px)) / 2); transform: translate(-50%, -50%);
+    position: fixed; left: 50%; top: calc(var(--inset-top, 0px) + (100vh - var(--inset-top, 0px)) * 2 / 3 + 52px); transform: translate(-50%, -50%);
+    /* just inside the stick third (LOOK_SHARE), below the avatar, who stands about on the split line */
     margin: 0; padding: 6px 14px; border-radius: 999px; pointer-events: none; white-space: nowrap;
     font: 13px/1.2 var(--body); letter-spacing: 0.08em; color: var(--ink); background: rgba(251, 252, 247, 0.72);
   }
@@ -242,7 +243,7 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 // Where the avatar can stand and how it moves: plain JS, no three.js, unit-tested in tests/dream-walk.test.mjs
 import { createWalkField, createController, findPath, shapes } from './js/walk/index.js';
 import { stepTo, transport, turn as turnTangent } from './js/walk/vec.js';
-// Pointer roles (top half: view, bottom half: stick, mouse: view) and their intents
+// Pointer roles (top two thirds: view, bottom third: stick, mouse: view) and their intents
 import { createGestures } from './js/input/gestures.js';
 // Who else is here: presence (transport-agnostic), a BroadcastChannel stand-in for ?presence=local, IP → province
 import { createPresence, activityOf } from './js/net/presence.js';
@@ -2546,14 +2547,15 @@ const gTmp = new THREE.Vector3();
 function geodesicTmp(p, t, a) { return gTmp.copy(p).multiplyScalar(Math.cos(a)).addScaledVector(t, Math.sin(a)).normalize(); }
 
 // ---------- pointer gestures (js/input/gestures.js) ----------
-// Touch: the top half turns the view (drag) and zooms (pinch); the bottom half brings up a translucent
+// Touch: the top two thirds turn the view (drag) and zoom (pinch); the bottom third brings up a translucent
 // stick where the thumb lands. The mouse turns the view wherever it drags. A quick still touch or click
 // anywhere walks there (or greets the person under it). Each finger keeps its role until it lifts, so
 // stick and view work together and nothing a pointer does can make the avatar jump.
 const LOOK_PER_PX = 0.006, PITCH_PER_PX = 0.004, LOOK_MAX = 6;   // rad/px, rad/px, rad/s
 let lookPending = 0, stickNow = null;
 const stickEl = document.getElementById('stick'), knobEl = stickEl.firstElementChild;
-const splitY = () => insetTop + (innerHeight - insetTop) / 2;
+const LOOK_SHARE = 2 / 3;                 // share of the screen below the header that turns the view (CSS .touch-hint sits on the line)
+const splitY = () => insetTop + (innerHeight - insetTop) * LOOK_SHARE;
 const gestures = createGestures({
   splitY,
   look(dx, dy) {
