@@ -79,6 +79,23 @@
   .tag::after { content: ""; position: absolute; left: 50%; bottom: -7px; width: 2px; height: 6px; background: var(--ink); transform: translateX(-50%); }
 
   #peer-tags { position: fixed; inset: 0; pointer-events: none; }
+  .stick {
+    position: fixed; left: 0; top: 0; width: 112px; height: 112px; margin: -56px 0 0 -56px; pointer-events: none;
+    border-radius: 50%; background: rgba(251, 252, 247, 0.22); border: 1.5px solid rgba(251, 252, 247, 0.75);
+    box-shadow: 0 2px 14px rgba(31, 52, 60, 0.12); opacity: 0; transition: opacity .2s;
+  }
+  .stick.on { opacity: 1; transition: opacity .06s; }
+  .stick .knob {
+    position: absolute; left: 50%; top: 50%; width: 48px; height: 48px; margin: -24px 0 0 -24px; border-radius: 50%;
+    background: rgba(251, 252, 247, 0.72); border: 1.5px solid rgba(255, 255, 255, 0.95); box-shadow: 0 2px 8px rgba(31, 52, 60, 0.18);
+  }
+  .stick:not(.on) .knob { transform: none !important; transition: transform .2s; }
+  .touch-hint {
+    position: fixed; left: 50%; top: calc(var(--inset-top, 0px) + (100vh - var(--inset-top, 0px)) / 2); transform: translate(-50%, -50%);
+    margin: 0; padding: 6px 14px; border-radius: 999px; pointer-events: none; white-space: nowrap;
+    font: 13px/1.2 var(--body); letter-spacing: 0.08em; color: var(--ink); background: rgba(251, 252, 247, 0.72);
+  }
+  .touch-hint[hidden] { display: none; }
   .tag.peer { font: 500 11px/1 var(--body); letter-spacing: 0.04em; padding: 3px 5px 3px; border-width: 1.5px; background: rgba(251, 252, 247, 0.9); cursor: pointer; }
   .tag.peer:hover { background: #fff; }
   .bubble {
@@ -155,6 +172,8 @@
 <div id="stage"><canvas id="c" aria-label="梦想星球 3D 场景"></canvas></div>
 <div id="labels" aria-hidden="true"></div>
 <div id="peer-tags" aria-hidden="true"></div>
+<div class="stick" id="stick" aria-hidden="true"><div class="knob"></div></div>
+<p class="touch-hint" id="touch-hint" hidden>↑ 滑动看看　·　↓ 按住走路</p>
 
 <header class="brand">
   <h1>梦想星球</h1>
@@ -205,6 +224,9 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 // Where the avatar can stand and how it moves: plain JS, no three.js, unit-tested in tests/dream-walk.test.mjs
 import { createWalkField, createController, findPath, shapes } from './js/walk/index.js';
+import { stepTo, transport, turn as turnTangent } from './js/walk/vec.js';
+// Pointer roles (top half: view, bottom half: stick, mouse: view) and their intents
+import { createGestures } from './js/input/gestures.js';
 // Who else is here: presence (transport-agnostic), a BroadcastChannel stand-in for ?presence=local, IP → province
 import { createPresence, activityOf } from './js/net/presence.js';
 import { createLocalConnect } from './js/net/local.js';
@@ -237,9 +259,14 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 160);
 const camBase = { y: 3.4, z: 6.6 };
 let camZoom = 1.35, camLift = 0;      // camLift: the avatar's ground height, smoothed
+let camPitch = Math.atan2(camBase.y, camBase.z);   // camera elevation above the ground behind the avatar
+const PITCH_MIN = 0.2, PITCH_MAX = 0.95;
+let camReach = 1;          // share of the camera's distance behind the avatar kept clear of tall things (1 = nothing in the way)
 function placeCamera() {
-  camera.position.set(0, R + camLift + camBase.y * camZoom, camBase.z * camZoom);
-  camera.lookAt(0, R + camLift + 0.4 + (camZoom - 1) * 1.1, -7 - (camZoom - 1) * 3);
+  // in front of an obstacle the camera keeps its height and comes forward, looking down more steeply
+  const D = Math.hypot(camBase.y, camBase.z) * camZoom;
+  camera.position.set(0, R + camLift + D * Math.sin(camPitch), D * Math.cos(camPitch) * camReach);
+  camera.lookAt(0, R + camLift + 0.4 + (camZoom - 1) * 1.1, (-7 - (camZoom - 1) * 3) * Math.max(0.15, camReach));   // pulled in: aim nearer, keep the avatar in frame
 }
 placeCamera();
 camera.layers.enable(1);
@@ -1442,17 +1469,18 @@ const SUDI_WALKS = SUDI_BRIDGES.map(xb => walk.deck(LAKE, [xb - 0.8, sudiZ(xb - 
 await slice();
 // ---------- what blocks walking: building footprints (also keep grass off floors), the railing ----------
 {
-  const box = (s, x0, x1, z0, z1) => walk.footprint(s, shapes.box(x0, x1, z0, z1));
-  const disc = (s, x, z, r) => walk.footprint(s, shapes.circle(x, z, r));
-  TOWERS.forEach(([x, z]) => box(HOME, x - 1.75, x + 1.75, z - 1.25, z + 1.8));
+  // h: roughly how tall each thing is, so the camera can move in front of what would hide you
+  const box = (s, x0, x1, z0, z1, h) => walk.footprint(s, shapes.box(x0, x1, z0, z1), { h });
+  const disc = (s, x, z, r, h) => walk.footprint(s, shapes.circle(x, z, r), { h });
+  TOWERS.forEach(([x, z]) => box(HOME, x - 1.75, x + 1.75, z - 1.25, z + 1.8, TOWER.floors * TOWER.fh + 1));
   disc(HOME, FOUNTAIN[0], FOUNTAIN[1], 1.3);
   box(HOME, 1.7, 2.8, HOME_FENCE.z1 + 0.3, HOME_FENCE.z1 + 1.3);
-  box(HOME, CAR[0] - 0.75, CAR[0] + 0.75, CAR[1] - 1.25, CAR[1] + 1.25);
-  box(MALL, MALL_BOX.x0 - 0.1, MALL_BOX.x1 + 0.1, MALL_BOX.z0 - 0.1, MALL_BOX.z1 + 0.15);
-  disc(MALL, 0, -0.6, 2.1);
-  disc(SPORTS, DRUM.cx, DRUM.cz, DRUM.r + 0.12);
-  XIXI_HOUSES.forEach(([x, z, w, d]) => box(XIXI, x - w / 2 - 0.15, x + w / 2 + 0.15, z - d / 2 - 0.1, z + d / 2 + 0.1));
-  disc(LAKE, LEIFENG[0], LEIFENG[1], 1.3);
+  box(HOME, CAR[0] - 0.75, CAR[0] + 0.75, CAR[1] - 1.25, CAR[1] + 1.25, 1.5);
+  box(MALL, MALL_BOX.x0 - 0.1, MALL_BOX.x1 + 0.1, MALL_BOX.z0 - 0.1, MALL_BOX.z1 + 0.15, 3.6);
+  disc(MALL, 0, -0.6, 2.1, 4.5);
+  disc(SPORTS, DRUM.cx, DRUM.cz, DRUM.r + 0.12, 3.2);
+  XIXI_HOUSES.forEach(([x, z, w, d, h]) => box(XIXI, x - w / 2 - 0.15, x + w / 2 + 0.15, z - d / 2 - 0.1, z + d / 2 + 0.1, h + 0.8));
+  disc(LAKE, LEIFENG[0], LEIFENG[1], 1.3, 5.0);
   disc(LAKE, BAOCHU[0], BAOCHU[1], 0.7);
   // the courtyard railing is the same polyline that buildHome draws; the gate pillars close its ends
   walk.barrier(HOME, shapes.polyline(HOME_RAIL, 0.1));
@@ -2042,13 +2070,13 @@ async function buildSki() {
   };
   const HOTEL = [7.4, -0.6, 3.4, 2.2, 2.9];
   {
-    const box = (s, x0, x1, z0, z1) => walk.footprint(s, shapes.box(x0, x1, z0, z1));
-    VILLAGE.hok.forEach(([x, z, w, d]) => box(HOK, x - w / 2 - 0.2, x + w / 2 + 0.2, z - d / 2 - 0.2, z + d / 2 + 0.2));
-    VILLAGE.cho.forEach(([x, z, w, d]) => box(CHO, x - w / 2 - 0.2, x + w / 2 + 0.2, z - d / 2 - 0.2, z + d / 2 + 0.2));
-    box(HOK, HOTEL[0] - HOTEL[2] / 2 - 0.2, HOTEL[0] + HOTEL[2] / 2 + 0.2, HOTEL[1] - HOTEL[3] / 2 - 0.2, HOTEL[1] + HOTEL[3] / 2 + 0.2);
+    const box = (s, x0, x1, z0, z1, h) => walk.footprint(s, shapes.box(x0, x1, z0, z1), { h });
+    VILLAGE.hok.forEach(([x, z, w, d, h]) => box(HOK, x - w / 2 - 0.2, x + w / 2 + 0.2, z - d / 2 - 0.2, z + d / 2 + 0.2, h + 0.9));
+    VILLAGE.cho.forEach(([x, z, w, d, h]) => box(CHO, x - w / 2 - 0.2, x + w / 2 + 0.2, z - d / 2 - 0.2, z + d / 2 + 0.2, h + 0.9));
+    box(HOK, HOTEL[0] - HOTEL[2] / 2 - 0.2, HOTEL[0] + HOTEL[2] / 2 + 0.2, HOTEL[1] - HOTEL[3] / 2 - 0.2, HOTEL[1] + HOTEL[3] / 2 + 0.2, HOTEL[4] + 1);
     walk.footprint(HOK, shapes.circle(ONSEN[0], ONSEN[1], 1.45));
     LIFTS.forEach(l => box(l.s, l.x - 1.0, l.x + 1.0, l.z0 - 0.8, l.z0 + 0.9));
-    walk.footprint(RUY, shapes.circle(0, RING.z, 1.2));
+    walk.footprint(RUY, shapes.circle(0, RING.z, 1.2), { h: RING.lift + 1 });
     box(RUY, 2.4, 3.4, -6.7, -5.7);
     box(RUY, -5.4, -3.0, -0.8, 3.6);
     box(RUY, 3.0, 5.4, -0.8, 3.6);
@@ -2338,30 +2366,66 @@ function rotatePlanet(yaw, pitch) {
 }
 function avatarLocalDir() { return new THREE.Vector3(0, 1, 0).applyQuaternion(planet.quaternion.clone().invert()); }
 
-// Free walking. The planet's rotation stays the single source of truth for where the avatar is
-// (the autopilot below drives it directly); for a free step it is read out as a pose
-// { p: position, f: heading } in planet space, handed to the controller (collide-and-slide in
-// js/walk), and written back. The avatar sits at world +Y facing world −Z, so the planet's
-// rotation is the one taking p → +Y, f → −Z and right = f × p → +X.
+// ---------- view and body ----------
+// The BODY is where the avatar stands (p) and which way it faces (f); walking, collisions, routes and
+// presence use it. The VIEW is which way the camera looks along the ground (c), plus camPitch and zoom.
+// The planet's rotation is the view — it takes p → +Y and c → −Z, the camera sits behind on +Z — and
+// the avatar model turns by the angle from c to f. Turning the view never moves or turns the body;
+// moving is camera-relative: a direction on screen becomes a direction on the ground, the body walks
+// that way and turns to face it, and the view is carried along the same step so it doesn't drift.
 const NEG_Z = new THREE.Vector3(0, 0, -1), poseQ = new THREE.Quaternion(), poseM = new THREE.Matrix4();
 const poseV = [new THREE.Vector3(), new THREE.Vector3(), new THREE.Vector3()];
-function readPose() {
+const BODY_TURN = 10, FOLLOW_AFTER = 2, FOLLOW_RATE = 1.6;   // rad/s body turn; s before the view follows; rad/s it follows at
+let heading = null;          // f, planet space; null = facing the way the view looks
+let lastLook = -Infinity;    // elapsed time of the last manual view change
+function readView() {
   poseQ.copy(planet.quaternion).invert();
-  return { p: Y.clone().applyQuaternion(poseQ), f: NEG_Z.clone().applyQuaternion(poseQ) };
+  return { p: Y.clone().applyQuaternion(poseQ), c: NEG_Z.clone().applyQuaternion(poseQ) };
 }
-function writePose({ p, f }) {
-  const [P, F, Rt] = poseV;
-  P.set(p.x, p.y, p.z); F.set(f.x, f.y, f.z); Rt.crossVectors(F, P);
-  poseM.makeBasis(Rt, P, F.negate());            // world → planet space
+function writeView({ p, c }) {
+  const [P, C, Rt] = poseV;
+  P.set(p.x, p.y, p.z); C.set(c.x, c.y, c.z).addScaledVector(P, -C.dot(P)).normalize(); Rt.crossVectors(C, P);
+  poseM.makeBasis(Rt, P, C.negate());            // world → planet space
   planet.quaternion.setFromRotationMatrix(poseM).invert();
 }
-/** turn: radians, > 0 to the right; forward: radians of arc. Returns false if something got in the way. */
-function walkBy(turn, forward) {
-  const r = walker.move(readPose(), { turn, forward });
-  writePose(r);
-  post.uniforms.uSkyYaw.value += turn;
-  post.uniforms.uSkyDrift.value += r.advanced;
-  return !r.blocked;
+function bodyPose() {
+  const v = readView();
+  if (!heading) heading = v.c.clone();
+  heading.addScaledVector(v.p, -heading.dot(v.p)).normalize();
+  return { p: v.p, f: heading, c: v.c };
+}
+const sideTmp = new THREE.Vector3();
+/** signed angle from `a` to `b` round `up`; > 0 when b is to the right of a */
+const angleRight = (a, b, up) => Math.atan2(sideTmp.crossVectors(a, up).dot(b), a.dot(b));
+/** turn the view round the avatar; > 0 to the right */
+function orbit(yaw) {
+  if (!yaw) return;
+  const v = readView();
+  writeView({ p: v.p, c: turnTangent(v.p, v.c, yaw) });
+  post.uniforms.uSkyYaw.value += yaw;
+}
+/** a camera-relative direction (x right, y forward) as a direction on the ground at the avatar */
+function viewDir(x, y) {
+  const { p, c } = readView();
+  return c.clone().multiplyScalar(y).addScaledVector(sideTmp.crossVectors(c, p), x).normalize();
+}
+/**
+ * Walk the body `amount` (0..1 of walking speed) for dt along ground direction `dir`, turning it to face
+ * that way. Returns the share of a full stride actually covered (for the run cycle).
+ */
+let leanTarget = 0;
+function moveBody(dir, amount, dt) {
+  const { p, f, c } = bodyPose();
+  const want = Math.max(-BODY_TURN * dt, Math.min(BODY_TURN * dt, angleRight(f, dir, p)));
+  const dist = W.walkSpeed * amount * dt / R;
+  const r = walker.move({ p, f }, { forward: dist * dir.dot(f), strafe: dist * dir.dot(sideTmp.crossVectors(f, p)) });
+  const step = stepTo(p, r.p);
+  const nf = turnTangent(r.p, r.f, want), nc = transport(c, step);
+  heading.set(nf.x, nf.y, nf.z);
+  writeView({ p: r.p, c: nc });
+  if (step.dir) post.uniforms.uSkyDrift.value += step.ang * (step.dir.x * c.x + step.dir.y * c.y + step.dir.z * c.z);
+  leanTarget = -Math.max(-0.35, Math.min(0.35, want / dt * 0.035));
+  return Math.min(1, step.ang * R / (W.walkSpeed * dt || 1));
 }
 
 // A trip is a queue of legs along the ring road: out of the current place, node to node
@@ -2445,37 +2509,62 @@ addEventListener('keydown', e => {
 addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
 addEventListener('blur', () => keys.clear());
 
-// ---------- pointer gestures ----------
-// Moving always happens at walking speed — keys, or a tap/click and the planned route — so nothing a
-// pointer does can make the avatar jump. One finger or the mouse: a tap walks there (or greets the
-// person tapped); a drag only turns you on the spot, eased and capped, so a fast flick turns smoothly.
-// Two fingers: pinch to zoom and nothing else; the gesture stays a pinch until every finger is up, so
-// lifting one finger never turns into a drag or a tap. The mouse wheel zooms too.
-const pointers = new Map();          // pointerId → { x, y, x0, y0, t0 }
-let gesture = null;                  // null (maybe a tap) | 'drag' | 'pinch'
-let turnPending = 0, pinch0 = null;  // radians of turn still to apply; pinch start { dist, zoom }
-const TAP_SLOP = 8, TAP_MS = 450, TURN_PER_PX = 0.005, TURN_MAX = 6;   // px, ms, rad/px, rad/s
-const spread = () => { const [a, b] = [...pointers.values()]; return Math.hypot(a.x - b.x, a.y - b.y) || 1; };
-canvas.addEventListener('pointerdown', e => {
-  if (pointers.size >= 2) return;
-  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now() });
-  canvas.setPointerCapture(e.pointerId);
-  if (pointers.size === 2) { gesture = 'pinch'; turnPending = 0; pinch0 = { dist: spread(), zoom: zoomUser }; canvas.classList.remove('dragging'); }
-});
-canvas.addEventListener('pointermove', e => {
-  const p = pointers.get(e.pointerId);
-  if (!p || building) return;
-  const dx = e.clientX - p.x;
-  p.x = e.clientX; p.y = e.clientY;
-  if (gesture === 'pinch') {
-    if (pointers.size === 2) zoomUser = Math.min(1.6, Math.max(0.6, pinch0.zoom * pinch0.dist / spread()));
-    return;
+// ---------- the camera keeps the avatar in sight ----------
+// Walk back from the avatar along the ground under the camera; if a footprint with a height (a tower,
+// the mall…) rises above the line from the avatar's head to the camera, bring the camera forward to
+// just before it, at the same height (so it looks down over the avatar's shoulder rather than sitting
+// inside the wall). Eased: in quickly, out slowly. Pure geometry on the WalkField, no mesh raycasts.
+function cameraReach(dt) {
+  const { p, c } = readView(), D = Math.hypot(camBase.y, camBase.z) * camZoom;
+  const run = D * Math.cos(camPitch), rise = D * Math.sin(camPitch), head = 1.0, h0 = walk.surfaceH(p);
+  let want = 1;
+  for (let s = 0.3; s < run; s += 0.3) {
+    const d = geodesicTmp(p, c, -s / R), top = walk.occluderHeight(d);
+    if (top && walk.surfaceH(d) - h0 + top > head + (rise - head) * s / run) { want = Math.max(0.3, s - 0.5) / run; break; }
   }
-  if (!gesture && Math.hypot(p.x - p.x0, p.y - p.y0) > TAP_SLOP) {
-    gesture = 'drag'; canvas.classList.add('dragging'); stopTravel(); setActive(null);
-  }
-  if (gesture === 'drag') turnPending += Math.max(-80, Math.min(80, dx)) * TURN_PER_PX;   // a jumpy event can't spin you
+  camReach += (want - camReach) * Math.min(1, dt * (want < camReach ? 10 : 2));
+}
+const gTmp = new THREE.Vector3();
+/** the point at angle `a` along the ground from p in tangent direction t */
+function geodesicTmp(p, t, a) { return gTmp.copy(p).multiplyScalar(Math.cos(a)).addScaledVector(t, Math.sin(a)).normalize(); }
+
+// ---------- pointer gestures (js/input/gestures.js) ----------
+// Touch: the top half turns the view (drag) and zooms (pinch); the bottom half brings up a translucent
+// stick where the thumb lands. The mouse turns the view wherever it drags. A quick still touch or click
+// anywhere walks there (or greets the person under it). Each finger keeps its role until it lifts, so
+// stick and view work together and nothing a pointer does can make the avatar jump.
+const LOOK_PER_PX = 0.006, PITCH_PER_PX = 0.004, LOOK_MAX = 6;   // rad/px, rad/px, rad/s
+let lookPending = 0, stickNow = null;
+const stickEl = document.getElementById('stick'), knobEl = stickEl.firstElementChild;
+const splitY = () => insetTop + (innerHeight - insetTop) / 2;
+const gestures = createGestures({
+  splitY,
+  look(dx, dy) {
+    if (building) return;
+    lastLook = elapsed;
+    lookPending += dx * LOOK_PER_PX;
+    camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, camPitch + dy * PITCH_PER_PX));
+    canvas.classList.add('dragging');
+    hintSeen();
+  },
+  zoom(f) { zoomUser = Math.min(1.6, Math.max(0.6, zoomUser * f)); },
+  tap(x, y) { if (!building) tapAt(x, y); },
+  stick(st) {
+    stickNow = st;
+    if (st) {
+      stickEl.style.transform = `translate(${st.ox}px, ${st.oy}px)`;
+      knobEl.style.transform = `translate(${st.kx}px, ${st.ky}px)`;
+      stickEl.classList.add('on');
+      if (st.amount > 0) { stopTravel(); setActive(null); hintSeen(); }
+    } else stickEl.classList.remove('on');
+  },
 });
+const ptr = e => ({ id: e.pointerId, x: e.clientX, y: e.clientY, t: performance.now(), mouse: e.pointerType === 'mouse' });
+canvas.addEventListener('pointerdown', e => { canvas.setPointerCapture(e.pointerId); gestures.down(ptr(e)); });
+canvas.addEventListener('pointermove', e => gestures.move(ptr(e)));
+canvas.addEventListener('pointerup', e => { gestures.up(ptr(e)); if (!gestures.active) canvas.classList.remove('dragging'); });
+canvas.addEventListener('pointercancel', e => { gestures.up(ptr(e), true); if (!gestures.active) canvas.classList.remove('dragging'); });
+addEventListener('blur', () => gestures.reset());
 const ray = new THREE.Raycaster(), ndcV = new THREE.Vector2();
 function tapAt(x, y) {
   ndcV.set(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1);
@@ -2487,24 +2576,17 @@ function tapAt(x, y) {
     if (hit) walkTo(planet.worldToLocal(hit.point.clone()).normalize());   // stops are reached from their labels
   }
 }
-function pointerEnd(e, cancelled) {
-  const p = pointers.get(e.pointerId);
-  if (!p) return;
-  pointers.delete(e.pointerId);
-  if (pointers.size) return;                                                // a pinch ends when every finger is up
-  if (!cancelled && !gesture && !building && performance.now() - p.t0 < TAP_MS) tapAt(e.clientX, e.clientY);
-  gesture = null; pinch0 = null;
-  canvas.classList.remove('dragging');
+/** per frame: the view turn a drag asked for, eased and at most LOOK_MAX rad/s */
+function applyLook(dt) {
+  if (!lookPending) return;
+  const step = Math.max(-LOOK_MAX * dt, Math.min(LOOK_MAX * dt, lookPending * Math.min(1, dt * 14)));
+  orbit(step);
+  lookPending = Math.abs(lookPending - step) < 1e-4 ? 0 : lookPending - step;
 }
-canvas.addEventListener('pointerup', e => pointerEnd(e, false));
-canvas.addEventListener('pointercancel', e => pointerEnd(e, true));
-/** per frame: apply the turn a drag asked for, eased and at most TURN_MAX rad/s */
-function applyDragTurn(dt) {
-  if (!turnPending) return;
-  const step = Math.max(-TURN_MAX * dt, Math.min(TURN_MAX * dt, turnPending * Math.min(1, dt * 14)));
-  walkBy(step, 0);
-  turnPending = Math.abs(turnPending - step) < 1e-4 ? 0 : turnPending - step;
-}
+// first visit on a touch screen: a quiet hint on the dividing line, gone once either half is used
+const hintEl = document.getElementById('touch-hint');
+function hintSeen() { if (!hintEl.hidden) { hintEl.hidden = true; store.set('dream:hinted', '1'); } }
+if (matchMedia('(pointer: coarse)').matches && !store.get('dream:hinted')) hintEl.hidden = false;
 canvas.addEventListener('wheel', e => { zoomUser = Math.min(1.6, Math.max(0.6, zoomUser * (1 + e.deltaY * 0.001))); e.preventDefault(); }, { passive: false });
 
 // ---------- click to walk ----------
@@ -2532,15 +2614,11 @@ function walkTo(dir) {
   placeMarker(autoWalk.route[autoWalk.route.length - 1], true);
   return true;
 }
-const rightTmp = new THREE.Vector3();
 /** One frame of following the route; returns how much of a stride this frame was (for the run cycle). */
 function followRoute(dt) {
-  const pose = readPose(), w = autoWalk.route[autoWalk.i];
-  const toward = w.clone().addScaledVector(pose.p, -w.dot(pose.p));
-  const ang = Math.atan2(toward.dot(rightTmp.crossVectors(pose.f, pose.p)), toward.dot(pose.f));
-  const go = Math.max(0, Math.cos(ang)) ** 2;                 // slow down for sharp turns
-  walkBy(Math.max(-5 * dt, Math.min(5 * dt, ang)), W.walkSpeed / R * dt * go);
-  turnLean += (-Math.sign(ang) * 0.35 * Math.min(1, Math.abs(ang)) - turnLean) * Math.min(1, dt * 6);
+  const pose = bodyPose(), w = autoWalk.route[autoWalk.i];
+  const toward = w.clone().addScaledVector(pose.p, -w.dot(pose.p)).normalize();
+  const go = moveBody(toward, 1, dt);
   const last = autoWalk.i === autoWalk.route.length - 1, left = pose.p.angleTo(w) * R;
   if (left < (last ? 0.2 : 0.45)) {
     if (last) autoWalk = null; else autoWalk.i++;
@@ -2638,11 +2716,11 @@ async function loadWorld(key) {
   buildHud();
   // start at the planet's spawn point if it has one; otherwise on the ring road a little before the
   // first stop, facing it (and the autopilot then walks there)
-  travel = null; legs = []; curStop = null; arriving = null; setActive(null);
+  travel = null; legs = []; curStop = null; arriving = null; setActive(null); heading = null;
   post.uniforms.uSkyYaw.value = 0; post.uniforms.uSkyDrift.value = 0;
   if (W.spawn) {
     const { s, at, look } = W.spawn, p = P(s, at), q = P(s, look);
-    writePose({ p, f: q.addScaledVector(p, -q.dot(p)).normalize() });
+    writeView({ p, c: q.addScaledVector(p, -q.dot(p)).normalize() });
   } else {
     planet.quaternion.setFromUnitVectors(sph(0, W.startLon), new THREE.Vector3(0, 1, 0));
     const look = zones[0].s.node.clone().applyQuaternion(planet.quaternion);
@@ -2852,7 +2930,7 @@ const company = (() => {
     /** per frame, before rendering: report my pose, move everyone else */
     update(dt, t) {
       if (presence && presence.started) {
-        const pose = readPose();
+        const pose = bodyPose();
         presence.move([pose.p.x, pose.p.y, pose.p.z], [pose.f.x, pose.f.y, pose.f.z], moveSpeed > 0.08 || !!travel);
       }
       group.quaternion.copy(planet.quaternion);
@@ -2941,14 +3019,23 @@ function frame() {
   const dt = Math.min(0.05, clock.getDelta());
   elapsed += dt;
 
-  // keyboard walking
+  // walking: keys or the stick, relative to the view; else a clicked route
   const fw = (keys.has('w') || keys.has('arrowup') ? 1 : 0) - (keys.has('s') || keys.has('arrowdown') ? 1 : 0);
-  const tr = (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0);
-  if (fw || tr) { walkBy(tr * 1.3 * dt, fw * W.walkSpeed / R * dt); setActive(null); }
-  applyDragTurn(dt);
-  let walking = Math.abs(fw);
-  turnLean += ((tr ? -tr * 0.35 : 0) - turnLean) * Math.min(1, dt * 6);
-  if (autoWalk && !travel) walking = Math.max(walking, followRoute(dt));
+  const sd = (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0);
+  let walking = 0;
+  leanTarget = 0;
+  applyLook(dt);
+  if (fw || sd) { walking = moveBody(viewDir(sd, fw), 1, dt); setActive(null); }
+  else if (stickNow && stickNow.amount > 0) walking = moveBody(viewDir(stickNow.x, stickNow.y), stickNow.amount, dt);
+  else if (autoWalk && !travel) walking = followRoute(dt);
+  // the view drifts back behind the avatar while it walks, unless it was turned by hand just now.
+  // Steering yourself, only when walking roughly away from the camera (following a sideways walk
+  // would bend it into a circle); on a clicked route, unless the route heads back at the camera.
+  if (walking > 0.05 && !travel && elapsed - lastLook > FOLLOW_AFTER) {
+    const { p, f, c } = bodyPose(), a = angleRight(c, f, p);
+    if (Math.abs(a) < (autoWalk && !(fw || sd || stickNow) ? 1.75 : 0.8)) orbit(Math.max(-FOLLOW_RATE * dt, Math.min(FOLLOW_RATE * dt, a * Math.min(1, dt * 2))));
+  }
+  turnLean += (leanTarget - turnLean) * Math.min(1, dt * 6);
   overlay.quaternion.copy(planet.quaternion);
   if (marker.visible) {
     const age = elapsed - marker.userData.t0, done = marker.userData.ok ? !autoWalk : age > 0.6;
@@ -2976,6 +3063,7 @@ function frame() {
     turnLean += (-Math.sign(tv.beta2) * 0.25 * Math.sin(Math.PI * p3) - turnLean) * Math.min(1, dt * 6);
     tv.d1 = p1; tv.d2 = p2; tv.d3 = p3;
     walking = Math.max(Math.min(1, rate * R / W.walkSpeed), p3 > 0 && p3 < 1 ? 0.35 : 0);
+    heading = null;                               // on the autopilot the body faces where the view goes
     if (tv.t >= Math.max(tv.Tb, tv.t0 + tv.Tw + tv.Tt)) {
       travel = null;
       if (legs.length) startLeg(legs.shift()); else curStop = arriving;
@@ -2988,7 +3076,7 @@ function frame() {
   avatarDir.set(0, 1, 0).applyQuaternion(invQ);
   me.root.position.set(0, R + walk.surfaceH(avatarDir), 0);
   camLift += (me.root.position.y - R - camLift) * Math.min(1, dt * 2.5);
-  me.root.rotation.y = Math.PI + turnLean;   // modelled facing +z; turn to face away from camera
+  { const { p, f, c } = bodyPose(); me.root.rotation.y = Math.PI - angleRight(c, f, p) + turnLean; }   // modelled facing +z: face f, seen from c
 
   runPhase += dt * (4 + moveSpeed * 7);
   poseAvatar(me, moveSpeed, runPhase, elapsed, W.ski);
@@ -2996,6 +3084,7 @@ function frame() {
   // camera pulls back at big places, closer while walking
   const zt = flyZoom ?? (travel || curStop == null ? 1.35 : zones[curStop].zoom) * zoomUser;
   camZoom += (zt - camZoom) * Math.min(1, dt * 1.4);
+  cameraReach(dt);
   placeCamera();
   if (W.update) W.update(elapsed);
 

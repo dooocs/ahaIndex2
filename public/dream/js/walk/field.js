@@ -1,7 +1,8 @@
 // WalkField: everything a planet knows about where the avatar can stand, and nothing else.
 //
 // A planet builder declares, in each site's local plane:
-//   footprint(site, shape)   a building or prop: blocks walking and keeps vegetation off it
+//   footprint(site, shape, { h })   a building or prop: blocks walking and keeps vegetation off it;
+//                            h (its height) lets the camera know it can hide the avatar
 //   barrier(site, shape)     a railing or wall: blocks walking only
 //   deck(site, a, b, …)      a boardwalk or bridge: something to stand on over water
 // plus the terrain height function and the water level.
@@ -12,6 +13,7 @@
 //   gradient(d)       { n, mag }: unit tangent toward more room and the slope of clearance (null where flat)
 //   normal(d)         just gradient(d).n
 //   inFootprint(d, m) the old square-cornered footprint test, for scatter
+//   occluderHeight(d) height of the tallest footprint with a height that covers d (0 if none)
 //
 // It has no idea about input, the camera, the planet's rotation or three.js. One field per planet;
 // switching planets throws the old one away, so there is no global state to reset by hand.
@@ -34,7 +36,7 @@ export function createWalkField({ radius, water = -Infinity, waterMargin = 0.05,
 
   const group = site => {
     let g = groups.get(site);
-    if (!g) groups.set(site, (g = { site, foot: [], wall: [] }));
+    if (!g) groups.set(site, (g = { site, foot: [], wall: [], tall: [] }));
     return g;
   };
 
@@ -96,6 +98,16 @@ export function createWalkField({ radius, water = -Infinity, waterMargin = 0.05,
   }
   const normal = d => gradient(d)?.n ?? null;
 
+  function occluderHeight(d) {
+    let h = 0;
+    for (const g of groups.values()) {
+      if (!g.tall.length) continue;
+      const p = local(g.site, d);
+      if (p) for (const [s, sh] of g.tall) if (sh > h && s.sdf(p.x, p.z) < 0) h = sh;
+    }
+    return h;
+  }
+
   function inFootprint(d, m = 0) {
     for (const g of groups.values()) {
       if (!g.foot.length) continue;
@@ -109,7 +121,7 @@ export function createWalkField({ radius, water = -Infinity, waterMargin = 0.05,
     radius,
     bodyRadius,
     setTerrain(fn) { terrain = fn; return this; },
-    footprint(site, shape) { group(site).foot.push(shape); return this; },
+    footprint(site, shape, { h = 0 } = {}) { const g = group(site); g.foot.push(shape); if (h > 0) g.tall.push([shape, h]); return this; },
     barrier(site, shape) { group(site).wall.push(shape); return this; },
     /**
      * A walkable deck from a to b (site-local [x, z]), half-width hw, arching up by `rise` in the middle.
@@ -128,5 +140,6 @@ export function createWalkField({ radius, water = -Infinity, waterMargin = 0.05,
     gradient,
     normal,
     inFootprint,
+    occluderHeight,
   };
 }
