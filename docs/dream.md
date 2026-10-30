@@ -134,6 +134,10 @@ failures poses also move to presence (about once a second). The Realtime client 
 dropped while presence kept working — online counts were right but messages never arrived.
 Try it locally with `?presence=local&broadcast=0`.
 
+On phones the composer is a compact card near the top (clear of the keyboard) with a 44 px × on its corner;
+the chips scroll in one row, the field uses 16 px text (iOS zooms the page into smaller fields), and a tap on
+the scene puts the composer away instead of walking.
+
 ## Done: a view and a body (game-style controls)
 
 The camera and the avatar are separate. The **body** is where the avatar stands and which way it faces;
