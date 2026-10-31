@@ -27,6 +27,8 @@
 .community-eyebrow em { color: var(--c-red); font-style: normal; margin-left: 12px; }
 .community-heading { display: flex; justify-content: space-between; align-items: end; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
 .community-heading h1 { margin-bottom: 0; }
+.community-title-row { display: flex; align-items: baseline; gap: 8px 24px; flex-wrap: wrap; }
+.community-tagline { margin: 0; font: 400 16px/1.6 var(--fs); color: var(--c-body); }
 .community-sort { font: 12px var(--fm); border-bottom: 2px solid var(--c-red); padding-bottom: 4px; }
 .community-figure { font: 800 72px/1 var(--fd); margin: 0 0 32px; font-variant-numeric: tabular-nums; }
 .community-button { display: inline-flex; justify-content: center; align-items: center; gap: 8px; min-height: 40px; padding: 10px 24px; background: var(--c-red); color: var(--c-paper) !important; border: 1px solid var(--c-red); border-radius: 0; font: 500 12px/1.5 var(--fm); cursor: pointer; text-align: center; max-width: 100%; }
