@@ -62,18 +62,21 @@ export function buildCarModel(body, trim = 0xf3efe6, helmet = 0xffffff) {
     wheels.push({ steer, spin, front: !!front });
   }
   // 尾焰：小喷橙色、氮气蓝色
+  // 尾焰：三层叠加发光的锥（外焰、中焰、白色焰心），半透明、不描线（放在第 1 层，法线 pass 不画）
   const flames = [];
+  const flameMat = (hex, op) => new THREE.MeshBasicMaterial({ color: hex, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false });
+  const outerMat = flameMat(0xff9a3c, 0.55), midMat = flameMat(0xffc46b, 0.7), coreMat = flameMat(0xfff6dc, 0.95);
   for (const s of [-1, 1]) {
-    const f = new THREE.Mesh(new THREE.ConeGeometry(0.22, 1.4, 8).rotateX(-Math.PI / 2).translate(0, 0, -0.7), toon(0xffb347, { kind: 'GLOW', glow: 1.3 }));
-    f.position.set(s * 0.45, 0.55, -2.15); f.visible = false; root.add(f);
-    const core = new THREE.Mesh(new THREE.ConeGeometry(0.12, 0.9, 8).rotateX(-Math.PI / 2).translate(0, 0, -0.45), toon(0xfff6d8, { kind: 'GLOW', glow: 1.3 }));
-    core.position.copy(f.position); core.visible = false; root.add(core);
-    flames.push(f, core);
+    for (const [r, len, mat] of [[0.5, 2.6, outerMat], [0.32, 1.9, midMat], [0.16, 1.1, coreMat]]) {
+      const f = new THREE.Mesh(new THREE.ConeGeometry(r, len, 12, 1, true).rotateX(-Math.PI / 2).translate(0, 0, -len / 2), mat);
+      f.position.set(s * 0.45, 0.55, -2.15); f.visible = false; f.layers.set(1); f.renderOrder = 5;
+      root.add(f); flames.push(f);
+    }
   }
-  g.userData = { root, wheels, flames, flameOuter: flames[0].material };
+  g.userData = { root, wheels, flames, outerMat, midMat };
   return g;
 }
-const FLAME_ORANGE = new THREE.Color(0xffb347), FLAME_BLUE = new THREE.Color(0x7fd7ff);
+const FLAME_ORANGE = new THREE.Color(0xff9a3c), FLAME_BLUE = new THREE.Color(0x3fa8ff), FLAME_ORANGE_MID = new THREE.Color(0xffc46b), FLAME_BLUE_MID = new THREE.Color(0x9fe4ff);
 export function animateCar(model, { speed, steer, drifting, driftDir, nitro, small, dt, lean = 0, pitch = 0 }) {
   const u = model.userData;
   for (const w of u.wheels) {
@@ -86,9 +89,10 @@ export function animateCar(model, { speed, steer, drifting, driftDir, nitro, sma
   const t = performance.now() * 0.001;
   u.flames.forEach((f, i) => {
     f.visible = on;
-    if (on) { const k = (nitro ? 1.15 : 0.7) * (0.85 + Math.sin(t * 50 + i) * 0.1 + Math.random() * 0.15); f.scale.set(k, k, k * (1 + Math.random() * 0.4)); }
+    if (on) { const k = (nitro ? 1.3 : 0.7) * (0.85 + Math.sin(t * 50 + i) * 0.1 + Math.random() * 0.15); f.scale.set(k, k, k * (nitro ? 1.35 : 1) * (0.85 + Math.random() * 0.5)); }
   });
-  u.flameOuter.uniforms.uLit.value.copy(nitro ? FLAME_BLUE : FLAME_ORANGE);
+  u.outerMat.color.copy(nitro ? FLAME_BLUE : FLAME_ORANGE);
+  u.midMat.color.copy(nitro ? FLAME_BLUE_MID : FLAME_ORANGE_MID);
 }
 
 // ---------- 玩家车 ----------
@@ -189,7 +193,7 @@ export class PlayerCar {
         this.s -= (2.2 + 10 * sa) * dt;
         this.gauge += dt * T.gaugeRate * (0.3 + sa * 1.8) * clamp(this.s / 34, 0.3, 1.1);
         while (this.gauge >= 1) {
-          if (this.nitroN < 2) { this.nitroN++; this.gauge -= 1; this.emit('gauge'); } else { this.gauge = 1; break; }
+          if (this.nitroN < 3) { this.nitroN++; this.gauge -= 1; this.emit('gauge'); } else { this.gauge = 1; break; }
         }
       }
       this.driftT += dt;

@@ -57,17 +57,26 @@
   #board li { display: flex; gap: 8px; padding: 2px 0; }
   #board li b { font: 600 15px/1.2 var(--num); width: 12px; }
   #board li.me { color: var(--accent); font-weight: 700; }
-  .br { position: absolute; right: 16px; bottom: 16px; padding: 8px 14px 10px; min-width: 210px; }
+  .br { position: absolute; right: 16px; bottom: 16px; padding: 8px 14px 10px; min-width: 170px; }
   .speed { display: flex; align-items: baseline; gap: 6px; }
   #kmh { font: 600 54px/0.9 var(--num); min-width: 3ch; text-align: right; }
   .speed span { font: 600 16px/1 var(--num); color: #5a666c; }
-  #nitrobox { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
-  .slot { width: 26px; height: 26px; border: 2px solid var(--ink); border-radius: 50%; background: #fff; display: grid; place-items: center; font: 600 13px/1 var(--num); color: #9aa4a9; }
-  .slot.full { background: var(--nitro); color: #fff; box-shadow: 0 0 0 3px rgba(47, 134, 200, 0.25); }
-  #nitrobox.burn .slot.full { animation: pulse .3s infinite alternate; }
-  @keyframes pulse { to { transform: scale(1.12); } }
-  .gaugebar { flex: 1; height: 12px; border: 2px solid var(--ink); border-radius: 7px; overflow: hidden; background: #fff; }
-  #gauge { height: 100%; width: 0; background: linear-gradient(90deg, #7fd7ff, var(--nitro)); }
+  /* 氮气：三个槽放在车正下方，漂移时当前那格从下往上灌满，满格发亮 */
+  #nitro { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); display: grid; justify-items: center; gap: 6px; }
+  #nitro .slots { display: flex; gap: 12px; padding: 8px 12px; background: var(--card); border: 2px solid var(--ink); border-radius: 999px; box-shadow: 3px 3px 0 rgba(42, 50, 56, 0.85); }
+  #nitro .slot { position: relative; width: 52px; height: 52px; border: 3px solid var(--ink); border-radius: 50%; overflow: hidden; background: #e9eeee; box-shadow: inset 0 3px 0 rgba(42, 50, 56, 0.18); }
+  #nitro .slot i { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: linear-gradient(0deg, #2f86c8, #7fd7ff); transition: height .08s linear; }
+  #nitro .slot b { position: absolute; inset: 0; display: grid; place-items: center; font: 600 15px/1 var(--num); letter-spacing: 0.02em; color: rgba(42, 50, 56, 0.35); }
+  #nitro .slot.full { background: #7fd7ff; box-shadow: 0 0 0 4px rgba(127, 215, 255, 0.55), 0 0 18px rgba(127, 215, 255, 0.9); }
+  #nitro .slot.full i { height: 100% !important; }
+  #nitro .slot.full b { color: #fff; text-shadow: 0 1px 0 var(--ink); }
+  #nitro .slot.pop { animation: pop2 .35s ease-out; }
+  @keyframes pop2 { 0% { transform: scale(1.35); } 100% { transform: scale(1); } }
+  #nitro.burn .slots { border-color: #2f86c8; }
+  #nitro.burn .slot.burning { animation: pulse .18s infinite alternate; }
+  @keyframes pulse { to { transform: scale(1.1); } }
+  #nitro .nlabel { font: 700 13px/1 var(--body); letter-spacing: 0.12em; padding: 4px 10px; border-radius: 999px; background: var(--card); border: 1.5px solid var(--ink); }
+  #nitro.max .nlabel { background: #2f86c8; color: #fff; }
   #mini { position: absolute; left: 16px; bottom: 16px; width: 170px; height: 160px; padding: 6px; }
   .toast { position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%) scale(0.8); font: 900 34px/1 var(--body); letter-spacing: 0.06em; color: #fffaf2;
     -webkit-text-stroke: 2px var(--ink); paint-order: stroke fill; text-shadow: 3px 3px 0 var(--ink); opacity: 0; transition: opacity .15s, transform .15s; white-space: nowrap; }
@@ -103,7 +112,9 @@
   .pad button { width: 76px; height: 76px; border-radius: 50%; border: 2px solid var(--ink); background: rgba(251, 252, 247, 0.55); font: 700 16px/1 var(--body); color: var(--ink); touch-action: none; }
   .pad button.on { background: rgba(232, 100, 60, 0.75); color: #fff; }
   .touch #mini { width: 128px; height: 120px; left: auto; right: 16px; top: calc(var(--inset-top) + 160px); bottom: auto; }
-  .touch .br { bottom: auto; top: calc(var(--inset-top) + 76px); left: 16px; right: auto; min-width: 168px; }
+  .touch .br { bottom: auto; top: calc(var(--inset-top) + 76px); left: 16px; right: auto; min-width: 120px; }
+  .touch #nitro { bottom: auto; top: calc(var(--inset-top) + 64px); }
+  .touch #nitro .slot { width: 40px; height: 40px; }
   .touch #kmh { font-size: 36px; }
   .touch #mute { bottom: auto; top: calc(var(--inset-top) + 14px); right: 140px; }
   @media (max-width: 640px) { #board { display: none; } .tl .card:nth-child(3) { display: none; } }
@@ -120,10 +131,10 @@
 
 <div id="title" hidden><div class="card">
   <h1>杭州飞车<span>西湖赛道</span></h1>
-  <p class="sub">绕西湖逆时针一圈：湖滨音乐喷泉起步，过断桥上白堤，绕孤山过西泠桥，杨公堤六连跳，翻三台山三个发卡弯，再沿南山路过雷峰塔冲回湖滨。两圈定胜负。</p>
+  <p class="sub">龙翔桥地铁站起步，顺着平海路冲向西湖，绕湖逆时针一圈：过断桥上白堤，绕孤山过西泠桥，杨公堤六连跳，翻三台山三个发卡弯，再沿南山路过雷峰塔，从解放路、延安路绕回龙翔桥。两圈定胜负。</p>
   <dl class="keys">
     <dt><kbd>↑ ↓ ← →</kbd> <kbd>WASD</kbd></dt><dd>油门、刹车、转向</dd>
-    <dt><kbd>Shift</kbd> + 方向</dt><dd>漂移。漂移集气，满一格得一个氮气</dd>
+    <dt><kbd>Shift</kbd> + 方向</dt><dd>漂移。车下面三个氮气槽，漂移把槽灌满，最多存三个</dd>
     <dt>松开漂移后按 <kbd>↑</kbd></dt><dd>小喷；从杨公堤的桥上飞起落地时按 <kbd>↑</kbd> 是落地喷</dd>
     <dt><kbd>Ctrl</kbd> / <kbd>空格</kbd></dt><dd>放氮气（用 WASD 的话请按空格）。小喷后马上放 = 双喷</dd>
     <dt><kbd>R</kbd> <kbd>C</kbd> <kbd>Esc</kbd></dt><dd>回到赛道 · 切换视角 · 暂停</dd>
@@ -144,9 +155,12 @@
   <div class="count" id="count"></div>
   <div id="wrong" hidden>逆行了</div>
   <canvas id="mini" class="card" width="340" height="320"></canvas>
+  <div id="nitro" aria-label="氮气">
+    <div class="slots"><div class="slot"><i></i><b>N₂O</b></div><div class="slot"><i></i><b>N₂O</b></div><div class="slot"><i></i><b>N₂O</b></div></div>
+    <div class="nlabel" id="nlabel">漂移集气</div>
+  </div>
   <div class="br card">
     <div class="speed"><span id="kmh">0</span><span>km/h</span></div>
-    <div id="nitrobox"><div class="slot" id="n1">N</div><div class="slot" id="n2">N</div><div class="gaugebar"><div id="gauge"></div></div></div>
   </div>
 </div>
 <button id="mute" aria-label="声音开关" title="声音（M）"><svg viewBox="0 0 24 24" fill="none" stroke="#2a3238" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="wave" d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"/></svg></button>

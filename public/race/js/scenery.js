@@ -290,8 +290,73 @@ function temple(b, x, y, z, ry, sc = 1) {   // 岳王庙、于谦祠：红墙、
   k.box(10, 7.5, 3, 0x7e2c24, 0, 3.7, 28.4); k.box(12, 1.2, 4.2, TILE, 0, 8.0, 28.4);
 }
 
+// 平海路：龙翔桥起步的商业街。临街是几家旗舰店的样子（不用真实品牌名和标志）：
+// 右手（北侧）一座通透的玻璃盒子数码旗舰店、一家黑色门面的影音店；左手（南侧）米白石材配金色菱格的奢侈品店、
+// 一家浅粉色的美妆店；龙翔桥地铁站口在起点右后方。
+function signTex(lines, w, h, bg, fg, font = 900) {
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  const c = cv.getContext('2d');
+  c.fillStyle = bg; c.fillRect(0, 0, w, h);
+  c.fillStyle = fg; c.textAlign = 'center'; c.textBaseline = 'middle';
+  lines.forEach(([text, size, y]) => { c.font = `${font} ${size}px "PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif`; c.fillText(text, w / 2, y); });
+  const t = new THREE.CanvasTexture(cv); t.anisotropy = 4; return t;
+}
+function signMesh(scene, tex, w, h, x, y, z, ry) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), toon(0xffffff, { map: tex, breakMul: 0, side: THREE.DoubleSide }));
+  m.position.set(x, y, z); m.rotation.y = ry; m.castShadow = false; m.receiveShadow = true; scene.add(m);
+}
+function shoppingStreet(b, scene, track, groundAt) {
+  const z0 = -46, hw = track.halfW, front = hw + 8;   // 门面离路中心 19 米（含人行道）
+  const N = z0 - front, S = z0 + front;               // 北侧门面线、南侧门面线
+  const gy = x => groundAt(x, z0) - 0.4;
+  // 北侧：玻璃盒子数码旗舰店（通高玻璃、白色薄屋檐、门前一排小树池）
+  { const x = 560, w = 40, d = 26, h = 15, k = kitAt(b, x, gy(x), N - d / 2, 0, 1);
+    k.box(w, h, d, 0xbcd8e0, 0, h / 2, 0, { kind: 'GLASS', shade: 0x6f97a6 });
+    k.box(w + 2.4, 0.8, d + 2.4, 0xf4f4f0, 0, h + 0.4, 0);
+    for (let i = -3; i <= 3; i++) k.box(0.35, h, 0.35, 0xe8ecec, i * (w / 7), h / 2, d / 2 + 0.2);
+    k.box(w * 0.5, 6, 0.2, 0xf4f4f0, 0, 3, d / 2 + 0.15, { cast: false });
+    for (let i = -2; i <= 2; i++) k.box(2.4, 0.6, 2.4, 0xcfc8b8, i * 8, 0.3, d / 2 + 4); }
+  // 北侧：黑色门面的影音店，门头一块发光的大屏
+  { const x = 510, w = 22, d = 22, h = 20, k = kitAt(b, x, gy(x), N - d / 2, 0, 1);
+    k.box(w, h, d, 0x2f3438, 0, h / 2, 0, { breakMul: 0.2 });
+    k.box(w - 4, 7, 0.4, 0x8fe0ff, 0, h - 6, d / 2 + 0.2, { kind: 'GLOW', glow: 1.0 });
+    k.box(w - 6, 5, 0.3, 0xcfe7ea, 0, 3, d / 2 + 0.2, { kind: 'GLASS', shade: 0x6f97a6 }); }
+  // 南侧：奢侈品店——米白石材、金色菱格立面、深色雨棚
+  { const x = 568, w = 34, d = 22, h = 18, k = kitAt(b, x, gy(x), S + d / 2, Math.PI, 1);
+    k.box(w, h, d, 0xece4d2, 0, h / 2, 0, { breakMul: 0.25 });
+    for (let r = 0; r < 4; r++) for (let q = 0; q < 8; q++) {
+      const g = new THREE.BoxGeometry(2.2, 2.2, 0.25); g.rotateZ(Math.PI / 4); g.translate(-w / 2 + 2.5 + q * 4.2, 6 + r * 3.2, d / 2 + 0.15);
+      k.add(g, 0xc9a352, { breakMul: 0.15 });
+    }
+    k.box(w - 4, 0.5, 3, 0x3a2f2a, 0, 4.4, d / 2 + 1.5);
+    k.box(w - 8, 3.8, 0.3, 0xcfe7ea, 0, 2.1, d / 2 + 0.2, { kind: 'GLASS', shade: 0x6f97a6 });
+    k.box(w + 1, 0.8, d + 1, 0xc9a352, 0, h + 0.4, 0); }
+  // 南侧：浅粉色的美妆店，二楼一排拱窗
+  { const x = 518, w = 24, d = 20, h = 14, k = kitAt(b, x, gy(x), S + d / 2, Math.PI, 1);
+    k.box(w, h, d, 0xf3d6d8, 0, h / 2, 0, { breakMul: 0.25 });
+    for (let q = -2; q <= 2; q++) { k.box(3, 4, 0.3, 0xffffff, q * 4.5, 9, d / 2 + 0.15); k.add(new THREE.CylinderGeometry(1.5, 1.5, 0.3, 12, 1, false, 0, Math.PI).rotateX(Math.PI / 2).rotateZ(-Math.PI / 2).translate(q * 4.5, 11, d / 2 + 0.15), 0xffffff); }
+    k.box(w - 6, 3.8, 0.3, 0xcfe7ea, 0, 2.1, d / 2 + 0.2, { kind: 'GLASS', shade: 0x6f97a6 });
+    k.box(w + 1, 0.6, d + 1, 0xe6b8bd, 0, h + 0.3, 0); }
+  // 再往东两侧补几栋带骑楼的街面房子，让起步那一段像一条完整的商业街
+  [[650, N, 0, 0xe8e2d4], [680, N, 0, 0xdcd8cc], [612, S, Math.PI, 0xe9dccb], [642, S, Math.PI, 0xf2eee4], [672, S, Math.PI, 0xe8e2d4]].forEach(([x, zf, ry, col], i) => {
+    const w = 26, d = 18, h = 16 + (i % 2) * 8, k = kitAt(b, x, gy(x), zf + (ry ? 1 : -1) * d / 2, ry, 1);
+    k.box(w, h, d, col, 0, h / 2, 0, { breakMul: 0.3 });
+    k.box(w, 0.6, 3, 0x8a98a2, 0, 4.5, d / 2 + 1.5);
+    for (let fy = 7.5; fy < h - 1; fy += 3.6) k.box(w + 0.3, 0.9, d + 0.3, 0x8a98a2, 0, fy, 0, { cast: false, breakMul: 0.1 });
+  });
+  // 龙翔桥地铁站口：玻璃雨棚 + 红色站牌
+  { const [x, z] = LY.LONGXIANG, k = kitAt(b, x, groundAt(x, z) - 0.3, z, 0, 1);
+    k.box(10, 0.4, 7, 0xd8dcdc, 0, 4.2, 0);
+    k.box(9.6, 3.6, 0.2, 0xcfe7ea, 0, 2.2, -3.4, { kind: 'GLASS', shade: 0x6f97a6 });
+    for (const sx of [-4.8, 4.8]) k.box(0.3, 4.2, 7, 0xb8bcbc, sx, 2.1, 0);
+    k.box(0.5, 6.5, 0.5, 0x8a8f96, 7, 3.25, 2.5);
+    signMesh(scene, signTex([['地铁', 96, 82], ['龙翔桥站', 120, 200]], 512, 280, '#c4473a', '#ffffff'), 3.2, 1.75, x + 7, groundAt(x, z) + 6.5, z + 2.5 + 0.3, 0); }
+  // 平海路路牌（路口）
+  signMesh(scene, signTex([['平海路', 120, 90], ['PINGHAI RD', 52, 190]], 512, 256, '#2f6f8a', '#ffffff'), 4, 2, 458, groundAt(458, -78) + 5, -78, Math.PI / 2);
+}
+
 // 城市：湖滨以东的街区，近湖低、越往东越高
-function city(b, rand, groundAt) {
+function city(b, rand, groundAt, clear) {
   const c = LY.CITY;
   const cols = [0xf2eee4, 0xe8e2d4, 0xdcd8cc, 0xc9d3d6, 0xe9dccb, 0xd6dde0];
   for (let x = c.x0 + 10; x < c.x1; x += 62) for (let z = c.z0; z < c.z1; z += 58) {
@@ -303,6 +368,7 @@ function city(b, rand, groundAt) {
       const bx = x + (j ? 26 : 0) + rand() * 6, bz = z + rand() * 10;
       const tall = rand() < 0.15 + far * 0.45;
       const h = tall ? 40 + rand() * (40 + far * 80) : 12 + rand() * (10 + far * 14);
+      if (!clear(bx, bz, Math.max(w, d) * 0.6 + 6)) continue;
       const gy = groundAt(bx, bz) - 0.5, col = cols[Math.floor(rand() * cols.length)];
       const k = kitAt(b, bx, gy, bz, 0, 1);
       if (tall && rand() < 0.6) {
@@ -359,7 +425,9 @@ export async function buildScenery(track, terrain, scene, onProgress = () => {})
   });
   // 湖滨与北山街路边的茶室、码头
   [[150, -490, 0], [-130, -495, 0], [460, -150, Math.PI / 2], [462, 120, Math.PI / 2]].forEach(([x, z, r]) => { if (!nearTrack(x, z, 8)) jiangnan(b, x, groundAt(x, z) - 0.4, z, 3.2, 1.8, 1.5, r, 4.4); });
-  city(b, rand, groundAt);
+  const shopZone = (x, z) => x > 450 && x < 700 && z > -118 && z < 26;   // 平海路商业街，留给下面的旗舰店
+  city(b, rand, groundAt, (x, z, r) => !nearTrack(x, z, r) && !shopZone(x, z) && Math.hypot(x - LY.FOUNTAIN[0], z - LY.FOUNTAIN[1]) > 40);
+  shoppingStreet(b, scene, track, groundAt);
   onProgress(0.15);
   await slice();
 
@@ -375,7 +443,7 @@ export async function buildScenery(track, terrain, scene, onProgress = () => {})
       else {
         const lakeSide = baseHeight(track.px[i] - track.rx[i] * side * 40, track.pz[i] - track.rz[i] * side * 40) > WATER && baseHeight(x + track.rx[i] * side * 30, z + track.rz[i] * side * 30) < WATER;
         if (lakeSide) place('willow', x, z, 3.6 + rand() * 0.5);
-        else if (i % 12 === 0) place('round', x, z, 6 + rand() * 2, undefined, leafTints[i % 4]);
+        else if (i % 12 === 0 && !(x > 450 && x < 700 && z > -118 && z < 26)) place('round', x, z, 6 + rand() * 2, undefined, leafTints[i % 4]);
       }
     }
   }
@@ -477,12 +545,12 @@ export function buildBoats(scene) {
   });
   // 湖滨音乐喷泉：一圈水柱，高低起伏
   const jets = [], jetMat = toon(0xeef8f8, { shade: 0x9cc7d0, kind: 'FOLIAGE', breakMul: 0.4, noiseScale: 3 });
-  const jetGeo = new THREE.CylinderGeometry(0.25, 0.7, 1, 8).translate(0, 0.5, 0);
+  const jetGeo = new THREE.CylinderGeometry(0.5, 2.0, 1, 10).translate(0, 0.5, 0);
   for (let i = 0; i < 15; i++) {
     const a = (i / 15) * Math.PI * 2, r = i % 3 === 0 ? 0 : i % 2 ? 9 : 16;
     const j = new THREE.Mesh(jetGeo, jetMat);
     j.position.set(LY.FOUNTAIN[0] + Math.cos(a) * r, WATER, LY.FOUNTAIN[1] + Math.sin(a) * r);
-    j.castShadow = false; j.receiveShadow = true; scene.add(j); jets.push({ j, ph: a * 2 + r });
+    j.castShadow = false; j.receiveShadow = true; j.layers.set(1); scene.add(j); jets.push({ j, ph: a * 2 + r });
   }
   return t => {
     for (const { j, ph } of jets) j.scale.set(1, 3 + 11 * (0.5 + 0.5 * Math.sin(t * 1.6 + ph)), 1);

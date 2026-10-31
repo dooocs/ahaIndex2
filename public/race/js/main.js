@@ -97,18 +97,19 @@ function readInput() {
 // ---------- 世界 ----------
 const track = new Track(LY.CENTERLINE, LY.ROAD_WIDTH);
 track.startAt = LY.START_AT;
-track.padAt = [[430, -160], [50, -352], [-403, -178], [-300, 474]];
+track.padAt = [[425, -180], [50, -352], [-403, -178], [-300, 474]];
 const D_START = track.dAt(...LY.START_AT);
 let terrain, updateBoats, player, ais = [], cars = [], smoke, skids;
 const sound = new Sound();
 
 // 赛道沿途的景点字幕（西湖十景）
 const SPOTS = [
-  [LY.START_AT, '湖滨 · 音乐喷泉'], [[400, -290], '钱塘门'], [[298, -424], '北山街 · 宝石流霞'], [[224, -402], '断桥残雪'],
+  [LY.START_AT, '龙翔桥 · 平海路'], [[442, -92], '湖滨 · 音乐喷泉'], [[400, -290], '钱塘门'], [[298, -424], '北山街 · 宝石流霞'], [[224, -402], '断桥残雪'],
   [[102, -361], '锦带桥', 1], [[-12, -338], '平湖秋月'], [[-108, -325], '孤山'], [[-198, -374], '西泠桥'],
   [[-262, -440], '曲院风荷'], [[-396, -396], '杨公堤'], [[-456, -15], '三台山'], [[-505, 132], '于谦祠', 1],
   [[-364, 458], '花港观鱼'], [[-242, 482], '苏堤春晓'], [[-58, 472], '太子湾', 1], [[124, 476], '南屏晚钟'],
-  [[270, 446], '雷峰夕照'], [[352, 392], '长桥', 1], [[408, 262], '柳浪闻莺'], [[428, 128], '钱王祠', 1],
+  [[270, 446], '雷峰夕照'], [[352, 392], '长桥', 1], [[408, 262], '柳浪闻莺'], [[420, 200], '钱王祠', 1],
+  [[490, 156], '解放路', 1], [[716, 90], '延安路', 1],
 ].map(([p, name, small]) => ({ d: track.dAt(...p), name, small: !!small }));
 
 async function build() {
@@ -175,7 +176,7 @@ let toastT = 0, spotT = 0;
 function toast(text, kind = '') { toastEl.textContent = text; toastEl.className = `toast show ${kind}`; toastT = 1.2; }
 function showSpot(name, small) { spotEl.textContent = name; spotEl.className = `spot show${small ? ' small' : ''}`; spotT = small ? 1.6 : 2.6; }
 const mini = $('mini'), mctx = mini.getContext('2d');
-const MB = { x0: -600, x1: 470, z0: -480, z1: 520 };
+const MB = { x0: -600, x1: 730, z0: -480, z1: 520 };
 function mm(x, z) { const s = Math.min(mini.width / (MB.x1 - MB.x0), mini.height / (MB.z1 - MB.z0)); return [(x - MB.x0) * s + (mini.width - (MB.x1 - MB.x0) * s) / 2, (z - MB.z0) * s + (mini.height - (MB.z1 - MB.z0) * s) / 2]; }
 function drawMini() {
   const c = mctx; c.clearRect(0, 0, mini.width, mini.height);
@@ -192,6 +193,7 @@ function drawMini() {
     c.beginPath(); c.arc(a, b, car === player ? 6 : 4.5, 0, Math.PI * 2); c.fill(); c.stroke();
   }
 }
+const nitroSlots = [...document.querySelectorAll('#nitro .slot')];
 function updateHud() {
   const rk = ranking(), pos = rk.indexOf(player) + 1;
   $('pos').innerHTML = `${pos}<small>/${cars.length}</small>`;
@@ -199,9 +201,18 @@ function updateHud() {
   $('time').textContent = fmt(raceT);
   $('best').textContent = fmt(bestLap);
   $('kmh').textContent = Math.round(player.kmh);
-  $('gauge').style.width = `${(player.gauge * 100).toFixed(1)}%`;
-  $('n1').classList.toggle('full', player.nitroN >= 1); $('n2').classList.toggle('full', player.nitroN >= 2);
-  $('nitrobox').classList.toggle('burn', player.nitroT > 0);
+  // 氮气槽：前 nitroN 个满，下一个按集气进度灌水
+  const n = player.nitroN;
+  nitroSlots.forEach((el, k) => {
+    const full = k < n;
+    if (full && !el.classList.contains('full')) { el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); }
+    el.classList.toggle('full', full);
+    el.classList.toggle('burning', k === n && player.nitroT > 0);
+    el.firstElementChild.style.height = full ? '100%' : k === n ? `${(player.gauge * 100).toFixed(1)}%` : '0%';
+  });
+  $('nitro').classList.toggle('burn', player.nitroT > 0);
+  $('nitro').classList.toggle('max', n >= 3);
+  $('nlabel').textContent = player.nitroT > 0 ? '氮气中！' : n >= 3 ? '氮气已满 · Ctrl/空格' : n > 0 ? `氮气 ×${n} · Ctrl/空格` : '漂移集气';
   $('wrong').hidden = !(player.wrongT > 1.2);
   $('board').innerHTML = rk.map((c, i) => `<li class="${c === player ? 'me' : ''}"><b>${i + 1}</b>${c.name}</li>`).join('');
 }
@@ -344,7 +355,7 @@ function step(dt) {
     else if (e.type === 'double') { toast('双喷！', 'great'); sound.whoosh(0.45, 1.2); }
     else if (e.type === 'nitro') { toast('氮气！', 'nitro'); sound.whoosh(0.4, 1.1); }
     else if (e.type === 'landBoost') { toast('落地喷！', 'good'); sound.whoosh(0.25, 0.6); }
-    else if (e.type === 'gauge') { toast('集满一个氮气', 'nitro'); sound.blip(880, 0.12, 'triangle', 0.15); }
+    else if (e.type === 'gauge') { sound.blip(880, 0.12, 'triangle', 0.12); sound.blip(1320, 0.1, 'triangle', 0.08); }
     else if (e.type === 'pad') sound.whoosh(0.3, 0.7);
     else if (e.type === 'crash') { sound.thud(e.power); cam.shake = Math.min(1, 0.3 + e.power * 0.04); }
     else if (e.type === 'land' && e.air > 0.3) cam.shake = Math.min(1, cam.shake + 0.25);
@@ -371,7 +382,13 @@ function step(dt) {
     if (drifting && near && Math.random() < dt * 40) {
       for (const w of [wheelL, wheelR]) smoke.emit(w.x, w.y + 0.3, w.z, (Math.random() - 0.5) * 2 - fx * c.s * 0.05, 0.6 + Math.random(), (Math.random() - 0.5) * 2 - fz * c.s * 0.05, 0.55 + Math.random() * 0.35, 0.7 + Math.random() * 0.4);
     }
-    if (c === player && (c.nitroT > 0 || c.smallT > 0) && Math.random() < dt * 25) smoke.emit(c.x - fx * 2.6, c.y + 0.5, c.z - fz * 2.6, -fx * 4, 1, -fz * 4, 0.35, 0.4, [1, 0.93, 0.8]);
+    // 喷气时尾部甩出火团（氮气偏蓝白、小喷偏橙）
+    const boostOn = c === player ? (c.nitroT > 0 || c.smallT > 0 || c.padT > 0) : (c.nitroT > 0 || c.smallT > 0);
+    if (boostOn && near && Math.random() < dt * 45) {
+      const blue = c.nitroT > 0, side = Math.random() < 0.5 ? -0.45 : 0.45;
+      smoke.emit(c.x - fx * (3.6 + Math.random() * 1.5) + rx * side, c.y + 0.55, c.z - fz * (3.6 + Math.random() * 1.5) + rz * side, -fx * 6, 0.6, -fz * 6,
+        blue ? 0.55 : 0.42, 0.32, blue ? [0.75, 0.92, 1.25] : [1.3, 0.78, 0.35]);
+    }
     skids.mark(c.name + 'L', wheelL.x, c.y, wheelL.z, rx, rz, drifting);
     skids.mark(c.name + 'R', wheelR.x, c.y, wheelR.z, rx, rz, drifting);
   }

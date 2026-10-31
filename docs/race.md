@@ -7,10 +7,11 @@ and the daily deploy ships whatever changed.
 
 ## Route
 
-Counter-clockwise round the lake, about 3.7 km and 85 s a lap: 湖滨 (start/finish opposite the music fountain)
-→ 钱塘门 → 北山街 → 断桥 → 白堤 (锦带桥) → 平湖秋月 → 孤山路 (S-bends) → 西泠桥 → 曲院风荷 → 杨公堤
+About 4.2 km and 95 s a lap. The start/finish is on 平海路 by 龙翔桥 metro station: the street runs west between
+flagship-style storefronts (generic glass tech flagship, luxury boutique, electronics and cosmetics shops — no real
+brand names or logos) straight at the music fountain, then the lap goes counter-clockwise round the lake: 湖滨 → 钱塘门 → 北山街 → 断桥 → 白堤 (锦带桥) → 平湖秋月 → 孤山路 (S-bends) → 西泠桥 → 曲院风荷 → 杨公堤
 (环璧、流金、卧龙) → 三台山 zigzag past 于谦祠 (three hairpins) → 杨公堤 (隐秀、景行、浚源) → 花港观鱼 →
-苏堤南口 → 太子湾 S-bends → 净慈寺 → 雷峰塔 → 长桥 → 南山路 (柳浪闻莺、钱王祠) → 湖滨. 苏堤 stays in the lake
+苏堤南口 → 太子湾 S-bends → 净慈寺 → 雷峰塔 → 长桥 → 南山路 (柳浪闻莺、钱王祠) → 解放路 → 延安路 → 龙翔桥. 苏堤 stays in the lake
 as scenery with its own six bridges. Captions name the 西湖十景 and each 杨公堤 bridge as you pass them.
 
 ## Look: 梦想人生's renderer on a flat world
@@ -39,18 +40,18 @@ speed. Physics, AI and the camera all live on the plane; only the picture curves
 | `scenery.js` | landmarks (保俶塔, 雷峰塔, 六和塔, 三潭印月, 湖心亭, 岳王庙, 于谦祠, 孤山, 苏堤 and its bridges, music fountain), city, trees with near/far LOD, contour-following tea rows, bamboo, lotus, boats |
 | `car.js` | car model and the player's handling (see below) |
 | `ai.js` | five AI drivers: corner speed from curvature ahead, racing line, overtaking, visual drifts, occasional nitro |
-| `effects.js`, `audio.js` | drift smoke and skid marks; synthesized engine, tyres, wind and boosts (WebAudio, no files) |
+| `effects.js`, `audio.js` | drift smoke, flame puffs and skid marks; an original pentatonic 江南-style background loop (plucked lead with echo, pad, bass, light percussion) mixed above the synthesized engine, tyres and wind (WebAudio, no files) |
 | `main.js` | wiring: build, race states, camera, HUD, minimap, captions, adaptive quality |
 
 Handling: the car's facing `h` and its direction of travel `m` are separate. With grip `m` catches up fast;
 in a drift (Shift + direction) it lags, and the slip angle `h − m` fills the gauge. A full gauge is a nitro
-(Ctrl or Space). Releasing a clean drift opens a 0.5 s window for 小喷 (↑); nitro right after 小喷 is 双喷.
+(Ctrl or Space); up to three are stored, shown as three slots under the car that fill as you drift. Releasing a clean drift opens a 0.5 s window for 小喷 (↑); nitro right after 小喷 is 双喷.
 Crests launch the car when v²·(−κ) > g — the northern 杨公堤 bridges at ~140 km/h, the short southern ones at ~105 km/h — and a landing opens a 落地喷 window.
 
 ## Checking it
 
 - `?debug` shows fps, draw calls and triangles; `?auto` drives the player's car; `?skipcount` skips the countdown;
   `?quality=high` pins quality (no automatic downgrade); `?laps=1..5`.
-- Measured on a full simulated race (2 laps, 60 Hz, a drifting autopilot): lap ≈ 85 s, ~35 drifts and ~9 jumps a lap,
-  the autopilot winning by ~3 s with the AI spread over 7 s. Scene: ~300–880 draw calls and 0.7–2.0 M triangles per
+- Measured on a full simulated race (2 laps, 60 Hz, a drifting autopilot): lap ≈ 95 s, ~40 drifts and ~9 jumps a lap,
+  the autopilot winning by ~2 s with the AI spread over 6 s. Scene: ~300–880 draw calls and 0.7–2.0 M triangles per
   frame across all passes.
