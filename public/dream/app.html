@@ -372,15 +372,27 @@ function arcPrep(list) {
     return { a, b, reach, nx: n.x, ny: n.y, nz: n.z, sinReach: Math.sin(Math.min(reach, Math.PI / 2)),
       mx: m.x, my: m.y, mz: m.z, cosCap: Math.cos(Math.min(Math.PI, a.angleTo(b) / 2 + reach + 2e-3)) };
   });
+  list.groups = [];
+  for (let i = 0; i < list.prep.length; i += 8) {
+    const g = list.prep.slice(i, i + 8), m = new THREE.Vector3();
+    g.forEach(c => m.add(c.a).add(c.b));
+    m.normalize();
+    const r = Math.max(...g.map(c => Math.max(m.angleTo(c.a), m.angleTo(c.b)) + c.reach)) + 2e-3;
+    list.groups.push({ arcs: g, mx: m.x, my: m.y, mz: m.z, cosR: Math.cos(Math.min(Math.PI, r)) });
+  }
   list.prepN = list.length;
   return list.prep;
 }
 function arcW(list, d) {
   let w = 0;
-  for (const c of arcPrep(list)) {
-    if (Math.abs(d.x * c.nx + d.y * c.ny + d.z * c.nz) >= c.sinReach) continue;
-    if (d.x * c.mx + d.y * c.my + d.z * c.mz <= c.cosCap) continue;
-    w = Math.max(w, 1 - arcDist(d, c.a, c.b) / c.reach);
+  arcPrep(list);
+  for (const g of list.groups) {
+    if (d.x * g.mx + d.y * g.my + d.z * g.mz <= g.cosR) continue;
+    for (const c of g.arcs) {
+      if (Math.abs(d.x * c.nx + d.y * c.ny + d.z * c.nz) >= c.sinReach) continue;
+      if (d.x * c.mx + d.y * c.my + d.z * c.mz <= c.cosCap) continue;
+      w = Math.max(w, 1 - arcDist(d, c.a, c.b) / c.reach);
+    }
   }
   return w;
 }
@@ -681,7 +693,7 @@ function flushBatches() {
 }
 // a little builder anchored at a point of a place's plan, facing (fx, fz)
 function kit(s, x, z, fx = 0, fz = 1, o = {}) {
-  const M = frameMatrix(L(s, x, z), LT(s, fx, fz), 1, o.sink || 0, o.h ?? null);
+  const M = frameMatrix(L(s, x, z), LT(s, fx, fz), o.scale || 1, o.sink || 0, o.h ?? null);
   const K = {
     M,
     add(geo, hex, opts) { pushGeo(prep(geo).applyMatrix4(M), hex, opts); return K; },
@@ -776,9 +788,9 @@ function addChunked(geo, material, cast = false) {
     planet.add(m);
   }
 }
-// add to the planet; a large InstancedMesh is first split by patch so each part can be culled
+// add to the planet; an InstancedMesh of 60 or more is first split by patch so each part can be culled
 function addObj(o) {
-  if (!o.isInstancedMesh || o.count < 150) { planet.add(o); return o; }
+  if (!o.isInstancedMesh || o.count < 60) { planet.add(o); return o; }
   const bins = new Map(), m = new THREE.Matrix4(), p = new THREE.Vector3(), c = new THREE.Color();
   for (let i = 0; i < o.count; i++) {
     o.getMatrixAt(i, m); p.setFromMatrixPosition(m);
@@ -859,15 +871,12 @@ function icosphere(radius, detail, normals = false) {
 // equator. Every place sits along the ring road (the equator), so a big planet can keep full detail in that
 // band and go coarse toward the poles with the same vertex budget. Neighbouring rings are zipped together
 // whatever their vertex counts, so there are no cracks or T-junctions.
-function ringSphere(step) {
-  const lats = [0];
-  for (let lat = 0; ;) {
-    const s = step(lat * R) / R;
-    if (lat + s > Math.PI / 2 - 0.5 * s) break;
-    lats.push(lat += s);
-  }
-  const rings = [...lats.slice(1).reverse().map(l => -l), ...lats];
-  const pos = [], index = [];
+// win (optional) is one patch north of the ring kept at a finer spacing win.s: longitudes lon ± H (radians),
+// from the equator up to about z1 units north. Inside it the rows are win.s apart; outside it the rows keep
+// their usual spacing, and the two sets meet along the patch's two edge meridians, where each strip takes in
+// the other set's edge vertices as a fan, so the seam has no T-junctions either.
+function ringSphere(step, win = null) {
+  const TAU = 2 * Math.PI, pos = [], index = [];
   const vtx = (lat, lon) => { pos.push(Math.cos(lat) * Math.sin(lon), Math.sin(lat), -Math.cos(lat) * Math.cos(lon)); return pos.length / 3 - 1; };
   const tri = (a, b, c) => {      // wound counter-clockwise seen from outside
     const ax = pos[3 * a], ay = pos[3 * a + 1], az = pos[3 * a + 2];
@@ -875,24 +884,88 @@ function ringSphere(step) {
     const out = (uy * vz - uz * vy) * ax + (uz * vx - ux * vz) * ay + (ux * vy - uy * vx) * az;
     if (out >= 0) index.push(a, b, c); else index.push(a, c, b);
   };
-  const ringIdx = rings.map((lat, r) => {
-    const n = Math.max(3, Math.round(2 * Math.PI * R * Math.cos(lat) / step(Math.abs(lat) * R)));
-    const off = (r % 2) * 0.5, first = pos.length / 3;
-    for (let k = 0; k < n; k++) vtx(lat, 2 * Math.PI * (k + off) / n);
-    return { first, n, off };
-  });
-  for (let r = 0; r < ringIdx.length - 1; r++) {
-    const A = ringIdx[r], B = ringIdx[r + 1];
-    const a = i => (i + A.off) / A.n, b = j => (j + B.off) / B.n;
-    const ia = i => A.first + (i % A.n), ib = j => B.first + (j % B.n);
-    for (let i = 0, j = 0; i < A.n || j < B.n;) {
-      if (j >= B.n || (i < A.n && a(i + 1) < b(j + 1))) { tri(ia(i), ia(i + 1), ib(j)); i++; }
+  const lats = [0];
+  for (let lat = 0; ;) { const s = step(lat * R) / R; if (lat + s > Math.PI / 2 - 0.5 * s) break; lats.push(lat += s); }
+  // the patch: its top is the first ordinary row at or above z1, its rows split [0, top] evenly
+  const top = win ? lats.find(l => l * R >= win.z1) ?? lats.at(-1) : 0;
+  const L0 = win ? win.lon - win.H : 0, L1 = win ? win.lon + win.H : 0;
+  const fineN = win ? Math.ceil(top * R / win.s) : 0;
+  const fine = Array.from({ length: fineN - 1 }, (_, i) => top * (i + 1) / fineN);
+  const inPatch = lat => win && lat > 0 && lat < top;
+  // vertices along a ring at lat between longitudes a and b (inclusive ends) at spacing sp
+  const run = (lat, a, b, sp) => { const n = Math.max(2, Math.round((b - a) * R * Math.cos(lat) / sp)); return Array.from({ length: n + 1 }, (_, k) => a + (b - a) * k / n); };
+  // a full ring as one cyclic list of { i, lon }, with exact vertices on the patch edges when it crosses the patch
+  const fullRing = (lat, off) => {
+    const coarse = step(Math.abs(lat) * R);
+    if (win && lat >= 0 && lat <= top) {
+      const inside = run(lat, L0, L1, win.s), outside = run(lat, L1, L0 + TAU, coarse).slice(1, -1);
+      return [...inside, ...outside].map(lon => ({ i: vtx(lat, lon), lon }));
+    }
+    const n = Math.max(3, Math.round(TAU * R * Math.cos(lat) / coarse));
+    return Array.from({ length: n }, (_, k) => { const lon = TAU * (k + off) / n; return { i: vtx(lat, lon), lon }; });
+  };
+  const zipCyclic = (A, B) => {
+    const base = A[0].lon, f = v => ((v - base) % TAU + TAU) % TAU;
+    const b0 = B.reduce((m, v, k) => (f(v.lon) < f(B[m].lon) ? k : m), 0);
+    const Bs = [...B.slice(b0), ...B.slice(0, b0)];
+    const a = i => (i < A.length ? f(A[i].lon) : TAU + f(A[i - A.length].lon)), b = j => (j < Bs.length ? f(Bs[j].lon) : TAU + f(Bs[j - Bs.length].lon));
+    const ia = i => A[i % A.length].i, ib = j => Bs[j % Bs.length].i;
+    for (let i = 0, j = 0; i < A.length || j < Bs.length;) {
+      if (j >= Bs.length || (i < A.length && a(i + 1) < b(j + 1))) { tri(ia(i), ia(i + 1), ib(j)); i++; }
       else { tri(ia(i), ib(j + 1), ib(j)); j++; }
     }
+  };
+  // an open strip between two runs that start and end on the same two meridians; startX / endX are the
+  // other row set's vertices on those meridians between the two rows (from A's side toward B's)
+  const zipOpen = (A, B, startX, endX) => {
+    const chainS = [A[0], ...startX, B[0]];
+    for (let k = 0; k < chainS.length - 1; k++) tri(A[1].i, chainS[k].i, chainS[k + 1].i);
+    let i = 1, j = 0;
+    while (i < A.length - 2 || j < B.length - 1) {
+      if (j >= B.length - 1 || (i < A.length - 2 && A[i + 1].lon < B[j + 1].lon)) { tri(A[i].i, A[i + 1].i, B[j].i); i++; }
+      else { tri(A[i].i, B[j + 1].i, B[j].i); j++; }
+    }
+    const chainE = [B.at(-1), ...[...endX].reverse(), A.at(-1)];
+    for (let k = 0; k < chainE.length - 1; k++) tri(A.at(-2).i, chainE[k].i, chainE[k + 1].i);
+  };
+  // south pole → equator: full rings
+  const south = lats.slice(1).reverse().map((l, r) => fullRing(-l, r % 2 * 0.5));
+  const ring0 = fullRing(0, 0);
+  const north = lats.slice(1).map((l, r) => (inPatch(l) ? null : fullRing(l, (r + 1) % 2 * 0.5)));
+  [...south, ring0].forEach((ring, k, all) => { if (k) zipCyclic(all[k - 1], ring); });
+  if (!win) {
+    north.forEach((ring, k) => zipCyclic(k ? north[k - 1] : ring0, ring));
+  } else {
+    const topIdx = lats.indexOf(top) - 1, topRing = north[topIdx];
+    // the patch edges: one vertex per row of either set, shared by both
+    const edgeOf = (ring, lon) => ring.find(v => Math.abs(((v.lon - lon) % TAU + TAU + Math.PI) % TAU - Math.PI) < 1e-9);
+    const col = { [L0]: new Map(), [L1]: new Map() };
+    const edge = (lat, lon) => { const m = col[lon]; if (!m.has(lat)) m.set(lat, { i: vtx(lat, lon), lon }); return m.get(lat); };
+    for (const [ring, lat] of [[ring0, 0], [topRing, top]]) { col[L0].set(lat, edgeOf(ring, L0)); col[L1].set(lat, edgeOf(ring, L1 % TAU === L1 ? L1 : L1)); }
+    // a ring's part between two longitudes as a run (cyclic rings are cut at their exact edge vertices)
+    const part = (ring, a, b) => {
+      const span = ((b - a) % TAU + TAU) % TAU, f = v => ((v.lon - a) % TAU + TAU) % TAU;
+      return ring.filter(v => f(v) <= span + 1e-9).sort((p, q) => f(p) - f(q)).map(v => ({ i: v.i, lon: a + f(v) }));
+    };
+    const rowsIn = [0, ...fine, top], rowsOut = lats.filter(l => l >= 0 && l <= top);
+    const between = (lon, a, b) => [...col[lon].keys()].filter(l => l > a + 1e-12 && l < b - 1e-12).sort((x, y) => x - y).map(l => col[lon].get(l));
+    const inRun = lat => (lat === 0 ? part(ring0, L0, L1) : lat === top ? part(topRing, L0, L1) : run(lat, L0, L1, win.s).map((lon, k, all) => (k === 0 ? edge(lat, L0) : k === all.length - 1 ? edge(lat, L1) : { i: vtx(lat, lon), lon })));
+    const outRun = lat => {
+      if (lat === 0) return part(ring0, L1, L0);
+      if (lat === top) return part(topRing, L1, L0);
+      const lons = run(lat, L1, L0 + TAU, step(lat * R));
+      return lons.map((lon, k) => (k === 0 ? edge(lat, L1) : k === lons.length - 1 ? { ...edge(lat, L0), lon } : { i: vtx(lat, lon), lon }));
+    };
+    rowsOut.forEach(l => { if (l > 0 && l < top) { edge(l, L0); edge(l, L1); } });
+    rowsIn.forEach(l => { edge(l, L0); edge(l, L1); });
+    const ins = rowsIn.map(inRun), outs = rowsOut.map(outRun);
+    for (let k = 1; k < ins.length; k++) zipOpen(ins[k - 1], ins[k], between(L0, rowsIn[k - 1], rowsIn[k]), between(L1, rowsIn[k - 1], rowsIn[k]));
+    for (let k = 1; k < outs.length; k++) zipOpen(outs[k - 1], outs[k], between(L1, rowsOut[k - 1], rowsOut[k]), between(L0, rowsOut[k - 1], rowsOut[k]));
+    for (let k = topIdx + 1; k < north.length; k++) zipCyclic(north[k - 1], north[k]);
   }
-  for (const [ring, y] of [[ringIdx[0], -1], [ringIdx[ringIdx.length - 1], 1]]) {     // pole caps
+  for (const [ring, y] of [[south[0], -1], [north.at(-1), 1]]) {     // pole caps
     const p = pos.length / 3; pos.push(0, y, 0);
-    for (let k = 0; k < ring.n; k++) tri(ring.first + k, ring.first + (k + 1) % ring.n, p);
+    for (let k = 0; k < ring.length; k++) tri(ring[k].i, ring[(k + 1) % ring.length].i, p);
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(pos), 3));
@@ -900,8 +973,8 @@ function ringSphere(step) {
   return geo;
 }
 // ground: an icosphere of the given detail, or latitude rings spaced by `step` (see ringSphere)
-async function buildGround({ detail, step = null, lit, shade, defs = [], lawn = null, water = false }) {
-  const geo = step ? ringSphere(step) : icosphere(1, detail);
+async function buildGround({ detail, step = null, win = null, lit, shade, defs = [], lawn = null, water = false }) {
+  const geo = step ? ringSphere(step, win) : icosphere(1, detail);
   const pos = geo.attributes.position, n = pos.count;
   const aStone = new Float32Array(n), aRoad = new Float32Array(n), aLawn = new Float32Array(n);
   const d = new THREE.Vector3();
@@ -1357,10 +1430,9 @@ async function buildHangzhou() {
   const BAND = 24, FADE = 44;   // units from the equator: full detail inside BAND, coarse beyond FADE
   const bandFade = z => sstep(BAND, FADE, z);
   const fromRing = d => R * Math.abs(Math.asin(Math.max(-1, Math.min(1, d.y))));
-  const fill = floor => d => 1 - (1 - floor) * bandFade(fromRing(d));
-  const share = f => { let m = 0; for (let i = 0; i < 400; i++) m += f({ y: (i + 0.5) / 400 }); return m / 400; };   // mean over the sphere
-  const treeFill = fill(0.3), grassFill = fill(0.08);
-  const TREE_SHARE = share(treeFill), GRASS_SHARE = share(grassFill);
+  let nearLake = () => false;   // 西湖 reaches far north of the ring: its area keeps its own density (set below)
+  const fill = (floor, lake) => d => (nearLake(d) ? lake : 1 - (1 - floor) * bandFade(fromRing(d)));
+  const treeFill = fill(0.3, 0.15), grassFill = fill(0.08, 0.35);   // the lake's hills get their own forest
   W.walkSpeed = 10; W.travelSpeed = 26;                       // units/s: keyboard walk, autopilot cruise
   W.tagCos = [Math.cos(26.8 / R), Math.cos(22.5 / R)];        // stop and landmark labels show within ~27 / 22 units
   const MALL_NAME = '向上天街';      // fictional mall name
@@ -1371,9 +1443,14 @@ async function buildHangzhou() {
     { key: 'mall', roadZ: 4.58, side: -1, lon: 38 },
     { key: 'sports', roadZ: 6.0, side: 1, lon: 105 },
     { key: 'xixi', roadZ: 7.46, side: -1, lon: 178 },
-    { key: 'lake', roadZ: 9.98, side: 1, lon: 262 },
+    { key: 'lake', roadZ: 31, side: 1, lon: 262 },
   ]);
   const [HOME, MALL, SPORTS, XIXI, LAKE] = sites;
+  const LAKE_AREA = { x0: -56, x1: 58, z0: -58, z1: LAKE.roadZ + 8 };   // 西湖 and its hills in the lake site's plane
+  nearLake = d => { const p = local(LAKE, d); return !!p && inRect(p, LAKE_AREA.x0, LAKE_AREA.x1, LAKE_AREA.z0, LAKE_AREA.z1); };
+  // mean density over the sphere, which scales the vegetation totals (a Fibonacci sphere: no random numbers used)
+  const share = f => { const n = 6000, v = new THREE.Vector3(); let m = 0; for (let i = 0; i < n; i++) { const y = 1 - 2 * (i + 0.5) / n, r = Math.sqrt(1 - y * y), a = i * 2.399963; m += f(v.set(r * Math.cos(a), y, r * Math.sin(a))); } return m / n; };
+  const TREE_SHARE = share(treeFill), GRASS_SHARE = share(grassFill);
 
 // 小区: three 12-floor towers round a courtyard, behind a railing with a gate on the road side
 const HOME_FENCE = { x0: -9.6, x1: 9.6, z0: -8.6, z1: 4.4 }, HOME_GATE = 1.2;
@@ -1395,15 +1472,76 @@ const XIXI_CH = [
 const XIXI_PONDS = [[2.9, 3.2, 1.6], [-4.3, 2.9, 1.9], [-7.4, -2.8, 1.0]];
 const BOARDWALK = [[0.4, 6.0], [2.2, 4.2], [1.2, 2.4], [1.0, 1.05]];
 const XIXI_HOUSES = [[-2.6, -3.1, 1.9, 1.3, 1.25], [0.1, -3.4, 1.6, 1.2, 1.9], [-5.2, -3.0, 1.7, 1.2, 1.2]];
-// 西湖 (local x runs south → north along the east shore; the hills wrap the west, north and south)
-const LAKE_C = { x: 0, z: -0.6, rx: 8.2, rz: 6.4 };
-const SUDI_Z = -4.4, SUDI_BRIDGES = [-3.2, 2.6];
-const BAIDI = [[6.75, 1.6], [6.6, -1.5]];
-const GUSHAN = { x: 6.7, z: -2.5, rx: 1.15, rz: 0.85 };
-const XYZ = { x: -2.4, z: -0.8, r0: 0.6, r1: 1.5 };        // 小瀛洲: a ring island with a pond inside
-const HXT = { x: 1.9, z: -2.0, r: 0.55 };                    // 湖心亭
-const SANTAN = [[-4.4, -1.6], [-4.65, -0.3], [-4.1, 0.85]];  // 三潭印月
-const LEIFENG = [-9.5, 2.0], BAOCHU = [10.3, -0.6];
+// 西湖, traced from a north-up map of the lake. mp(px, py) turns the map's pixels into the site's plane:
+// x runs north, z east (toward the ring road, which here is 湖滨路 / 南山路), 1 unit ≈ 50 m. The water is
+// about 67 × 52 units, four times the old pond; landmarks keep a readable size rather than true scale.
+const mp = (px, py) => [(715 - py) / 17, (px - 970) / 17];
+const mpl = pts => pts.map(q => mp(q[0], q[1]));
+// the water's edge: 外湖, 北里湖, 西里湖 and 岳湖 as one outline (west → north → east → south)
+const LK_SHORE = mpl([[560, 470], [620, 452], [690, 440], [740, 398], [780, 378], [860, 328], [930, 270], [1000, 222], [1060, 198], [1110, 190],
+  [1180, 163], [1265, 138], [1290, 175], [1340, 240], [1390, 330], [1440, 435], [1405, 520], [1340, 620], [1270, 720], [1205, 815], [1190, 900],
+  [1188, 1030], [1205, 1160], [1150, 1140], [1100, 1118], [1055, 1068], [1000, 1110], [955, 1140], [925, 1180], [930, 1235], [905, 1275],
+  [872, 1282], [840, 1232], [790, 1172], [700, 1122], [640, 1060], [605, 975], [585, 880], [565, 760], [555, 600]]);
+const LK_GUSHAN = mpl([[718, 470], [710, 503], [735, 518], [830, 522], [912, 497], [955, 428], [930, 408], [830, 392], [765, 405], [735, 440]]);   // 孤山
+const SUDI = mpl([[620, 452], [630, 580], [675, 700], [715, 850], [750, 1000], [790, 1100], [850, 1220], [872, 1282]]).reverse();   // 苏堤, south → north
+const BAIDI = mpl([[950, 428], [1000, 362], [1060, 282], [1095, 228]]);   // 白堤, 孤山 → 断桥
+const YGD = mpl([[470, 430], [463, 600], [478, 760], [498, 880], [480, 990], [500, 1080], [560, 1160], [640, 1260]]);   // 杨公堤: a lane on land
+// [x, z, rx, rz]: 茅家埠, 乌龟潭, 金沙港 and 浴鹄湾 west of 杨公堤, and 花港观鱼's fish pond
+const LK_PONDS = [[...mp(415, 852), 2.6, 4.4], [...mp(432, 1036), 1.6, 3.0], [...mp(420, 560), 3.4, 2.2], [...mp(525, 1172), 1.3, 1.8], [...mp(760, 1230), 1.25, 1.6]];
+const LK_CHANNELS = [[mp(415, 852), mp(600, 862)], [mp(432, 1036), mp(625, 1040)], [mp(420, 560), mp(578, 560)], [mp(525, 1172), mp(690, 1132)]];   // ponds → 西里湖, under 杨公堤
+const XYZ = { x: mp(912, 915)[0], z: mp(912, 915)[1], r0: 2.0, r1: 2.95 };   // 小瀛洲: a ring island quartered by dikes (田字)
+const HXT = { x: mp(885, 658)[0], z: mp(885, 658)[1], r: 0.85 };             // 湖心亭
+const RGD = { x: mp(792, 648)[0], z: mp(792, 648)[1], r: 0.9 };              // 阮公墩
+const SANTAN = mpl([[882, 1000], [913, 1011], [944, 999]]);                   // 三潭印月's three stone lanterns
+const LEIFENG = mp(1065, 1132), BAOCHU = mp(1015, 60), JINGCI = mp(1060, 1308);   // 雷峰塔, 保俶塔, 净慈寺 (南屏晚钟)
+const PHQY = mp(918, 490), QYFH = mp(588, 515), HGGY = mp(760, 1230);            // 平湖秋月, 曲院风荷 (lotus), 花港观鱼
+const STELES = { sudi: mp(886, 1302), duanqiao: mp(1140, 160), shuangfeng: mp(398, 470) };   // 碑亭 of 苏堤春晓, 断桥残雪, 双峰插云
+const SHUANGFENG = [[17, -44, 4.6, 8.6], [-7, -43, 4.6, 7.8]];                  // 北高峰, 南高峰 [x, z, r, h]
+const LWYY = { x0: -15.5, x1: -7.6, z0: 16.4, z1: 27.5 };                         // 柳浪闻莺's willow grove
+// the music fountain runs along the shore off 湖滨; the glass store faces it across the road
+const YF = (() => {
+  const a = mp(1340, 240), b = mp(1440, 435), len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const t = [(b[0] - a[0]) / len, (b[1] - a[1]) / len], n = [-t[1], t[0]];   // n points away from the land
+  const o = mp(1392, 334), out = n[1] < 0 ? n : [-n[0], -n[1]];
+  return { x: o[0] + out[0] * 1.7, z: o[1] + out[1] * 1.7, t, n: out, shore: o };
+})();
+const APPLE = [YF.x, LAKE.roadZ + 3.9];
+const QWC = [-3.8, 23.8];                           // 钱王祠, by 南山路
+const LK_PEAKS = [[...BAOCHU, 6.5, 3.6], [...LEIFENG, 2.5, 1.35], [...mp(1050, 1420), 7, 4.4], ...SHUANGFENG,
+  [-25, -40, 7, 4.2], [31, -37, 7, 4], [6, -40, 6, 3.4], [40, -12, 7, 3.2], [-40, -18, 7, 3.6]];   // 宝石山, 夕照山, 南屏山, 双峰, 西山
+// polylines with arc length: where along them a point is, and the point at a given length
+const polyLen = pts => pts.reduce((c, q, i) => (i ? [...c, c[i - 1] + Math.hypot(q[0] - pts[i - 1][0], q[1] - pts[i - 1][1])] : [0]), []);
+function polyNear(p, pts, cum) {
+  let d = Infinity, s = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const t = segT(p, pts[i], pts[i + 1]), dd = Math.hypot(p.x - pts[i][0] - (pts[i + 1][0] - pts[i][0]) * t, p.z - pts[i][1] - (pts[i + 1][1] - pts[i][1]) * t);
+    if (dd < d) { d = dd; s = cum[i] + t * (cum[i + 1] - cum[i]); }
+  }
+  return { d, s };
+}
+function polyAtS(pts, cum, s) {
+  let i = 0;
+  while (i < pts.length - 2 && cum[i + 1] < s) i++;
+  const a = pts[i], b = pts[i + 1], seg = cum[i + 1] - cum[i], t = (s - cum[i]) / seg;
+  return { p: [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t], dir: [(b[0] - a[0]) / seg, (b[1] - a[1]) / seg] };
+}
+function polySd(p, poly) {            // signed distance to a closed outline, < 0 inside
+  let m = Infinity, inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[j], b = poly[i];
+    m = Math.min(m, segD(p, a, b));
+    if ((b[0] > p.x) !== (a[0] > p.x) && p.z < (a[1] - b[1]) * (p.x - b[0]) / (a[0] - b[0]) + b[1]) inside = !inside;
+  }
+  return inside ? -m : m;
+}
+const SUDI_S = polyLen(SUDI), BAIDI_S = polyLen(BAIDI), YGD_S = polyLen(YGD);
+const SUDI_BR = [0.1, 0.27, 0.44, 0.61, 0.78, 0.93].map(f => f * SUDI_S.at(-1));   // 映波 锁澜 望山 压堤 东浦 跨虹
+const BAIDI_BR = [0.52 * BAIDI_S.at(-1)];                                         // 锦带桥
+const YGD_BR = LK_CHANNELS.map(([a, b]) => {                                      // where each channel passes under 杨公堤
+  let best = { d: Infinity, s: 0 };
+  for (let i = 0; i <= 200; i++) { const t = i / 200, n = polyNear({ x: a[0] + (b[0] - a[0]) * t, z: a[1] + (b[1] - a[1]) * t }, YGD, YGD_S); if (n.d < best.d) best = n; }
+  return best.s;
+});
 
 await slice();
 // ---------- ground paint: asphalt roads, stone lanes and plazas ----------
@@ -1420,38 +1558,68 @@ STONE_RECTS.push([SPORTS, -4.3, 4.3, 2.4, SPORTS.roadZ - 0.7]);
 STONE_CIRCS.push([SPORTS, DRUM.cx, DRUM.cz, DRUM.r + 0.7]);
 arcsIn(XIXI, [[0, XIXI.roadZ], [0.4, 6.0]], 0.022, STONES);
 arcsIn(XIXI, [[-6.8, -1.95], [-2.0, -1.9], [3.0, -2.1], [5.2, -2.05]], 0.013, STONES);
-arcsIn(LAKE, [[0, LAKE.roadZ], [0, 6.9]], 0.022, STONES);
-arcsIn(LAKE, [[-7.8, 4.7], [-4, 6.4], [0, 6.9], [4, 6.4], [7.8, 4.7]], 0.026, STONES);
+// 西湖: 湖滨 promenade, 北山街 and 南山路 along the shore, lanes on the causeways and 杨公堤, paths in from the ring road
+arcsIn(LAKE, mpl([[1287, 140], [1312, 175], [1362, 240], [1412, 330], [1462, 435], [1427, 520], [1362, 620], [1292, 720], [1227, 815], [1212, 900], [1210, 1030], [1225, 1175]]), 0.022, STONES);
+arcsIn(LAKE, mpl([[560, 445], [620, 428], [690, 416], [740, 374], [780, 354], [860, 304], [930, 246], [1000, 198], [1060, 174], [1110, 166], [1180, 139], [1265, 114]]), 0.02, STONES);
+arcsIn(LAKE, mpl([[1225, 1185], [1110, 1192], [1010, 1225], [930, 1282], [880, 1310], [760, 1295], [650, 1272]]), 0.02, STONES);
+arcsIn(LAKE, SUDI, 0.011, STONES); arcsIn(LAKE, BAIDI, 0.011, STONES); arcsIn(LAKE, YGD, 0.016, STONES);
+[[YF.shore[0], 27.6], [QWC[0] + 4.6, 17.0], [33.2, 17.0], [-27.0, 14.6], [6.0, 18.9], [-15.5, 16.5]].forEach(([x, z]) => arcsIn(LAKE, [[x, LAKE.roadZ], [x, z]], 0.02, STONES));
+arcsIn(LAKE, [[QWC[0], QWC[1] - 3.1], [QWC[0], QWC[1] - 6]], 0.02, STONES);
+arcsIn(LAKE, [[JINGCI[0] + 3.4, JINGCI[1]], [JINGCI[0] + 5.1, JINGCI[1]]], 0.02, STONES);
+STONE_CIRCS.push([LAKE, YF.shore[0] + YF.n[0] * -1.4, YF.shore[1] + YF.n[1] * -1.4, 2.0]);
+STONE_RECTS.push([LAKE, APPLE[0] - 3.6, APPLE[0] + 3.6, LAKE.roadZ + 0.8, APPLE[1] + 2.4]);
+STONE_RECTS.push([LAKE, QWC[0] - 3.4, QWC[0] + 3.4, QWC[1] - 2.9, QWC[1] + 2.9], [LAKE, JINGCI[0] - 3.2, JINGCI[0] + 3.2, JINGCI[1] - 3.6, JINGCI[1] + 3.6]);
 await slice();
 // ---------- terrain ----------
 const hillsBase = d => { const f = 2.6 / AW, g = 7.5 / AW; return 0.75 * fbm3(d.x * f + 5, d.y * f, d.z * f) + 0.25 * fbm3(d.x * g, d.y * g + 2, d.z * g); };
-const lakeE = p => Math.hypot((p.x - LAKE_C.x) / LAKE_C.rx, (p.z - LAKE_C.z) / LAKE_C.rz);
-const sudiZ = x => SUDI_Z + 0.18 * Math.sin(x * 0.45);
-const lakeHill = p => sstep(1.04, 1.45, lakeE(p)) * (1 - sstep(1.85, 2.15, lakeE(p))) * (1 - sstep(1.8, 4.2, p.z));
-function lakeLand(p) {         // causeways and islands inside the shoreline (1 = land)
-  let l = 0;
-  if (Math.abs(p.x) < 10) {
-    let c = 1 - sstep(0.3, 0.42, Math.abs(p.z - sudiZ(p.x)));
-    for (const xb of SUDI_BRIDGES) c *= sstep(0.3, 0.5, Math.abs(p.x - xb));
+// 西湖: open water (lake, ponds, channels) as a signed distance, causeways and islands inside it, hills round it
+const LK_BOX = LK_SHORE.reduce((b, [x, z]) => ({ x0: Math.min(b.x0, x), x1: Math.max(b.x1, x), z0: Math.min(b.z0, z), z1: Math.max(b.z1, z) }), { x0: Infinity, x1: -Infinity, z0: -40, z1: -Infinity });
+function lakeSd(p) {           // < 0 in open water
+  const out = Math.max(LK_BOX.x0 - p.x, p.x - LK_BOX.x1, LK_BOX.z0 - p.z, p.z - LK_BOX.z1);
+  if (out > 12) return out;
+  let d = polySd(p, LK_SHORE);
+  for (const [x, z, rx, rz] of LK_PONDS) d = Math.min(d, (Math.hypot((p.x - x) / rx, (p.z - z) / rz) - 1) * Math.min(rx, rz));
+  for (const [a, b] of LK_CHANNELS) d = Math.min(d, segD(p, a, b) - 0.45);
+  return d;
+}
+function lakeLand(p) {         // causeways and islands inside the water (1 = land)
+  let l = 0, n;
+  if ((n = polyNear(p, SUDI, SUDI_S)).d < 0.6) {
+    let c = 1 - sstep(0.34, 0.46, n.d);
+    for (const s of SUDI_BR) c *= sstep(0.3, 0.55, Math.abs(n.s - s));
     l = Math.max(l, c);
   }
-  l = Math.max(l, 1 - sstep(0.26, 0.38, segD(p, BAIDI[0], BAIDI[1])));
-  l = Math.max(l, 1 - sstep(0.86, 1.0, Math.hypot((p.x - GUSHAN.x) / GUSHAN.rx, (p.z - GUSHAN.z) / GUSHAN.rz)));
+  if ((n = polyNear(p, BAIDI, BAIDI_S)).d < 0.6) {
+    let c = 1 - sstep(0.32, 0.44, n.d);
+    for (const s of BAIDI_BR) c *= sstep(0.3, 0.55, Math.abs(n.s - s));
+    l = Math.max(l, c);
+  }
+  if (p.x > 9 && p.x < 20 && p.z > -17 && p.z < 0) l = Math.max(l, 1 - sstep(-0.12, 0.06, polySd(p, LK_GUSHAN)));
   const rx = Math.hypot(p.x - XYZ.x, p.z - XYZ.z);
-  l = Math.max(l, sstep(XYZ.r0 - 0.08, XYZ.r0 + 0.08, rx) * (1 - sstep(XYZ.r1 - 0.1, XYZ.r1 + 0.08, rx)));
-  l = Math.max(l, 1 - sstep(HXT.r - 0.1, HXT.r + 0.06, Math.hypot(p.x - HXT.x, p.z - HXT.z)));
+  if (rx < XYZ.r1 + 0.2) {
+    l = Math.max(l, sstep(XYZ.r0 - 0.08, XYZ.r0 + 0.08, rx) * (1 - sstep(XYZ.r1 - 0.1, XYZ.r1 + 0.08, rx)));
+    if (rx < XYZ.r0 + 0.1) l = Math.max(l, 1 - sstep(0.18, 0.3, Math.min(Math.abs(p.x - XYZ.x), Math.abs(p.z - XYZ.z))));   // the 田 dikes
+  }
+  for (const c of [HXT, RGD]) l = Math.max(l, 1 - sstep(c.r - 0.1, c.r + 0.06, Math.hypot(p.x - c.x, p.z - c.z)));
   return l;
 }
-function lakeShape(p, h) {
-  const e = lakeE(p) + 0.03 * (vnoise(p.x * 0.6, p.z * 0.6, 3.3) - 0.5);
-  const belt = sstep(1.5, 2.6, p.z) * (1 - sstep(1.45, 1.6, e));     // level lawn along the promenade
-  h += (0.05 - h) * belt;
-  h += lakeHill(p) * (1.3 + 2.0 * fbm3(p.x * 0.16 + 3, p.z * 0.16, 9.1));
-  h += bump(p, LEIFENG, 1.8, 1.0) + bump(p, BAOCHU, 2.0, 1.8);
-  const inLake = 1 - sstep(0.93, 1.0, e);
-  if (inLake > 0) {
-    const landH = WATER + 0.26 + bump(p, [GUSHAN.x, GUSHAN.z], 0.8, 0.7);
-    h += (-1.45 + (landH + 1.45) * lakeLand(p) - h) * inLake;
+function lakeHills(p, sd) {
+  const away = sstep(1.5, 7, sd) * (1 - sstep(8, 14, p.z));    // rising away from the water, never in the city on the east shore
+  let h = away > 0 ? away * (0.7 + 2.4 * fbm3(p.x * 0.09 + 3, p.z * 0.09, 9.1)) : 0;
+  if (sd > 0.6) for (const [x, z, r, a] of LK_PEAKS) if (Math.abs(p.x - x) < 3 * r && Math.abs(p.z - z) < 3 * r) h += bump(p, [x, z], r, a) * sstep(0.6, 2.5, sd);
+  return h;
+}
+const lakeReach = p => rectFall(p, -46, 48, -48, LAKE.roadZ + 6, 10);   // 1 where 西湖 shapes the ground alone, 0 beyond it
+const YGD_BOX = YGD.reduce((b, [x, z]) => ({ x0: Math.min(b.x0, x - 3.2), x1: Math.max(b.x1, x + 3.2), z0: Math.min(b.z0, z - 3.2), z1: Math.max(b.z1, z + 3.2) }), { x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity });
+function lakeShape(p, h, w, reg = lakeReach(p)) {
+  if (reg <= 0) return h;
+  const sd = lakeSd(p) + 0.22 * (vnoise(p.x * 0.5, p.z * 0.5, 3.3) - 0.5);
+  const keep = (1 - Math.min(1, w * 1.6)) * (inRect(p, YGD_BOX.x0, YGD_BOX.x1, YGD_BOX.z0, YGD_BOX.z1) ? sstep(1.0, 3.2, polyD(p, YGD)) : 1);   // lanes and 杨公堤 stay level
+  h += (0.05 + lakeHills(p, sd) * keep - h) * reg;
+  const wet = 1 - sstep(-0.3, 0.08, sd);
+  if (wet > 0) {
+    const t = lakeLand(p), isl = WATER + 0.26;
+    h += (-1.45 + (isl + 1.45) * t - h) * wet;
   }
   return h;
 }
@@ -1473,17 +1641,25 @@ terrainH = function (d, w = pathWeight(d)) {
   if ((p = local(HOME, d))) flat = Math.max(flat, rectFall(p, -10.2, 10.2, -9.2, HOME.roadZ, 2.5));
   if ((p = local(MALL, d))) flat = Math.max(flat, rectFall(p, -6.8, 6.8, -5.2, MALL.roadZ, 2.5));
   if ((p = local(SPORTS, d))) flat = Math.max(flat, clamp01(1 - Math.max(0, Math.hypot(p.x - DRUM.cx, p.z - DRUM.cz) - 5.0) / 2.5), rectFall(p, -4.8, 4.8, 2, SPORTS.roadZ, 2.5));
-  let h = (hillsBase(d) - 0.42) * 1.2 * (1 - flat) + 0.05;
+  const lp = local(LAKE, d), lr = lp ? lakeReach(lp) : 0;
+  let h = lr < 1 ? (hillsBase(d) - 0.42) * 1.2 * (1 - flat) + 0.05 : 0.05;   // deep inside 西湖's area its own shape replaces the hills
   if ((p = local(XIXI, d))) h = xixiShape(p, h);
-  if ((p = local(LAKE, d))) h = lakeShape(p, h);
+  if (lr > 0) h = lakeShape(lp, h, w, lr);
   return h;
 };
 const DECK_H = WATER + 0.42;
 for (let i = 0; i < BOARDWALK.length - 1; i++) walk.deck(XIXI, BOARDWALK[i], BOARDWALK[i + 1], 0.42, 0, DECK_H);
 walk.deck(XIXI, [0.3, 1.0], [1.7, 1.0], 0.7, 0, DECK_H);
 const XIXI_BRIDGE = walk.deck(XIXI, [3.4, 0.5], [3.4, -2.0], 0.4, 0.7);
-const DUANQIAO = walk.deck(LAKE, [6.75, 1.35], [6.75, 3.45], 0.45, 0.45);
-const SUDI_WALKS = SUDI_BRIDGES.map(xb => walk.deck(LAKE, [xb - 0.8, sudiZ(xb - 0.8)], [xb + 0.8, sudiZ(xb + 0.8)], 0.36, 0.38));
+// 西湖's bridges: 苏堤's six, 锦带桥 on 白堤, 断桥, 西泠桥 to 孤山, and 杨公堤's over the channels to its ponds
+const deckOn = (pts, cum, s, half, hw, rise) => { const { p, dir } = polyAtS(pts, cum, s); return walk.deck(LAKE, [p[0] - dir[0] * half, p[1] - dir[1] * half], [p[0] + dir[0] * half, p[1] + dir[1] * half], hw, rise); };
+const LAKE_BRIDGES = [
+  ...SUDI_BR.map(s => [deckOn(SUDI, SUDI_S, s, 0.95, 0.36, 0.42), 0.72]),
+  ...BAIDI_BR.map(s => [deckOn(BAIDI, BAIDI_S, s, 0.95, 0.34, 0.4), 0.7]),
+  [walk.deck(LAKE, BAIDI.at(-1), mp(1117, 180), 0.45, 0.45), 0.95],
+  [walk.deck(LAKE, mp(740, 448), mp(708, 418), 0.38, 0.4), 0.78],
+  ...YGD_BR.map(s => [deckOn(YGD, YGD_S, s, 1.05, 0.42, 0.3), 0.9]),
+];
 await slice();
 // ---------- what blocks walking: building footprints (also keep grass off floors), the railing ----------
 {
@@ -1498,8 +1674,6 @@ await slice();
   disc(MALL, 0, -0.6, 2.1, 4.5);
   disc(SPORTS, DRUM.cx, DRUM.cz, DRUM.r + 0.12, 3.2);
   XIXI_HOUSES.forEach(([x, z, w, d, h]) => box(XIXI, x - w / 2 - 0.15, x + w / 2 + 0.15, z - d / 2 - 0.1, z + d / 2 + 0.1, h + 0.8));
-  disc(LAKE, LEIFENG[0], LEIFENG[1], 1.3, 5.0);
-  disc(LAKE, BAOCHU[0], BAOCHU[1], 0.7);
   // the courtyard railing is the same polyline that buildHome draws; the gate pillars close its ends
   walk.barrier(HOME, shapes.polyline(HOME_RAIL, 0.1));
   [-1, 1].forEach(sd => walk.barrier(HOME, shapes.box(sd * (HOME_GATE + 0.28) - 0.3, sd * (HOME_GATE + 0.28) + 0.3, HOME_FENCE.z1 - 0.3, HOME_FENCE.z1 + 0.3)));
@@ -1514,18 +1688,33 @@ zones = [
   { name: '天街', s: MALL, via: [], stand: [0.9, 3.0], look: [0, -1.8], zoom: 1.75, label: [0, -0.6], h: 5.9 },
   { name: '文体中心', s: SPORTS, via: [], stand: [0.9, 4.4], look: [0, -1], zoom: 1.85, label: [0, -1], h: 5.9 },
   { name: '西溪湿地', s: XIXI, via: [[0.4, 6.0], [2.2, 4.2], [1.2, 2.4]], stand: [1.0, 1.25], look: [-1.2, -3.2], zoom: 1.35, label: [0.1, -3.4], h: 3.2 },
-  { name: '西湖', s: LAKE, via: [[0, 6.9]], stand: [-0.6, 6.75], look: [-0.6, -1.2], zoom: 2.4, label: [0.4, 1.6], h: 1.1 },
+  { name: '西湖', s: LAKE, via: [[1.5, LAKE.roadZ - 1.6]], stand: mp(1325, 690), look: mp(1000, 330), zoom: 2.3, label: mp(1060, 520), h: 1.2 },
 ];
 LANDMARKS = [
-  { name: '雷峰塔', s: LAKE, at: LEIFENG, h: 5.1 },
-  { name: '保俶塔', s: LAKE, at: BAOCHU, h: 4.9 },
-  { name: '断桥', s: LAKE, at: [6.75, 2.4], h: 1.35 },
-  { name: '三潭印月', s: LAKE, at: [-4.4, -0.3], h: 1.6 },
-  { name: '苏堤', s: LAKE, at: [-0.4, SUDI_Z], h: 2.2 },
-  { name: '小瀛洲', s: LAKE, at: [XYZ.x, XYZ.z + 0.9], h: 1.9 },
+  { name: '雷峰夕照', s: LAKE, at: LEIFENG, h: 8.3 },
+  { name: '保俶塔', s: LAKE, at: BAOCHU, h: 6.8 },
+  { name: '断桥残雪', s: LAKE, at: mp(1106, 204), h: 1.7 },
+  { name: '三潭印月', s: LAKE, at: SANTAN[1], h: 2.3 },
+  { name: '小瀛洲', s: LAKE, at: [XYZ.x + 2.45, XYZ.z], h: 2.2 },
+  { name: '苏堤春晓', s: LAKE, at: STELES.sudi, h: 1.9 },
+  { name: '苏堤', s: LAKE, at: polyAtS(SUDI, SUDI_S, SUDI_S.at(-1) * 0.52).p, h: 2.4 },
+  { name: '白堤', s: LAKE, at: polyAtS(BAIDI, BAIDI_S, BAIDI_S.at(-1) * 0.3).p, h: 2.2 },
+  { name: '杨公堤', s: LAKE, at: polyAtS(YGD, YGD_S, YGD_S.at(-1) * 0.4).p, h: 2.3 },
+  { name: '孤山', s: LAKE, at: mp(820, 455), h: 2.6 },
+  { name: '平湖秋月', s: LAKE, at: PHQY, h: 1.9 },
+  { name: '湖心亭', s: LAKE, at: [HXT.x, HXT.z], h: 1.8 },
+  { name: '阮公墩', s: LAKE, at: [RGD.x, RGD.z], h: 2.0 },
+  { name: '曲院风荷', s: LAKE, at: QYFH, h: 1.2 },
+  { name: '花港观鱼', s: LAKE, at: HGGY, h: 1.5 },
+  { name: '柳浪闻莺', s: LAKE, at: [(LWYY.x0 + LWYY.x1) / 2, LWYY.z0 + 1.6], h: 2.4 },
+  { name: '钱王祠', s: LAKE, at: QWC, h: 3.6 },
+  { name: '南屏晚钟', s: LAKE, at: JINGCI, h: 3.6 },
+  { name: '双峰插云', s: LAKE, at: STELES.shuangfeng, h: 1.9 },
+  { name: '音乐喷泉', s: LAKE, at: [YF.x, YF.z], h: 3.6 },
+  { name: '苹果旗舰店', s: LAKE, at: APPLE, h: 3.4 },
 ];
 
-await buildGround({ step: z => 0.4 + 1.2 * bandFade(z), lit: 0x8cc46a, shade: 0x4f8a6c, lawn: d => (inFence(local(HOME, d)) ? 1 : 0), water: true });
+await buildGround({ step: z => 0.4 + 1.2 * bandFade(z), win: { lon: LAKE.lon * D2R, H: 52 / (R * Math.cos(0.35)), z1: LAKE.roadZ + 38, s: 0.45 }, lit: 0x8cc46a, shade: 0x4f8a6c, lawn: d => (inFence(local(HOME, d)) ? 1 : 0), water: true });
 // trees planted by the builders below (place, x, z, kind)
 const heroTrees = [];
 
@@ -1759,7 +1948,7 @@ function buildXixi() {
 }
 
 function buildLeifeng() {
-  const k = kit(LAKE, LEIFENG[0], LEIFENG[1], 0, 1, { sink: 0.15 });
+  const k = kit(LAKE, LEIFENG[0], LEIFENG[1], 0, 1, { sink: 0.15, scale: 1.5 });
   const BODY = 0xa85a42, ROOF = 0xcaa45c, ROOF_SH = 0x8a6a4a, STONE = 0xd6cebd;
   octo(k, 1.15, 1.25, 1.2, STONE, -0.25);
   octo(k, 0.95, 1.0, 0.2, STONE, 0.42);
@@ -1775,9 +1964,10 @@ function buildLeifeng() {
   octo(k, 0.06, 0.52, 0.52, ROOF, y + 0.26, { shade: ROOF_SH });
   k.cyl(0.035, 0.035, 0.95, 0xd8b65e, 0, y + 0.95, 0, 6);
   [0.62, 0.78, 0.94, 1.1].forEach((o, i) => k.cyl(0.1 - i * 0.015, 0.1 - i * 0.015, 0.04, 0xd8b65e, 0, y + o, 0, 10));
+  walk.footprint(LAKE, shapes.circle(LEIFENG[0], LEIFENG[1], 1.95), { h: 7.6 });
 }
 function buildBaochu() {
-  const k = kit(LAKE, BAOCHU[0], BAOCHU[1], 0, 1, { sink: 0.1 });
+  const k = kit(LAKE, BAOCHU[0], BAOCHU[1], 0, 1, { sink: 0.1, scale: 1.5 });
   const BRICK = 0x9d8b74, LEDGE = 0x7d705f;
   octo(k, 0.5, 0.58, 1.0, 0xcfc7b6, -0.3);
   let y = 0.2;
@@ -1789,15 +1979,106 @@ function buildBaochu() {
   }
   k.cyl(0.03, 0.03, 0.9, 0x474b4f, 0, y + 0.45, 0, 6);
   [0.15, 0.32, 0.5].forEach(o => k.cyl(0.08 - o * 0.06, 0.08 - o * 0.06, 0.03, 0x474b4f, 0, y + o, 0, 8));
+  walk.footprint(LAKE, shapes.circle(BAOCHU[0], BAOCHU[1], 0.85), { h: 6 });
+}
+// a hipped roof over a w × d plan (a square pyramid stretched to the plan), with the four corners swept up
+function hipRoof(k, w, d, h, y, hex, shade, z = 0, x = 0) {
+  const g = new THREE.ConeGeometry(Math.SQRT1_2, h, 4, 1); g.rotateY(Math.PI / 4); g.scale(w, 1, d); g.translate(x, y + h / 2, z);
+  k.add(g, hex, { shade });
+  [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([a, b]) => {
+    const c = new THREE.ConeGeometry(0.05, 0.3, 5);
+    c.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(UP, new THREE.Vector3(a * 0.6, 0.7, b * 0.6).normalize()));
+    c.translate(x + a * w / 2, y + 0.05, z + b * d / 2);
+    k.add(c, hex);
+  });
+}
+// a stone memorial archway (牌坊): four posts, three lintels, little roofs
+function buildPaifang(x, z, fx, fz, o = {}) {
+  const k = kit(LAKE, x, z, fx, fz, { scale: o.scale || 1 });
+  const POST = o.post ?? 0xcfc7b6, TOP = o.roof ?? 0x4b5159;
+  [-1.35, -0.45, 0.45, 1.35].forEach(px => { k.box(0.16, 1.9, 0.16, POST, px, 0.95, 0); k.box(0.3, 0.2, 0.3, POST, px, 0.1, 0); });
+  k.box(1.1, 0.26, 0.14, o.panel ?? 0x9a3b2e, 0, 1.55, 0);
+  [[-0.9, 1.35, 0.95], [0.9, 1.35, 0.95], [0, 1.9, 1.15]].forEach(([px, py, w]) => {
+    k.box(w, 0.14, 0.2, POST, px, py, 0);
+    hipRoof(k, w + 0.3, 0.45, 0.24, py + 0.08, TOP, 0x30353c, 0, px);
+  });
+}
+// a walled temple yard facing (fx, fz): gate hall in the front wall, main hall at the back, a hall between
+function buildTemple(x, z, fx, fz, o) {
+  const { w, d, wall, roof = 0x4b5159, body = 0x9a3b2e } = o;
+  const k = kit(LAKE, x, z, fx, fz);
+  const CAP = 0x50555c, SH = 0x30353c;
+  // walls, the front one open for the gate hall
+  k.box(w, 0.95, 0.18, wall, 0, 0.47, -d / 2); k.box(0.18, 0.95, d, wall, -w / 2, 0.47, 0); k.box(0.18, 0.95, d, wall, w / 2, 0.47, 0);
+  [-1, 1].forEach(sd => k.box(w / 2 - 1.2, 0.95, 0.18, wall, sd * (w / 4 + 0.6), 0.47, d / 2));
+  k.box(w + 0.2, 0.1, 0.3, CAP, 0, 1.0, -d / 2); k.box(0.3, 0.1, d, CAP, -w / 2, 1.0, 0); k.box(0.3, 0.1, d, CAP, w / 2, 1.0, 0);
+  [-1, 1].forEach(sd => k.box(w / 2 - 1.1, 0.1, 0.3, CAP, sd * (w / 4 + 0.6), 1.0, d / 2));
+  const hall = (hw, hd, hh, hz, tiers = 1) => {
+    k.box(hw + 0.3, 0.2, hd + 0.3, 0xd6cebd, 0, 0.1, hz);
+    k.box(hw - 0.3, hh, hd - 0.3, wall === 0xe3b84a ? 0xd9c9a8 : 0xe2d8c6, 0, 0.2 + hh / 2, hz);
+    for (let i = 0; i <= 4; i++) k.cyl(0.06, 0.06, hh, body, -hw / 2 + 0.15 + i * (hw - 0.3) / 4, 0.2 + hh / 2, hz + hd / 2 - 0.12, 8);
+    k.box(hw, 0.12, hd, body, 0, 0.2 + hh, hz);
+    hipRoof(k, hw + 0.7, hd + 0.6, hh * 0.55, 0.3 + hh, roof, SH, hz);
+    if (tiers > 1) { k.box(hw * 0.7, hh * 0.45, hd * 0.6, body, 0, 0.3 + hh * 1.3, hz); hipRoof(k, hw * 0.75 + 0.5, hd * 0.65 + 0.4, hh * 0.5, 0.3 + hh * 1.5, roof, SH, hz); }
+  };
+  hall(2.4, 1.3, 1.05, d / 2 - 0.2);          // gate hall
+  hall(w * 0.62, d * 0.3, 1.5, -d / 2 + d * 0.22, 2);   // main hall
+  k.cyl(0.25, 0.32, 0.5, 0x5d5249, 0, 0.25, 0.3, 10);   // incense burner
+  k.cyl(0.0, 0.28, 0.25, 0x5d5249, 0, 0.62, 0.3, 10);
+  return k;
+}
+function buildStele(x, z) {      // a little stele pavilion (碑亭) with the stone inside
+  buildPavilion(LAKE, x, z, 0.42);
+  kit(LAKE, x, z).box(0.36, 0.55, 0.1, 0xa59f92, 0, 0.32, 0);
+}
+// 音乐喷泉: a row of jets in the water off 湖滨 that rise and fall in waves (moved every frame)
+const fountain = { mesh: null, base: [], tmp: new THREE.Matrix4() };
+function buildFountain() {
+  const N = 45, col = new THREE.CylinderGeometry(0.1, 0.045, 1, 6, 1, true); col.translate(0, 0.5, 0);
+  const head = new THREE.SphereGeometry(0.3, 8, 5); head.scale(1, 0.1, 1); head.translate(0, 1, 0);   // the spray at the top, flattened so it doesn't stretch with the jet
+  const g = mergeGeometries([prep(col), prep(head)]);
+  const m = new THREE.InstancedMesh(g, toon(0xf2fbfd, { shade: 0xb5dbe6, breakMul: 0 }), N);
+  m.layers.set(1);
+  for (let i = 0; i < N; i++) {
+    const u = (i / (N - 1) - 0.5) * 8.4, bow = 0.9 * (1 - (2 * u / 8.4) ** 2);
+    const x = YF.x + YF.t[0] * u - YF.n[0] * bow, z = YF.z + YF.t[1] * u - YF.n[1] * bow;
+    fountain.base.push(frameMatrix(L(LAKE, x, z), LT(LAKE, YF.t[0], YF.t[1]), 1, 0, WATER));
+  }
+  m.frustumCulled = false;
+  fountain.mesh = m;
+  addObj(m);
+  updateFountain(0);
+}
+function updateFountain(t) {
+  const m = fountain.mesh; if (!m) return;
+  const N = fountain.base.length, show = 0.65 + 0.35 * Math.sin(t * 0.21);
+  for (let i = 0; i < N; i++) {
+    const c = Math.abs(i - (N - 1) / 2) / ((N - 1) / 2);
+    const wave = Math.max(0, Math.sin(t * 1.4 - i * 0.42)) * 0.55 + Math.max(0, Math.sin(t * 0.8 + c * 3.2)) * 0.45;
+    const h = 0.25 + (1.2 + 2.6 * (1 - c * 0.6)) * wave * show + (i === (N - 1) / 2 ? 2.2 * show : 0);
+    m.setMatrixAt(i, fountain.tmp.copy(fountain.base[i]).multiply(new THREE.Matrix4().makeScale(1, h, 1)));
+  }
+  m.instanceMatrix.needsUpdate = true;
+}
+// a two-storey glass store under a thin roof slab, across 湖滨路 from the fountain
+function buildGlassStore(x, z) {
+  const k = kit(LAKE, x, z, 0, -1);
+  const STONE = 0xe9e6df, FIN = 0xf2f0ea;
+  k.box(6.2, 0.14, 4.0, STONE, 0, 0.07, 0);
+  k.box(5.6, 2.5, 3.4, 0x86b0bf, 0, 1.39, 0, G_OPTS);
+  for (let i = 0; i <= 7; i++) k.box(0.12, 2.5, 0.16, FIN, -2.8 + i * 0.8, 1.39, 1.72);
+  k.box(5.7, 0.1, 3.5, FIN, 0, 1.3, 0);
+  k.box(6.4, 0.18, 4.2, FIN, 0, 2.73, 0);
+  k.box(1.6, 0.06, 0.8, 0xd9d4c8, 0, 0.17, 2.4);
+  walk.footprint(LAKE, shapes.box(x - 3.2, x + 3.2, z - 2.1, z + 2.1), { h: 2.9 });
 }
 function buildLake() {
   buildLeifeng();
   buildBaochu();
-  buildArchBridge(DUANQIAO, 0.95, 0xdedad0);
-  SUDI_WALKS.forEach(w => buildArchBridge(w, 0.72, 0xd5d0c5));
-  // 三潭印月: three stone lanterns standing in the water
+  LAKE_BRIDGES.forEach(([w, width]) => buildArchBridge(w, width, 0xd8d3c8));
+  // 三潭印月: three stone lanterns standing in the water south of 小瀛洲
   SANTAN.forEach(([x, z]) => {
-    const k = kit(LAKE, x, z, 0, 1, { h: WATER });
+    const k = kit(LAKE, x, z, 0, 1, { h: WATER, scale: 1.5 });
     const ST = 0xbdb6a8;
     k.cyl(0.1, 0.13, 0.6, ST, 0, 0.0, 0, 10);
     k.ball(0.25, ST, 0, 0.5, 0);
@@ -1810,21 +2091,63 @@ function buildLake() {
     k.ball(0.1, ST, 0, 0.88, 0); k.ball(0.065, ST, 0, 1.0, 0);
     k.cyl(0.0, 0.04, 0.12, ST, 0, 1.11, 0, 8);
   });
-  buildPavilion(LAKE, XYZ.x, XYZ.z + 1.05, 0.42);
-  buildPavilion(LAKE, HXT.x, HXT.z, 0.32);
-  buildPavilion(LAKE, GUSHAN.x + 0.2, GUSHAN.z, 0.4);
-  // trees on the islands; willows and peaches along the causeways (一株杨柳一株桃)
-  [[XYZ.x - 1.05, XYZ.z], [XYZ.x + 1.05, XYZ.z - 0.1], [XYZ.x, XYZ.z - 1.05], [GUSHAN.x - 0.4, GUSHAN.z - 0.3], [GUSHAN.x + 0.6, GUSHAN.z + 0.4]]
-    .forEach(([x, z]) => heroTrees.push([LAKE, x, z, 'small']));
-  for (let x = -8.6; x <= 8.6; x += 1.15) {
-    if (SUDI_BRIDGES.some(xb => Math.abs(x - xb) < 1.0)) continue;
-    lakeTrees.push([x, sudiZ(x) + (Math.round(x / 1.15) % 2 ? 0.2 : -0.2), Math.round(x / 1.15) % 2 ? 'peach' : 'willow']);
+  // pavilions: 小瀛洲, 湖心亭, 阮公墩, 平湖秋月, 曲院风荷, 花港观鱼, 柳浪闻莺
+  buildPavilion(LAKE, XYZ.x + 2.45, XYZ.z, 0.5);
+  buildPavilion(LAKE, XYZ.x, XYZ.z, 0.34);
+  buildPavilion(LAKE, HXT.x, HXT.z, 0.4);
+  buildPavilion(LAKE, RGD.x + 0.2, RGD.z, 0.32);
+  {
+    const k = kit(LAKE, PHQY[0], PHQY[1], -0.5, -0.86, { h: WATER + 0.3 });   // a platform over the water
+    k.box(2.4, 0.12, 1.6, 0xd6cebd, 0, 0, 0.6);
+    for (let i = 0; i < 5; i++) k.cyl(0.05, 0.05, 0.5, 0xd6cebd, -1.0 + i * 0.5, -0.25, 1.3, 6);
+    buildPavilion(LAKE, PHQY[0] + 0.7, PHQY[1] + 0.25, 0.5);
   }
-  for (let t = 0.12; t <= 1.0; t += 0.2) {
-    const x = BAIDI[0][0] + (BAIDI[1][0] - BAIDI[0][0]) * t, z = BAIDI[0][1] + (BAIDI[1][1] - BAIDI[0][1]) * t;
-    lakeTrees.push([x + 0.12, z, Math.round(t * 5) % 2 ? 'willow' : 'peach']);
+  buildPavilion(LAKE, QYFH[0] + 3.7, QYFH[1] - 0.6, 0.5);
+  buildPavilion(LAKE, HGGY[0] + 1.0, HGGY[1] + 2.1, 0.5);
+  buildPavilion(LAKE, (LWYY.x0 + LWYY.x1) / 2, LWYY.z0 + 1.6, 0.55);
+  Object.values(STELES).forEach(([x, z]) => buildStele(x, z));
+  // 双峰插云: a small pagoda on each of the two peaks
+  SHUANGFENG.forEach(([x, z]) => {
+    const k = kit(LAKE, x, z, 0, 1, { sink: 0.1, scale: 1.2 });
+    octo(k, 0.42, 0.5, 0.6, 0xcfc7b6, 0.1);
+    let y = 0.4;
+    for (let i = 0; i < 5; i++) { const r = 0.28 - i * 0.03; octo(k, r, r, 0.36, 0xb9a88f, y + 0.18); octo(k, r * 0.5, r + 0.2, 0.1, 0x4b5159, y + 0.41); y += 0.46; }
+    k.cyl(0.02, 0.02, 0.5, 0x474b4f, 0, y + 0.2, 0, 5);
+  });
+  // 钱王祠 behind its archway, 净慈寺 (南屏晚钟) with its bell tower
+  buildTemple(QWC[0], QWC[1], 0, -1, { w: 7, d: 6, wall: 0xc9b9a0 });
+  buildPaifang(QWC[0], QWC[1] - 5.0, 0, -1);
+  walk.footprint(LAKE, shapes.box(QWC[0] - 3.6, QWC[0] + 3.6, QWC[1] - 3.1, QWC[1] + 3.1), { h: 3.2 });
+  const jc = buildTemple(JINGCI[0], JINGCI[1], 1, 0, { w: 7.5, d: 6.5, wall: 0xe3b84a });
+  jc.box(1.0, 1.4, 1.0, 0xe3b84a, 2.6, 0.7, 1.6); jc.box(1.1, 0.12, 1.1, 0x9a3b2e, 2.6, 1.45, 1.6);
+  [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([a, b]) => jc.cyl(0.05, 0.05, 0.8, 0x9a3b2e, 2.6 + a * 0.42, 1.9, 1.6 + b * 0.42, 6));
+  jc.cyl(0.18, 0.24, 0.42, 0x6d5a3c, 2.6, 1.95, 1.6, 12);
+  hipRoof(jc, 1.5, 1.5, 0.5, 2.3, 0x4b5159, 0x30353c, 1.6, 2.6);
+  walk.footprint(LAKE, shapes.box(JINGCI[0] - 3.4, JINGCI[0] + 3.4, JINGCI[1] - 3.9, JINGCI[1] + 3.9), { h: 3.2 });
+  buildFountain();
+  buildGlassStore(APPLE[0], APPLE[1]);
+  // islands: trees round 小瀛洲's ring and on 孤山, 湖心亭, 阮公墩
+  for (let a = 0; a < 12; a++) { if (a % 3 === 0) continue; const t = a / 12 * Math.PI * 2; heroTrees.push([LAKE, XYZ.x + Math.cos(t) * 2.5, XYZ.z + Math.sin(t) * 2.5, 'small']); }
+  [[0.6, 0.3], [-0.5, -0.3]].forEach(([dx, dz]) => heroTrees.push([LAKE, RGD.x + dx, RGD.z + dz, 'small']));
+  for (let i = 0, n = 0; i < 400 && n < 26; i++) {
+    const x = 11.5 + rand() * 7.5, z = -15.3 + rand() * 14.2;
+    if (polySd({ x, z }, LK_GUSHAN) < -0.6 && Math.hypot(x - PHQY[0], z - PHQY[1]) > 1.8) { heroTrees.push([LAKE, x, z, n % 3 ? 'small' : undefined]); n++; }
   }
-  [[-7.2, 4.2], [-5.0, 5.4], [3.6, 5.6], [5.6, 4.6], [7.6, 3.4], [-8.4, 2.6]].forEach(([x, z], i) => lakeTrees.push([x, z, i % 2 ? 'peach' : 'willow']));
+  // 一株杨柳一株桃 along 苏堤 and 白堤; willows along 杨公堤 and the east shore; 柳浪闻莺's grove
+  const along = (pts, cum, br, every, side, kinds) => {
+    for (let s = 0.6, k = 0; s < cum.at(-1) - 0.5; s += every, k++) {
+      if (br.some(b => Math.abs(s - b) < 1.15)) continue;
+      const { p, dir } = polyAtS(pts, cum, s), sd = (k % 2 ? 1 : -1) * side;
+      lakeTrees.push([p[0] - dir[1] * sd, p[1] + dir[0] * sd, kinds[k % kinds.length]]);
+    }
+  };
+  along(SUDI, SUDI_S, SUDI_BR, 1.05, 0.26, ['willow', 'peach']);
+  along(BAIDI, BAIDI_S, BAIDI_BR, 1.05, 0.24, ['willow', 'peach']);
+  along(YGD, YGD_S, YGD_BR, 1.6, 0.95, ['willow', 'willow', 'peach']);
+  const e0 = lakeTrees.length, EAST = mpl([[1265, 138], [1290, 175], [1340, 240], [1390, 330], [1440, 435], [1405, 520], [1340, 620], [1270, 720], [1205, 815], [1190, 900], [1188, 1030], [1205, 1160]]);
+  along(EAST, polyLen(EAST), [], 2.7, 0, ['willow']);
+  for (let i = e0; i < lakeTrees.length; i++) lakeTrees[i][1] += 0.9;   // the east-shore row, just inland
+  for (let x = LWYY.x0; x <= LWYY.x1; x += 1.7) for (let z = LWYY.z0 + 3.0; z <= LWYY.z1; z += 1.8) lakeTrees.push([x + (rand() - 0.5) * 0.8, z + (rand() - 0.5) * 0.8, 'willow']);
 }
 const lakeTrees = [];
 
@@ -1847,8 +2170,11 @@ const boats = [];
 {
   const ch = XIXI_CH[0][0];
   boats.push({ g: makeBoat(0x2f3236, 1.5, 0.48), s: XIXI, at: t => { const x = 5.6 * Math.sin(t * 0.07); return [x, polyAt(ch, x) + 0.1]; } });
-  boats.push({ g: makeBoat(0x3f6f9a), s: LAKE, at: t => [2.6 + 1.7 * Math.cos(t * 0.09), 1.6 + 1.7 * Math.sin(t * 0.09)] });
-  boats.push({ g: makeBoat(0x9c4a3c), s: LAKE, at: t => [-1.0 + 2.2 * Math.cos(-t * 0.07 + 2), 2.2 + 1.1 * Math.sin(-t * 0.07 + 2)] });
+  boats.push({ g: makeBoat(0x3f6f9a), s: LAKE, at: t => [XYZ.x + 4.3 * Math.cos(t * 0.05), XYZ.z + 4.3 * Math.sin(t * 0.05)] });
+  boats.push({ g: makeBoat(0x9c4a3c), s: LAKE, at: t => [6.8 + 7 * Math.cos(-t * 0.03 + 2), 7.6 + 6 * Math.sin(-t * 0.03 + 2)] });
+  boats.push({ g: makeBoat(0x4a7a4f), s: LAKE, at: t => [17.4 + 4 * Math.cos(t * 0.045 + 1), 10.6 + 4 * Math.sin(t * 0.045 + 1)] });
+  boats.push({ g: makeBoat(0x2f3236), s: LAKE, at: t => [-6 + 4.5 * Math.cos(t * 0.04), -19.5 + 1.3 * Math.sin(t * 0.04)] });
+  boats.push({ g: makeBoat(0x8a3d32, 3.2, 1.0), s: LAKE, at: t => [-3.8 + 6 * Math.cos(t * 0.022 + 4), 4.7 + 6 * Math.sin(t * 0.022 + 4)] });   // a 画舫
 }
 function updateBoats(t) {
   boats.forEach(b => {
@@ -1865,7 +2191,12 @@ siteKeepout = function (d, m = 0) {
   if ((p = local(MALL, d)) && inRect(p, -6.6 - m, 6.6 + m, -5.2 - m, MALL.roadZ + 1)) return true;
   if ((p = local(SPORTS, d)) && (Math.hypot(p.x - DRUM.cx, p.z - DRUM.cz) < 5.0 + m || inRect(p, -4.8 - m, 4.8 + m, 2, SPORTS.roadZ + 1))) return true;
   if ((p = local(XIXI, d)) && Math.hypot(p.x, p.z) < 10.2 + m) return true;
-  if ((p = local(LAKE, d)) && (lakeE(p) < 1.06 + m * 0.1 || (p.z > 1.6 && lakeE(p) < 1.62))) return true;
+  if ((p = local(LAKE, d)) && inRect(p, LAKE_AREA.x0, LAKE_AREA.x1, LAKE_AREA.z0, LAKE_AREA.z1)) {
+    const sd = lakeSd(p);
+    if (sd < 0.4 + m * 2 || polyD(p, YGD) < 0.8 + m) return true;
+    if (m > 0 && p.z > 9 && sd < 16 && p.x > LK_BOX.x0 && p.x < LK_BOX.x1 + 6) return true;   // the city side of the shore: planted by hand
+    if (p.z > LAKE.roadZ - 1 && Math.abs(p.x - APPLE[0]) < 5) return true;
+  }
   return false;
 };
 await slice();
@@ -1878,10 +2209,14 @@ await slice();
   // near trees (courtyards, plazas, islands) get detailed crowns; the many meadow and hill trees lighter ones
   const near = variants.map(() => []), far = variants.map(() => []);
   const meadow = scatterDirs(Math.round(240 * AREA * TREE_SHARE), 0.05, 0.5, 0.02, 90000, null, treeFill);
-  const forest = scatterIn(LAKE, 180, -18, 18, -16, 3.5, p => lakeHill(p) > 0.3 && Math.hypot(p.x - LEIFENG[0], p.z - LEIFENG[1]) > 1.6 && Math.hypot(p.x - BAOCHU[0], p.z - BAOCHU[1]) > 1.2, 0.032);
+  const lakeClear = p => Math.hypot(p.x - LEIFENG[0], p.z - LEIFENG[1]) > 2.4 && Math.hypot(p.x - BAOCHU[0], p.z - BAOCHU[1]) > 1.4
+    && !SHUANGFENG.some(([x, z]) => Math.hypot(p.x - x, p.z - z) < 1.0) && !Object.values(STELES).some(([x, z]) => Math.hypot(p.x - x, p.z - z) < 1.0)
+    && !(Math.abs(p.x - JINGCI[0]) < 4.4 && Math.abs(p.z - JINGCI[1]) < 4.8) && polyD(p, YGD) > 1.3;
+  const forest = scatterIn(LAKE, 620, -50, 50, -52, 16, p => terrainH(L(LAKE, p.x, p.z)) > 0.55 && lakeClear(p), 0.075);
   const islets = scatterIn(XIXI, 40, -9.5, 9.5, -9.5, 5.4, p => Math.hypot(p.x, p.z) < 9.4 && !(p.z > 0.4 && Math.abs(p.x - 1) < 2.8) && !(p.z > -4.8 && p.z < 1.4 && p.x > -6.4 && p.x < 4.6) && polyD(p, BOARDWALK) > 1.0
     && !XIXI_HOUSES.some(([x, z, w, d]) => Math.abs(p.x - x) < w / 2 + 0.7 && Math.abs(p.z - z) < d / 2 + 0.9) && xixiWater(p) < 0.05, 0.05);
-  [...meadow, ...forest].forEach((d, i) => far[i % 3].push(matrixOn(d, rand() * 6.28, 0.85 + rand() * 0.5, 0.05)));
+  meadow.forEach((d, i) => far[i % 3].push(matrixOn(d, rand() * 6.28, 0.85 + rand() * 0.5, 0.05)));
+  forest.forEach((d, i) => far[i % 2].push(matrixOn(d, rand() * 6.28, 1.15 + rand() * 0.6, 0.05)));   // 西湖's hills: fewer, bigger trees
   islets.forEach((d, i) => near[i % 3].push(matrixOn(d, rand() * 6.28, 0.85 + rand() * 0.5, 0.05)));
   heroTrees.forEach(([s, x, z, kind]) => near[kind === 'small' ? 2 : 0].push(matrixOn(L(s, x, z), rand() * 6.28, kind === 'small' ? 1.0 : 0.95 + rand() * 0.25, 0.05)));
   variants.forEach((vt, vi) => {
@@ -1899,7 +2234,7 @@ await slice();
   await slice();
   // willows (drooping strands round a soft crown), peach trees, persimmons with fruit
   const willowM = [], peachM = [];
-  lakeTrees.forEach(([x, z, kind]) => (kind === 'willow' ? willowM : peachM).push(matrixOn(L(LAKE, x, z), rand() * 6.28, 0.9 + rand() * 0.2, 0.03)));
+  lakeTrees.forEach(([x, z, kind]) => { const d = L(LAKE, x, z); if (terrainH(d) > WATER + 0.1) (kind === 'willow' ? willowM : peachM).push(matrixOn(d, rand() * 6.28, 0.9 + rand() * 0.2, 0.03)); });
   [[-6.2, 0.9], [-8.0, 0.6], [6.1, 0.85], [-6.6, -1.8], [5.3, -1.85], [7.6, 0.9]].forEach(([x, z]) => willowM.push(matrixOn(L(XIXI, x, z), rand() * 6.28, 0.95, 0.03)));
   {
     const trunk = new THREE.CylinderGeometry(0.07, 0.11, 1.75, 7); trunk.translate(0, 0.87, 0);
@@ -1967,6 +2302,33 @@ await slice();
   addObj(rocks);
 
   await slice();
+  // 曲院风荷: lotus pads and flowers on the water; 花港观鱼: koi in the pond
+  {
+    const onWater = (x, z, yaw, sc, lift = 0.02) => frameMatrix(L(LAKE, x, z), LT(LAKE, Math.cos(yaw), Math.sin(yaw)), sc, 0, WATER + lift);
+    const pads = [], blooms = [], koi = [];
+    for (let i = 0, n = 0; i < 2000 && n < 150; i++) {
+      const a = rand() * Math.PI * 2, r = Math.sqrt(rand()) * 3.4, x = QYFH[0] + Math.cos(a) * r, z = QYFH[1] + Math.sin(a) * r * 1.3;
+      if (terrainH(L(LAKE, x, z)) > WATER - 0.3) continue;
+      pads.push(onWater(x, z, rand() * 6.28, 0.7 + rand() * 0.6)); n++;
+      if (n % 5 === 0) blooms.push(onWater(x + 0.08, z, 0, 0.8 + rand() * 0.4, 0.18));
+    }
+    for (let i = 0; i < 26; i++) {
+      const a = rand() * Math.PI * 2, r = Math.sqrt(rand()) * 0.85;
+      koi.push(onWater(HGGY[0] + Math.cos(a) * r, HGGY[1] + Math.sin(a) * r * 1.3, rand() * 6.28, 0.8 + rand() * 0.4, -0.03));
+    }
+    const padG = new THREE.CylinderGeometry(0.24, 0.24, 0.03, 12); padG.translate(0, 0.015, 0);
+    const bloomG = mergeGeometries([prep(new THREE.ConeGeometry(0.11, 0.2, 6).translate(0, 0.1, 0)), prep(new THREE.CylinderGeometry(0.012, 0.012, 0.2, 4).translate(0, -0.1, 0))]);
+    const koiG = new THREE.SphereGeometry(0.12, 8, 5); koiG.scale(0.35, 0.25, 1);
+    [[padG, pads, 0x5f9a4a, 0x3f7448], [bloomG, blooms, 0xf2a7bd, 0xcf7f9c], [koiG, koi, 0xf08a3c, 0xc4602e]].forEach(([g, list, lit, shade], k) => {
+      const m = new THREE.InstancedMesh(g, toon(lit, { shade, breakMul: 0.3 }), list.length);
+      list.forEach((mx, i) => m.setMatrixAt(i, mx));
+      if (k === 2) { const c = new THREE.Color(); list.forEach((_, i) => m.setColorAt(i, c.setHex([0xffffff, 0xffffff, 0xfff6ee, 0xff8f8f][i % 4]))); }
+      m.receiveShadow = true;
+      addObj(m);
+    });
+  }
+
+  await slice();
   // reeds in the shallows of the wetland and the lake
   {
     const parts = [];
@@ -1981,7 +2343,7 @@ await slice();
     const shallow = (s, p) => { const h = terrainH(L(s, p.x, p.z)); return h > WATER - 0.38 && h < WATER + 0.18; };
     const rd = [
       ...scatterIn(XIXI, 420, -9.5, 9.5, -9.5, 5.5, p => shallow(XIXI, p) && polyD(p, BOARDWALK) > 0.7 && Math.abs(p.x - 3.4) > 0.8 && Math.abs(p.x - 0.3) > 1.2, 0, true),
-      ...scatterIn(LAKE, 160, -10, 10, -8, 3.0, p => shallow(LAKE, p) && Math.abs(p.x - 6.75) > 0.9, 0, true),
+      ...scatterIn(LAKE, 260, -36, 36, -38, 28, p => shallow(LAKE, p) && Math.abs(p.z - YF.z) + Math.abs(p.x - YF.x) > 6 && LAKE_BRIDGES.every(([w]) => segD(p, w.a, w.b) > 1.0), 0, true),
     ];
     const reeds = new THREE.InstancedMesh(reed, toon(0xcdc47e, { shade: 0x8f9a72, breakMul: 0.4 }), rd.length);
     const c = new THREE.Color(), tints = [0xffffff, 0xe9f0d8, 0xf4ead2];
@@ -2012,7 +2374,7 @@ await slice();
   addObj(flowers);
 }
 
-W.update = t => updateBoats(t);
+W.update = t => { updateBoats(t); updateFountain(t); };
 W.lawnEx = HOME.ex.clone();
 W.startLon = -12;
 // arrivals stand outside the 小区 gate, looking in at the courtyard and the towers
@@ -3170,6 +3532,42 @@ function frame() {
   const start = /[?&]planet=ski\b/.test(location.search) ? 'ski' : 'hangzhou';
   loadWorld(start).then(() => {
     requestAnimationFrame(() => veil.classList.remove('on'));
+    // ?debug: stand anywhere for screenshots and checks — dreamDebug.view('lake', [x, z], [lookX, lookZ], zoom, pitch)
+    if (/[?&]debug\b/.test(location.search)) window.dreamDebug = {
+      ready: true,
+      view(key, at, look, zoom = 1.35, pitch = null) {
+        const s = sites.find(o => o.key === key), p = P(s, at), q = P(s, look);
+        stopTravel(); heading = null;
+        writeView({ p, c: q.addScaledVector(p, -q.dot(p)).normalize() });
+        camZoom = zoom; zoomUser = zoom / 1.35; camReach = 1; if (pitch !== null) camPitch = pitch;
+        renderer.shadowMap.needsUpdate = true;
+      },
+      // can the avatar stand at site-local [x, z]? (clearance >= 0 means yes)
+      walkable(key, pts) { const st = sites.find(o => o.key === key); return pts.map(([x, z]) => +walk.clearance(L(st, x, z)).toFixed(2)); },
+      stats() { const i = renderer.info.render; return { calls: i.calls, tris: i.triangles }; },
+      // triangles on the whole planet by kind (instanced sets by their geometry, the rest by material)
+      budget() {
+        const by = {};
+        planet.traverse(o => {
+          if (!o.isMesh) return;
+          const g = o.geometry, t = (g.index ? g.index.count : g.attributes.position.count) / 3 * (o.isInstancedMesh ? o.count : 1);
+          const k = o.isInstancedMesh ? `inst ${g.index ? g.index.count / 3 : g.attributes.position.count / 3} #${o.material.uniforms?.uLit?.value?.getHexString?.() ?? ''}` : (o.material.userData?.kind || o.material.type);
+          by[k] = (by[k] || 0) + t;
+        });
+        return Object.entries(by).sort((a, b) => b[1] - a[1]).slice(0, 14).map(([k, v]) => `${k}: ${Math.round(v / 1000)}k`);
+      },
+      // triangles drawn this view by kind: hide each kind in turn and see what the frame loses
+      drawn() {
+        const kinds = new Map();
+        planet.traverse(o => { if (!o.isMesh) return; const g = o.geometry; const k = o.isInstancedMesh ? `inst ${g.index ? g.index.count / 3 : g.attributes.position.count / 3}` : g.attributes.aRoad ? 'ground' : g.attributes.normal && g.index ? 'water' : 'props'; (kinds.get(k) || kinds.set(k, []).get(k)).push(o); });
+        const draw = () => { renderer.info.reset(); renderer.render(scene, camera); return renderer.info.render.triangles; };
+        draw();   // a pending shadow-map update renders here, not in the counts below
+        camReach = 1; camZoom = zoomUser * 1.35; camLift = 0; placeCamera(); camera.updateMatrixWorld(); planet.updateMatrixWorld();
+        const all = draw(), out = [`all ${Math.round(all / 1000)}k`];
+        for (const [k, list] of kinds) { list.forEach(o => o.visible = false); out.push(`${k}: ${Math.round((all - draw()) / 1000)}k`); list.forEach(o => o.visible = true); }
+        return out.join(' | ');
+      },
+    };
     setTimeout(() => { if (!W.spawn && !travel && activeZone === null) travelTo(0); }, 700);
   });
   frame();

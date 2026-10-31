@@ -161,6 +161,44 @@ view work together and nothing can make the avatar jump. Footprints can carry a 
 camera walks back along the ground behind the avatar and, if something tall would hide it, comes forward
 at the same height and aims nearer (`occluderHeight`, no mesh raycasts).
 
+## Done: 西湖 at four times the size, traced from a map
+
+The old lake was a 16 × 13-unit pond. It is now traced from a north-up map of the real lake: `mp(px, py)`
+turns the map's pixels into the lake site's plane (x north, z east, 1 unit ≈ 50 m), so the water is about
+67 × 52 units. The ring road is 湖滨路 / 南山路 on the east shore (`roadZ` 9.98 → 31). Landmarks keep a
+readable size rather than true scale (the pagodas are 1.5×).
+
+- **Water** is one signed distance, `lakeSd`: the shore outline (外湖, 北里湖, 西里湖, 岳湖), the ponds west
+  of 杨公堤 (茅家埠, 乌龟潭, 金沙港, 浴鹄湾) and 花港观鱼's fish pond, and the channels linking the ponds to
+  西里湖. `lakeLand` adds what stands in the water: 苏堤 and 白堤 (polylines with arc length, gaps at their
+  bridges), 孤山, 小瀛洲 (a ring with 田字 dikes), 湖心亭 and 阮公墩. `lakeHills` raises 宝石山, 夕照山, 南屏山,
+  the 西山 and the two peaks of 双峰插云 away from the water, never on the city side of the east shore.
+- **Bridges** are walk decks: 苏堤's six, 锦带桥, 断桥, 西泠桥 and one where each channel passes under 杨公堤.
+  Every causeway and bridge is walkable end to end (checked with `dreamDebug.walkable`).
+- **Places**: 雷峰塔 (雷峰夕照), 保俶塔, 三潭印月, 平湖秋月, 曲院风荷 (lotus), 花港观鱼 (koi), 柳浪闻莺 (a willow
+  grove), 净慈寺 (南屏晚钟, with its bell tower), 钱王祠 behind its archway, stele pavilions for 苏堤春晓,
+  断桥残雪 and 双峰插云, the music fountain off 湖滨 (45 jets animated in `updateFountain`) and a glass store
+  across the road from it (no logo or brand marks). 21 landmark tags in all; the 西湖 stop now stands on the
+  east shore looking toward 孤山 and 保俶塔.
+- **Ground**: the lake reaches ~70 units north of the ring, past the detailed band. `ringSphere(step, win)`
+  keeps one patch (lon ± H, up to z1) at 0.45-unit spacing; its rows exist only inside the patch and meet the
+  ordinary rows along the patch's two edge meridians, each strip fanning in the other set's edge vertices, so
+  the mesh stays watertight (checked: no non-manifold edges) and costs +28k triangles in total, not a ring of
+  fine rows round the whole planet. Vegetation keeps its own density there (`nearLake`); the lake's hills get
+  a forest of their own.
+- **Costs** (same machine, deterministic camera via `dreamDebug.drawn()`): build 2.6 → 3.0 s on the test
+  box; main pass at 家 500k → 525–540k triangles; the 西湖 stop draws ~780k (the old pond's stop drew 540k,
+  but sees far less). Arcs are now tested in groups of eight (one bounding cap each) to keep the larger list
+  of lanes cheap, and the lake's area skips the planet's hill noise it would overwrite.
+
+On a planet of R = 100 the far shore of a 50-unit lake drops ~12 units below the near one, so from the east
+shore you see 苏堤, the pagodas and the hills rise over a curved water horizon rather than the whole lake
+at once — the small-planet look, kept on purpose.
+
+`?debug` also exposes `window.dreamDebug`: `view(site, at, look, zoom, pitch)` to stand anywhere,
+`stats()`, `budget()` (triangles on the planet by kind), `drawn()` (triangles drawn in the current view by
+kind) and `walkable(site, points)`.
+
 ## Next
 
 1. **Pose and motion modes.** Make the pose `{ p, f }` the single source of truth and derive the planet
