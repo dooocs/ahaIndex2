@@ -36,7 +36,7 @@ export class AICar {
     // 前方 120 米最急的弯决定目标速度（v² = a_lat / κ）
     const ahead = tr.curvAhead(this.dist, 8, 30 + this.s * 1.4);
     const kAbs = Math.max(Math.abs(ahead.k), 1e-4);
-    const vCorner = Math.sqrt((19 + this.skill * 6) / kAbs);
+    const vCorner = Math.sqrt((15 + this.skill * 6) / kAbs);
     const vt = Math.min(vTop, vCorner * (1 + clamp(ahead.at / 120, 0, 0.4)));
     if (this.s < vt) this.s += (TUNE.accel + (this.nitroT > 0 ? 14 : 0)) * (1 - (this.s / Math.max(vTop, 1)) ** 2 * 0.7) * dt;
     else this.s -= Math.min(32, (this.s - vt) * 3) * dt;

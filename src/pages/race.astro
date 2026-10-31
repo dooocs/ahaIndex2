@@ -4,14 +4,14 @@
 // three.js r170 shared with 梦想人生 from public/dream/vendor/) shown in an iframe, so its
 // full-screen styles, keyboard handling and render loop stay out of the site's layout.
 // It reuses 梦想人生's look (toon shading, ink lines, paper grain) on a flat world: a 3.7 km lap
-// round West Lake — 北山街, 断桥, 湖滨, 雷峰塔, the 龙井 tea hills and the six bridges of 苏堤.
+// round West Lake — 湖滨, 断桥, 白堤, 孤山, 西泠桥, 杨公堤's six bridges, the 三台山 hairpins, 雷峰塔, 南山路.
 // Add ?debug to app.html for the fps counter, ?auto for the autopilot. Structure: docs/race.md.
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Masthead from '../components/Masthead.astro';
 import { SITE_URL, siteTitle } from '../lib/site';
 
 const title = siteTitle('杭州飞车');
-const description = '绕西湖一圈的卡通赛车：北山街起步，过断桥、沿湖滨，绕雷峰塔上龙井茶山，再从苏堤六桥一路飞回来。漂移、小喷、氮气，和白娘子、济公他们比一比。';
+const description = '绕西湖一圈的卡通赛车：湖滨起步，过断桥上白堤，绕孤山过西泠桥，杨公堤六连跳，翻三台山发卡弯，沿南山路过雷峰塔冲回湖滨。漂移、小喷、氮气，和白娘子、济公他们比一比。';
 const canonical = `${SITE_URL}/race`;
 ---
 

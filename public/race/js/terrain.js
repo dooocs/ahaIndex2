@@ -29,17 +29,15 @@ function polylineD(x, z, pts) {
   }
   return d;
 }
-// 断桥下的水口：北里湖与外湖之间，赛道从上面过
-const DUANQIAO_CANAL = [[262, -440], [300, -426], [330, -380], [318, -364], [282, -396], [252, -420]];
-const WATERS = [LY.LAKE, LY.LOTUS_POND, DUANQIAO_CANAL];
+const WATERS = [LY.LAKE, LY.LOTUS_POND, ...LY.WETLANDS, ...LY.CHANNELS];
 
-// 水深：岸线外为 0，向内 30 米降到湖底
+// 水深：岸线外为 0，向内 12 米降到湖底（窄水道中间也够深）
 function waterDepth(x, z) {
   let sd = Infinity;
   for (const w of WATERS) sd = Math.min(sd, polySD(x, z, w));
   const qd = polylineD(x, z, LY.QIANTANG) - 130;
   sd = Math.min(sd, qd);
-  return sd < 0 ? smoothstep(0, 30, -sd) : 0;
+  return sd < 0 ? smoothstep(0, 12, -sd) : 0;
 }
 
 function hillsH(x, z) {
@@ -62,8 +60,14 @@ export function baseHeight(x, z) {
   // 湖中陆地
   const g = LY.GUSHAN, gd = ((x - g.c[0]) / g.rx) ** 2 + ((z - g.c[1]) / g.rz) ** 2;
   if (gd < 1.6) h = Math.max(h, WATER + 0.3 + (g.h + 1.2) * Math.exp(-gd * 1.6) - 0.2 * gd);
-  const bd = polylineD(x, z, LY.BAIDI);
-  if (bd < 16) h = Math.max(h, 0.55 - smoothstep(7, 16, bd) * 4.5);
+  // 苏堤：一条景观堤，六座桥的位置断开让水过
+  const sd = polylineD(x, z, LY.SUDI);
+  if (sd < 18) {
+    let gap = Infinity;
+    for (const [gx, gz] of LY.SUDI_GAPS) gap = Math.min(gap, Math.hypot(x - gx, z - gz));
+    const keep = smoothstep(8, 13, gap);
+    h = Math.max(h, (0.55 - smoothstep(7, 16, sd) * 4.8) * keep + h * (1 - keep));
+  }
   for (const s of LY.ISLANDS) {
     const d = Math.hypot(x - s.c[0], z - s.c[1]);
     if (d < s.r + 12) h = Math.max(h, s.h - smoothstep(s.r - 6, s.r + 12, d) * 5);

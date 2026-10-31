@@ -97,17 +97,19 @@ function readInput() {
 // ---------- 世界 ----------
 const track = new Track(LY.CENTERLINE, LY.ROAD_WIDTH);
 track.startAt = LY.START_AT;
-track.padAt = [[100, -460], [424, -40], [-226, 200], [-30, 744]];
+track.padAt = [[430, -160], [50, -352], [-403, -178], [-300, 474]];
 const D_START = track.dAt(...LY.START_AT);
 let terrain, updateBoats, player, ais = [], cars = [], smoke, skids;
 const sound = new Sound();
 
 // 赛道沿途的景点字幕（西湖十景）
 const SPOTS = [
-  [LY.START_AT, '北山街 · 宝石流霞'], [[300, -402], '断桥残雪'], [[420, 80], '柳浪闻莺'], [[262, 438], '雷峰夕照'],
-  [[104, 664], '龙井问茶'], [[-196, 778], '龙井村'], [[-206, 462], '苏堤春晓'], [[-220, 180], '三潭印月'],
-  [[-238, -362], '曲院风荷'], [[-218, -444], '岳王庙'],
-].map(([p, name]) => ({ d: track.dAt(...p), name }));
+  [LY.START_AT, '湖滨 · 音乐喷泉'], [[400, -290], '钱塘门'], [[298, -424], '北山街 · 宝石流霞'], [[224, -402], '断桥残雪'],
+  [[102, -361], '锦带桥', 1], [[-12, -338], '平湖秋月'], [[-108, -325], '孤山'], [[-198, -374], '西泠桥'],
+  [[-262, -440], '曲院风荷'], [[-396, -396], '杨公堤'], [[-456, -15], '三台山'], [[-505, 132], '于谦祠', 1],
+  [[-364, 458], '花港观鱼'], [[-242, 482], '苏堤春晓'], [[-58, 472], '太子湾', 1], [[124, 476], '南屏晚钟'],
+  [[270, 446], '雷峰夕照'], [[352, 392], '长桥', 1], [[408, 262], '柳浪闻莺'], [[428, 128], '钱王祠', 1],
+].map(([p, name, small]) => ({ d: track.dAt(...p), name, small: !!small }));
 
 async function build() {
   const prog = (a, b) => f => { $('bar').style.width = `${(a + (b - a) * f) * 100}%`; };
@@ -116,8 +118,9 @@ async function build() {
   prog(0, 0.35)(1);
   classify(track);
   buildTrackMeshes(track, scene);
-  const sudi = (track.bridgeRuns || []).filter(([a]) => track.px[a % track.N] < -150).sort((p, q) => p[0] - q[0]);
-  sudi.forEach(([a, b], k) => SPOTS.push({ d: ((a + b) / 2) * track.ds - 12, name: LY.SUDI_BRIDGES[k] || '', small: true }));
+  // 杨公堤里六桥的名字：按经过顺序（由北往南）
+  const yang = (track.bridgeRuns || []).filter(([a]) => track.px[a % track.N] < -380).sort((p, q) => p[0] - q[0]);
+  yang.forEach(([a, b], k) => SPOTS.push({ d: ((a + b) / 2) * track.ds - 12, name: LY.YANG_BRIDGES[k] || '', small: true }));
   SPOTS.sort((p, q) => p.d - q.d);
   await slice();
   await buildScenery(track, terrain, scene, prog(0.35, 0.92));
@@ -172,7 +175,7 @@ let toastT = 0, spotT = 0;
 function toast(text, kind = '') { toastEl.textContent = text; toastEl.className = `toast show ${kind}`; toastT = 1.2; }
 function showSpot(name, small) { spotEl.textContent = name; spotEl.className = `spot show${small ? ' small' : ''}`; spotT = small ? 1.6 : 2.6; }
 const mini = $('mini'), mctx = mini.getContext('2d');
-const MB = { x0: -330, x1: 470, z0: -560, z1: 830 };
+const MB = { x0: -600, x1: 470, z0: -480, z1: 520 };
 function mm(x, z) { const s = Math.min(mini.width / (MB.x1 - MB.x0), mini.height / (MB.z1 - MB.z0)); return [(x - MB.x0) * s + (mini.width - (MB.x1 - MB.x0) * s) / 2, (z - MB.z0) * s + (mini.height - (MB.z1 - MB.z0) * s) / 2]; }
 function drawMini() {
   const c = mctx; c.clearRect(0, 0, mini.width, mini.height);

@@ -68,7 +68,7 @@
   @keyframes pulse { to { transform: scale(1.12); } }
   .gaugebar { flex: 1; height: 12px; border: 2px solid var(--ink); border-radius: 7px; overflow: hidden; background: #fff; }
   #gauge { height: 100%; width: 0; background: linear-gradient(90deg, #7fd7ff, var(--nitro)); }
-  #mini { position: absolute; left: 16px; bottom: 16px; width: 170px; height: 220px; padding: 6px; }
+  #mini { position: absolute; left: 16px; bottom: 16px; width: 170px; height: 160px; padding: 6px; }
   .toast { position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%) scale(0.8); font: 900 34px/1 var(--body); letter-spacing: 0.06em; color: #fffaf2;
     -webkit-text-stroke: 2px var(--ink); paint-order: stroke fill; text-shadow: 3px 3px 0 var(--ink); opacity: 0; transition: opacity .15s, transform .15s; white-space: nowrap; }
   .toast.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
@@ -102,7 +102,7 @@
   .pad .row { display: flex; gap: 12px; }
   .pad button { width: 76px; height: 76px; border-radius: 50%; border: 2px solid var(--ink); background: rgba(251, 252, 247, 0.55); font: 700 16px/1 var(--body); color: var(--ink); touch-action: none; }
   .pad button.on { background: rgba(232, 100, 60, 0.75); color: #fff; }
-  .touch #mini { width: 120px; height: 150px; left: auto; right: 16px; top: calc(var(--inset-top) + 160px); bottom: auto; }
+  .touch #mini { width: 128px; height: 120px; left: auto; right: 16px; top: calc(var(--inset-top) + 160px); bottom: auto; }
   .touch .br { bottom: auto; top: calc(var(--inset-top) + 76px); left: 16px; right: auto; min-width: 168px; }
   .touch #kmh { font-size: 36px; }
   .touch #mute { bottom: auto; top: calc(var(--inset-top) + 14px); right: 140px; }
@@ -120,11 +120,11 @@
 
 <div id="title" hidden><div class="card">
   <h1>杭州飞车<span>西湖赛道</span></h1>
-  <p class="sub">绕西湖一圈：北山街起步，过断桥、沿湖滨，绕雷峰塔上龙井茶山，再从苏堤六桥一路飞回来。两圈定胜负。</p>
+  <p class="sub">绕西湖逆时针一圈：湖滨音乐喷泉起步，过断桥上白堤，绕孤山过西泠桥，杨公堤六连跳，翻三台山三个发卡弯，再沿南山路过雷峰塔冲回湖滨。两圈定胜负。</p>
   <dl class="keys">
     <dt><kbd>↑ ↓ ← →</kbd> <kbd>WASD</kbd></dt><dd>油门、刹车、转向</dd>
     <dt><kbd>Shift</kbd> + 方向</dt><dd>漂移。漂移集气，满一格得一个氮气</dd>
-    <dt>松开漂移后按 <kbd>↑</kbd></dt><dd>小喷；从苏堤的桥上飞起落地时按 <kbd>↑</kbd> 是落地喷</dd>
+    <dt>松开漂移后按 <kbd>↑</kbd></dt><dd>小喷；从杨公堤的桥上飞起落地时按 <kbd>↑</kbd> 是落地喷</dd>
     <dt><kbd>Ctrl</kbd> / <kbd>空格</kbd></dt><dd>放氮气（用 WASD 的话请按空格）。小喷后马上放 = 双喷</dd>
     <dt><kbd>R</kbd> <kbd>C</kbd> <kbd>Esc</kbd></dt><dd>回到赛道 · 切换视角 · 暂停</dd>
   </dl>
@@ -143,7 +143,7 @@
   <div class="toast" id="toast"></div>
   <div class="count" id="count"></div>
   <div id="wrong" hidden>逆行了</div>
-  <canvas id="mini" class="card" width="340" height="440"></canvas>
+  <canvas id="mini" class="card" width="340" height="320"></canvas>
   <div class="br card">
     <div class="speed"><span id="kmh">0</span><span>km/h</span></div>
     <div id="nitrobox"><div class="slot" id="n1">N</div><div class="slot" id="n2">N</div><div class="gaugebar"><div id="gauge"></div></div></div>

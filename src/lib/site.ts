@@ -68,7 +68,7 @@ export const SHELVES: Shelf[] = [
     tab: '梦想人生', tabHref: '/dream', beta: true, paths: ['/dream'],
   },
   {
-    id: 'race', href: '/race', name: '杭州飞车', desc: '绕西湖一圈的卡通赛车：断桥、雷峰塔、龙井茶山，苏堤六桥一路飞过去',
+    id: 'race', href: '/race', name: '杭州飞车', desc: '绕西湖一圈的卡通赛车：断桥、白堤、孤山，杨公堤六连跳，三台山发卡弯，雷峰塔',
     tab: '杭州飞车', tabHref: '/race', beta: true, paths: ['/race'],
   },
 ];

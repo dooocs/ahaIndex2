@@ -12,8 +12,9 @@ export function classify(track) {
   track.mountain = new Uint8Array(N);
   for (let i = 0; i < N; i++) {
     const x = track.px[i], z = track.pz[i];
-    track.mountain[i] = z > 470 ? 1 : 0;
-    track.surface[i] = track.bridge[i] || (x < -180 && z > -400 && z < 470) ? 1 : 0;
+    // 三台山之字形是山路（木护栏）；白堤和所有拱桥是石板路
+    track.mountain[i] = x < -408 && z > -48 && z < 246 ? 1 : 0;
+    track.surface[i] = track.bridge[i] || (x > -16 && x < 258 && z > -420 && z < -330) ? 1 : 0;
   }
 }
 

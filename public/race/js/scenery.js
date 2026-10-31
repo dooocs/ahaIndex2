@@ -234,6 +234,17 @@ function pavilion(b, x, y, z, size = 0.5, s = 6, ry = 0) {
   upturn(k, size * 1.55, 0.76, 0x3a3f46, 4, Math.PI / 4);
   k.ball(0.06, 0xd8b65e, 0, 1.25, 0);
 }
+function archBridge(b, x, z, ry, len, width, rise) {   // 石拱桥：弧形桥面 + 两侧拱券
+  const N = 12, seg = len / N, hAt = t => WATER + 0.9 + rise * Math.sin(Math.PI * t);
+  for (let i = 0; i < N; i++) {
+    const t0 = i / N, t1 = (i + 1) / N, h0 = hAt(t0), h1 = hAt(t1), slope = Math.atan2(h1 - h0, seg), zc = -len / 2 + (i + 0.5) * seg;
+    const k = kitAt(b, x, 0, z, ry, 1);
+    k.add(new THREE.BoxGeometry(width, 0.5, seg * 1.06 / Math.cos(slope)).rotateX(-slope).translate(0, (h0 + h1) / 2 - 0.25, zc), 0xdedad0);
+    for (const sd of [-1, 1]) k.add(new THREE.BoxGeometry(0.3, 0.7, seg * 1.04 / Math.cos(slope)).rotateX(-slope).translate(sd * (width / 2 - 0.15), (h0 + h1) / 2 + 0.3, zc), 0xe8e4da);
+  }
+  const k = kitAt(b, x, WATER, z, ry, 1), rr = Math.min(len * 0.3, rise + 0.6);
+  for (const sd of [-1, 1]) k.add(new THREE.TorusGeometry(rr, 0.45, 6, 18, Math.PI).rotateY(Math.PI / 2).translate(sd * (width / 2 - 0.2), 0, 0), 0xd5d0c5);
+}
 function lantern(b, x, z) {     // 三潭印月的石塔：圆肚、镂空小圆洞、葫芦顶
   const k = kitAt(b, x, WATER, z, 0, 3.2);
   k.cyl(0.14, 0.18, 0.9, 0xd6cebd, 0, 0.3, 0, 10);
@@ -262,8 +273,8 @@ function jiangnan(b, x, y, z, w, d, h, ry, s = 4.5) {   // 白墙黛瓦马头墙
   if (h > 1.6) [-0.28, 0, 0.28].forEach(f => { k.box(0.5, 0.44, 0.04, WOOD, f * w, h - 0.45, d / 2 + 0.02); k.box(0.4, 0.34, 0.04, 0xd8c7a4, f * w, h - 0.45, d / 2 + 0.035); });
   k.box(0.44, 0.78, 0.05, WOOD, 0, 0.42, d / 2 + 0.02);
 }
-function temple(b, x, y, z, ry) {   // 岳王庙：红墙、重檐歇山的大殿
-  const k = kitAt(b, x, y, z, ry, 1);
+function temple(b, x, y, z, ry, sc = 1) {   // 岳王庙、于谦祠：红墙、重檐歇山的大殿
+  const k = kitAt(b, x, y, z, ry, sc);
   const RED = 0x9e3b30, TILE = 0x3f454c, STONE = 0xd6cebd;
   k.box(52, 1.4, 34, STONE, 0, 0.7, 0);
   k.box(36, 9, 20, RED, 0, 6, 0);
@@ -325,13 +336,21 @@ export async function buildScenery(track, terrain, scene, onProgress = () => {})
     let px = x - 30, pz = z + 30;
     for (let i = 0; i < 6; i++) { const ang = i % 2 ? 0.6 : -0.6, nx = px + Math.sin(ang) * 9, nz = pz - Math.cos(ang) * 9; kitAt(b, (px + nx) / 2, WATER + 0.5, (pz + nz) / 2, ang, 1).box(2.4, 0.5, 9.4, 0xe2dccf); px = nx; pz = nz; } }
   { const [x, z] = LY.ISLANDS[2].c; pavilion(b, x, groundAt(x, z), z, 0.45, 6, 0.5); }
-  // 孤山：西泠印社的小石塔、平湖秋月的亭子、几座白墙民居
+  // 孤山：西泠印社的小石塔、平湖秋月伸进湖面的亭子、山上几座白墙民居（孤山路在南麓）
   { const g = LY.GUSHAN.c;
-    const k = kitAt(b, g[0] - 30, groundAt(g[0] - 30, g[1] - 8) - 0.5, g[1] - 8, 0, 3.4);
+    const tx = g[0] - 44, tz = g[1] - 16;
+    const k = kitAt(b, tx, groundAt(tx, tz) - 0.5, tz, 0, 3.4);
     octo(k, 0.5, 0.6, 0.6, 0xcfc7b6, 0.3);
     for (let i = 0; i < 6; i++) { octo(k, 0.36 - i * 0.04, 0.38 - i * 0.04, 0.5, 0xd8d0c0, 0.85 + i * 0.6); octo(k, 0.5 - i * 0.045, 0.5 - i * 0.045, 0.08, 0x9d9488, 1.12 + i * 0.6); }
-    pavilion(b, g[0] + 70, WATER + 1.4, g[1] + 22, 0.5, 7, 0.2);
-    [[-70, 4], [-55, -10], [30, 12], [50, -4]].forEach(([dx, dz], i) => jiangnan(b, g[0] + dx, groundAt(g[0] + dx, g[1] + dz) - 0.3, g[1] + dz, 2.4, 1.6, 1.4 + (i % 2), 0.1 * i, 4)); }
+    pavilion(b, -2, WATER + 1.4, -306, 0.5, 7, 0.2);
+    [[-20, -12], [6, -20], [34, -14], [56, -20]].forEach(([dx, dz], i) => { const x = g[0] + dx, z = g[1] + dz; if (!nearTrack(x, z, 9)) jiangnan(b, x, groundAt(x, z) - 0.3, z, 2.4, 1.6, 1.4 + (i % 2), 0.1 * i, 4); }); }
+  // 于谦祠：三台山半山，之字形山路中间
+  temple(b, LY.YUQIAN[0], groundAt(...LY.YUQIAN) - 0.3, LY.YUQIAN[1], 0, 0.42);
+  // 苏堤的六座拱桥（景观，不在赛道上）
+  LY.SUDI_GAPS.forEach(([x, z], k) => {
+    const nxt = LY.SUDI_GAPS[Math.min(k + 1, 5)], prv = LY.SUDI_GAPS[Math.max(k - 1, 0)];
+    archBridge(b, x, z, Math.atan2(nxt[0] - prv[0], nxt[1] - prv[1]), 30, 7, 3.2);
+  });
   temple(b, LY.YUEWANG[0], groundAt(...LY.YUEWANG) - 0.3, LY.YUEWANG[1], 0.1);
   // 龙井村：山顶发卡弯边上几户白墙黛瓦
   [[-150, 838, 0.3], [-118, 852, 0.1], [-178, 826, 0.6], [-90, 842, -0.2], [-240, 790, 1.4], [-250, 830, 1.2]].forEach(([x, z, r], i) => {
@@ -348,7 +367,7 @@ export async function buildScenery(track, terrain, scene, onProgress = () => {})
   const place = (kind, x, z, s, ry = rand() * 6.28, tint) => { if (kind !== 'tea' && nearTrack(x, z, 2.5)) return; inst.push(kind, M(x, groundAt(x, z) - 0.15, z, ry, s), tint); };
   for (let i = 0; i < track.N; i += 6) {
     if (track.bridge[i] || track.mountain[i]) continue;
-    const onSudi = track.surface[i] === 1;
+    const onSudi = track.surface[i] === 1;   // 白堤：一株杨柳一株桃
     for (const side of [-1, 1]) {
       const lat = side * (hw + 6 + rand() * 2), x = track.px[i] + track.rx[i] * lat, z = track.pz[i] + track.rz[i] * lat;
       if (isWater(x, z)) continue;
@@ -360,11 +379,13 @@ export async function buildScenery(track, terrain, scene, onProgress = () => {})
       }
     }
   }
-  for (let k = 0; k < LY.BAIDI.length - 1; k++) {
-    const [ax, az] = LY.BAIDI[k], [bx, bz] = LY.BAIDI[k + 1], len = Math.hypot(bx - ax, bz - az), nx = -(bz - az) / len, nz = (bx - ax) / len;
-    for (let t = 0; t < len; t += 13) for (const s of [-1, 1]) {
-      const x = ax + (bx - ax) * t / len + nx * s * 4, z = az + (bz - az) * t / len + nz * s * 4;
-      place(Math.floor(t / 13 + (s > 0)) % 2 ? 'peach' : 'willow', x, z, 3.3);
+  // 苏堤（景观堤）两侧：一株杨柳一株桃，桥口留空
+  for (let k = 0; k < LY.SUDI.length - 1; k++) {
+    const [ax, az] = LY.SUDI[k], [bx, bz] = LY.SUDI[k + 1], len = Math.hypot(bx - ax, bz - az), nx = -(bz - az) / len, nz = (bx - ax) / len;
+    for (let t = 0; t < len; t += 12) for (const sd of [-1, 1]) {
+      const cx = ax + (bx - ax) * t / len, cz = az + (bz - az) * t / len;
+      if (LY.SUDI_GAPS.some(([gx, gz]) => Math.hypot(cx - gx, cz - gz) < 20)) continue;
+      place(Math.floor(t / 12 + (sd > 0)) % 2 ? 'peach' : 'willow', cx + nx * sd * 4.5, cz + nz * sd * 4.5, 3.2 + rand() * 0.4);
     }
   }
   for (const s of LY.ISLANDS) for (let a = 0; a < 6.28; a += 0.5) {
@@ -408,8 +429,8 @@ export async function buildScenery(track, terrain, scene, onProgress = () => {})
       place('tea', x, z, 1.6 + rand() * 0.3, Math.atan2(gx, gz), leafTints[Math.floor(rand() * 4)]);
     }
   }
-  // 竹林：山路两侧几片
-  [[-226, 610, 40], [-230, 700, 30], [10, 640, 30], [190, 700, 26], [-20, 790, 34]].forEach(([cx, cz, r]) => {
+  // 竹林：三台山山路两侧几片
+  [[-520, -52, 26], [-590, 96, 30], [-470, 168, 22], [-560, 236, 26], [-380, -10, 20]].forEach(([cx, cz, r]) => {
     for (let k = 0; k < r * 0.9; k++) {
       const a = rand() * 6.28, d = Math.sqrt(rand()) * r, x = cx + Math.cos(a) * d, z = cz + Math.sin(a) * d;
       if (!nearTrack(x, z, 2) && !isWater(x, z)) place('bamboo', x, z, 0.9 + rand() * 0.4);
@@ -417,7 +438,7 @@ export async function buildScenery(track, terrain, scene, onProgress = () => {})
   });
   // 曲院风荷
   for (let k = 0; k < 260; k++) {
-    const x = -340 + rand() * 100, z = -525 + rand() * 110;
+    const x = -396 + rand() * 98, z = -532 + rand() * 80;
     if (groundAt(x, z) > WATER - 0.6) continue;
     inst.push('lotus', M(x, WATER, z, rand() * 6.28, 1 + rand() * 1.4), leafTints[k % 4]);
     if (rand() < 0.2) inst.push('lotusFlower', M(x + 0.6, WATER, z, 0, 1 + rand() * 0.4));
@@ -454,7 +475,17 @@ export function buildBoats(scene) {
     const g = mk(big ? 0xb4483a : [0xd65b4f, 0x4f9d8f, 0xe8b14a][i % 3], big ? 3.2 : 1.4, big ? 0.9 : 0.5, big ? 5 : 3.4);
     boats.push({ g, cx: x, cz: z, r: 18 + rand() * 25, w: (0.012 + rand() * 0.02) * (i % 2 ? 1 : -1), a: rand() * 6.28 });
   });
+  // 湖滨音乐喷泉：一圈水柱，高低起伏
+  const jets = [], jetMat = toon(0xeef8f8, { shade: 0x9cc7d0, kind: 'FOLIAGE', breakMul: 0.4, noiseScale: 3 });
+  const jetGeo = new THREE.CylinderGeometry(0.25, 0.7, 1, 8).translate(0, 0.5, 0);
+  for (let i = 0; i < 15; i++) {
+    const a = (i / 15) * Math.PI * 2, r = i % 3 === 0 ? 0 : i % 2 ? 9 : 16;
+    const j = new THREE.Mesh(jetGeo, jetMat);
+    j.position.set(LY.FOUNTAIN[0] + Math.cos(a) * r, WATER, LY.FOUNTAIN[1] + Math.sin(a) * r);
+    j.castShadow = false; j.receiveShadow = true; scene.add(j); jets.push({ j, ph: a * 2 + r });
+  }
   return t => {
+    for (const { j, ph } of jets) j.scale.set(1, 3 + 11 * (0.5 + 0.5 * Math.sin(t * 1.6 + ph)), 1);
     for (const bt of boats) {
       const a = bt.a + t * bt.w;
       bt.g.position.set(bt.cx + Math.cos(a) * bt.r, WATER + 0.05 + Math.sin(t * 1.3 + bt.a) * 0.06, bt.cz + Math.sin(a) * bt.r);
