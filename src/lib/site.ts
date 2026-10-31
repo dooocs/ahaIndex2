@@ -19,7 +19,7 @@ export function siteTitle(page: string): string {
   return `${page} | ${SITE_NAME}`;
 }
 
-export type SectionId = 'daily' | 'feed' | 'people' | 'meet' | 'dream';
+export type SectionId = 'daily' | 'feed' | 'people' | 'meet' | 'dream' | 'race';
 
 /**
  * One section of the site. The same list drives the tab bar (SiteNav) and the
@@ -66,6 +66,10 @@ export const SHELVES: Shelf[] = [
   {
     id: 'dream', href: '/dream', name: '梦想人生', desc: '在小星球上逛逛你想要的生活：杭州的家和西湖，北海道和崇礼的雪场',
     tab: '梦想人生', tabHref: '/dream', beta: true, paths: ['/dream'],
+  },
+  {
+    id: 'race', href: '/race', name: '杭州飞车', desc: '绕西湖一圈的卡通赛车：断桥、白堤、孤山，杨公堤六连跳，三台山发卡弯，雷峰塔',
+    tab: '杭州飞车', tabHref: '/race', beta: true, paths: ['/race'],
   },
 ];
 

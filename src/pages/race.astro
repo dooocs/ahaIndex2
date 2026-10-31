@@ -1,0 +1,48 @@
+---
+// 杭州飞车: the site's masthead and tab bar on top, the racing game below it.
+// The game is a self-contained page (public/race/app.html + public/race/js/, plain ES modules,
+// three.js r170 shared with 梦想人生 from public/dream/vendor/) shown in an iframe, so its
+// full-screen styles, keyboard handling and render loop stay out of the site's layout.
+// It reuses 梦想人生's look (toon shading, ink lines, paper grain) on a flat world: a 3.7 km lap
+// round West Lake — 湖滨, 断桥, 白堤, 孤山, 西泠桥, 杨公堤's six bridges, the 三台山 hairpins, 雷峰塔, 南山路.
+// Add ?debug to app.html for the fps counter, ?auto for the autopilot. Structure: docs/race.md.
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Masthead from '../components/Masthead.astro';
+import { SITE_URL, siteTitle } from '../lib/site';
+
+const title = siteTitle('杭州飞车');
+const description = '绕西湖一圈的卡通赛车：湖滨起步，过断桥上白堤，绕孤山过西泠桥，杨公堤六连跳，翻三台山发卡弯，沿南山路过雷峰塔冲回湖滨。漂移、小喷、氮气，和白娘子、济公他们比一比。';
+const canonical = `${SITE_URL}/race`;
+---
+
+<BaseLayout title={title} description={description} canonicalUrl={canonical} ogUrl={canonical}>
+  <Masthead tab="race" showScore={false} overlay />
+  <main class="race-page">
+    <h1 class="sr-only">杭州飞车</h1>
+    <iframe id="race-app" class="race-app" src="/race/app.html" title="杭州飞车 · 西湖赛道" allow="fullscreen; autoplay"></iframe>
+    <noscript><p class="race-noscript">杭州飞车是一个 3D 网页游戏，需要开启 JavaScript。</p></noscript>
+  </main>
+</BaseLayout>
+
+<style>
+  :global(html:has(.race-page)), :global(body:has(.race-page)) { overflow: hidden; scrollbar-gutter: auto; }
+  .race-page { margin: 0; padding: 0; }
+  .race-app { position: fixed; inset: 0; display: block; width: 100%; height: 100%; border: 0; background: #cfe9e4; }
+  .race-noscript { position: relative; z-index: 11; padding: 200px 24px 48px; text-align: center; color: var(--muted); }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+</style>
+
+<script is:inline>
+  // Tell the game how tall the masthead over it is (it keeps its HUD clear of it) and hand it the keyboard.
+  (() => {
+    const frame = document.getElementById('race-app');
+    const head = document.querySelector('.masthead');
+    if (!frame || !head) return;
+    const send = () => frame.contentWindow && frame.contentWindow.postMessage({ type: 'race:inset', top: Math.round(head.getBoundingClientRect().bottom) }, location.origin);
+    const ready = () => { send(); frame.contentWindow.focus(); };
+    frame.addEventListener('load', ready);
+    if (frame.contentDocument && frame.contentDocument.readyState === 'complete' && frame.contentDocument.URL !== 'about:blank') ready();
+    if (window.ResizeObserver) new ResizeObserver(send).observe(head);
+    window.addEventListener('resize', send);
+  })();
+</script>

@@ -4,7 +4,7 @@ import type { ProcessedItem } from './types.ts';
 import type { ArticleRouteItem } from './queries.ts';
 
 export const SITE_URL = 'https://www.amazingindex.com';
-export const STATIC_PATHS = ['/', '/about', '/contact', '/dream', '/feed', '/history', '/privacy', '/terms'];
+export const STATIC_PATHS = ['/', '/about', '/contact', '/dream', '/feed', '/history', '/privacy', '/race', '/terms'];
 
 export type SitemapEntry = { url: string; lastmod?: string };
 export type SitemapIndexEntry = { url: string; lastmod?: string };
