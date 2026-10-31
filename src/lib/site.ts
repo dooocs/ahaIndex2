@@ -60,7 +60,7 @@ export const SHELVES: Shelf[] = [
     tab: '人物', tabHref: '/people', paths: ['/people'],
   },
   {
-    id: 'meet', href: '/meet', name: '相亲贴', desc: '给认真生活的开发者，认识一个对的人',
+    id: 'meet', href: '/meet', name: '相亲贴', desc: '别等遇见。去找，找一个喜欢的人',
     tab: '相亲贴', tabHref: '/meet', needsCommunity: true, paths: ['/meet'],
   },
   {
