@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>杭州飞车 · 西湖赛道</title>
+<style>
+  @font-face { font-family: "Barlow Condensed"; font-weight: 600; font-display: swap; src: url("/dream/fonts/barlow-condensed-600.woff2") format("woff2"); }
+  :root {
+    --ink: #2a3238; --paper: #fbfcf7; --card: rgba(251, 252, 247, 0.9); --line: rgba(42, 50, 56, 0.18);
+    --accent: #e8643c; --sea: #3f86a0; --sun: #e8b14a; --good: #2f8f6a; --nitro: #2f86c8;
+    --num: "Barlow Condensed", "DIN Alternate", "Arial Narrow", sans-serif;
+    --body: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+    --inset-top: 0px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #8fd3d4; color: var(--ink); font: 14px/1.4 var(--body); -webkit-user-select: none; user-select: none; touch-action: none; }
+  canvas#c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; outline: none; }
+  [hidden] { display: none !important; }
+  .card { background: var(--card); border: 2px solid var(--ink); border-radius: 12px; box-shadow: 3px 3px 0 rgba(42, 50, 56, 0.85); }
+
+  /* 加载 */
+  #loading { position: fixed; inset: 0; display: grid; place-items: center; background: #cfe9e4; z-index: 20; }
+  #loading .card { width: min(360px, 86vw); padding: 22px 24px; text-align: center; }
+  #loading h2 { margin: 0 0 4px; font-size: 22px; letter-spacing: 0.08em; }
+  #loadmsg { margin: 0 0 14px; color: #5a666c; font-size: 13px; }
+  .bar { height: 10px; border: 2px solid var(--ink); border-radius: 6px; overflow: hidden; background: #fff; }
+  #bar { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+
+  /* 片头 */
+  #title { position: fixed; inset: 0; display: flex; align-items: flex-end; justify-content: flex-start; z-index: 10; padding: calc(var(--inset-top) + 16px) 28px 28px; pointer-events: none; }
+  @media (max-width: 640px) { #title { justify-content: center; padding: calc(var(--inset-top) + 12px) 12px 12px; } #title h1 { font-size: 30px; } }
+  #title .card { pointer-events: auto; width: min(520px, 92vw); padding: 26px 28px 22px; }
+  #title h1 { margin: 0; font-size: 38px; letter-spacing: 0.06em; line-height: 1.1; }
+  #title h1 span { font-size: 18px; color: var(--sea); letter-spacing: 0.04em; margin-left: 8px; vertical-align: 6px; }
+  #title p.sub { margin: 8px 0 16px; color: #4f5b61; }
+  .keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0 0 18px; font-size: 13px; }
+  .keys kbd { font: 600 13px/1 var(--num); letter-spacing: 0.04em; padding: 4px 7px; border: 1.5px solid var(--ink); border-bottom-width: 3px; border-radius: 6px; background: #fff; white-space: nowrap; }
+  .keys dd { margin: 0; align-self: center; color: #3f4a50; }
+  .btn { font: 700 18px/1 var(--body); letter-spacing: 0.12em; padding: 13px 26px; border: 2px solid var(--ink); border-radius: 10px; background: var(--accent); color: #fffaf2; cursor: pointer; box-shadow: 3px 3px 0 var(--ink); }
+  .btn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+  .btn:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
+  .touch .keys { display: none; }
+  .touchhint { display: none; margin: 0 0 16px; font-size: 13px; color: #3f4a50; }
+  .touch .touchhint { display: block; }
+
+  /* HUD */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  .tl { position: absolute; left: 16px; top: calc(var(--inset-top) + 14px); display: flex; gap: 10px; align-items: stretch; }
+  .tl .card { padding: 6px 12px 7px; }
+  .lbl { display: block; font-size: 11px; letter-spacing: 0.12em; color: #5a666c; }
+  .big { font: 600 40px/0.95 var(--num); }
+  .big small { font-size: 20px; color: #5a666c; }
+  .mid { font: 600 26px/1 var(--num); }
+  .sm { font: 600 15px/1.1 var(--num); color: #5a666c; }
+  #board { position: absolute; right: 16px; top: calc(var(--inset-top) + 14px); margin: 0; padding: 6px 10px; list-style: none; font-size: 13px; min-width: 112px; }
+  #board li { display: flex; gap: 8px; padding: 2px 0; }
+  #board li b { font: 600 15px/1.2 var(--num); width: 12px; }
+  #board li.me { color: var(--accent); font-weight: 700; }
+  .br { position: absolute; right: 16px; bottom: 16px; padding: 8px 14px 10px; min-width: 210px; }
+  .speed { display: flex; align-items: baseline; gap: 6px; }
+  #kmh { font: 600 54px/0.9 var(--num); min-width: 3ch; text-align: right; }
+  .speed span { font: 600 16px/1 var(--num); color: #5a666c; }
+  #nitrobox { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+  .slot { width: 26px; height: 26px; border: 2px solid var(--ink); border-radius: 50%; background: #fff; display: grid; place-items: center; font: 600 13px/1 var(--num); color: #9aa4a9; }
+  .slot.full { background: var(--nitro); color: #fff; box-shadow: 0 0 0 3px rgba(47, 134, 200, 0.25); }
+  #nitrobox.burn .slot.full { animation: pulse .3s infinite alternate; }
+  @keyframes pulse { to { transform: scale(1.12); } }
+  .gaugebar { flex: 1; height: 12px; border: 2px solid var(--ink); border-radius: 7px; overflow: hidden; background: #fff; }
+  #gauge { height: 100%; width: 0; background: linear-gradient(90deg, #7fd7ff, var(--nitro)); }
+  #mini { position: absolute; left: 16px; bottom: 16px; width: 170px; height: 220px; padding: 6px; }
+  .toast { position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%) scale(0.8); font: 900 34px/1 var(--body); letter-spacing: 0.06em; color: #fffaf2;
+    -webkit-text-stroke: 2px var(--ink); paint-order: stroke fill; text-shadow: 3px 3px 0 var(--ink); opacity: 0; transition: opacity .15s, transform .15s; white-space: nowrap; }
+  .toast.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  .toast.good { color: #ffd166; } .toast.great { color: #ff9a3c; font-size: 42px; } .toast.nitro { color: #8fe0ff; } .toast.lap { color: #fffaf2; }
+  .spot { position: absolute; left: 50%; top: calc(var(--inset-top) + 18px); transform: translate(-50%, -8px); padding: 6px 16px; font: 700 20px/1.2 var(--body); letter-spacing: 0.2em;
+    background: var(--card); border: 2px solid var(--ink); border-radius: 999px; opacity: 0; transition: opacity .3s, transform .3s; }
+  .spot.show { opacity: 1; transform: translate(-50%, 0); }
+  .spot.small { font-size: 15px; letter-spacing: 0.14em; }
+  .count { position: absolute; left: 50%; top: 42%; transform: translate(-50%, -50%) scale(0.6); font: 600 120px/1 var(--num); color: #fffaf2; -webkit-text-stroke: 4px var(--ink); paint-order: stroke fill; text-shadow: 5px 5px 0 var(--ink); opacity: 0; }
+  .count.show { animation: pop .9s ease-out; }
+  @keyframes pop { 0% { opacity: 0; transform: translate(-50%, -50%) scale(1.6); } 20% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -50%) scale(0.95); } }
+  #wrong { position: absolute; left: 50%; top: 52%; transform: translate(-50%, -50%); padding: 8px 18px; font: 800 22px/1 var(--body); letter-spacing: 0.2em; color: #fffaf2; background: #c4473a; border: 2px solid var(--ink); border-radius: 10px; }
+  #mute { position: fixed; right: 16px; bottom: 150px; z-index: 6; width: 38px; height: 38px; border-radius: 50%; border: 2px solid var(--ink); background: var(--card); cursor: pointer; display: grid; place-items: center; padding: 0; }
+  #mute svg { width: 18px; height: 18px; }
+  #mute.off .wave { display: none; }
+  #paused, #result { position: fixed; inset: 0; display: grid; place-items: center; z-index: 12; background: rgba(42, 50, 56, 0.25); padding-top: var(--inset-top); }
+  #paused .card { padding: 18px 26px; font-size: 18px; letter-spacing: 0.1em; }
+  #result .card { width: min(420px, 92vw); padding: 22px 24px; }
+  #result h2 { margin: 0 0 12px; font-size: 24px; letter-spacing: 0.04em; }
+  #rlist { list-style: none; margin: 0 0 10px; padding: 0; }
+  #rlist li { display: grid; grid-template-columns: 26px 1fr auto; gap: 8px; padding: 6px 4px; border-bottom: 1px dashed var(--line); font-size: 15px; }
+  #rlist li b, #rlist li em { font: 600 18px/1.1 var(--num); font-style: normal; }
+  #rlist li.me { color: var(--accent); font-weight: 700; }
+  #rbest { margin: 0 0 16px; color: #5a666c; font: 600 16px/1 var(--num); letter-spacing: 0.04em; }
+  #stats { position: fixed; left: 200px; bottom: 16px; z-index: 6; padding: 6px 10px; font: 12px/1.4 var(--num); background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
+
+  /* 触屏按钮 */
+  .pad { display: none; position: fixed; z-index: 7; bottom: 18px; gap: 12px; }
+  .touch .pad { display: flex; }
+  .pad.l { left: 16px; } .pad.r { right: 16px; flex-direction: column; align-items: flex-end; }
+  .pad .row { display: flex; gap: 12px; }
+  .pad button { width: 76px; height: 76px; border-radius: 50%; border: 2px solid var(--ink); background: rgba(251, 252, 247, 0.55); font: 700 16px/1 var(--body); color: var(--ink); touch-action: none; }
+  .pad button.on { background: rgba(232, 100, 60, 0.75); color: #fff; }
+  .touch #mini { width: 120px; height: 150px; left: auto; right: 16px; top: calc(var(--inset-top) + 160px); bottom: auto; }
+  .touch .br { bottom: auto; top: calc(var(--inset-top) + 76px); left: 16px; right: auto; min-width: 168px; }
+  .touch #kmh { font-size: 36px; }
+  .touch #mute { bottom: auto; top: calc(var(--inset-top) + 14px); right: 140px; }
+  @media (max-width: 640px) { #board { display: none; } .tl .card:nth-child(3) { display: none; } }
+</style>
+</head>
+<body>
+<canvas id="c" tabindex="0"></canvas>
+
+<div id="loading"><div class="card">
+  <h2>杭州飞车</h2>
+  <p id="loadmsg">正在铺西湖赛道……</p>
+  <div class="bar"><div id="bar"></div></div>
+</div></div>
+
+<div id="title" hidden><div class="card">
+  <h1>杭州飞车<span>西湖赛道</span></h1>
+  <p class="sub">绕西湖一圈：北山街起步，过断桥、沿湖滨，绕雷峰塔上龙井茶山，再从苏堤六桥一路飞回来。两圈定胜负。</p>
+  <dl class="keys">
+    <dt><kbd>↑ ↓ ← →</kbd> <kbd>WASD</kbd></dt><dd>油门、刹车、转向</dd>
+    <dt><kbd>Shift</kbd> + 方向</dt><dd>漂移。漂移集气，满一格得一个氮气</dd>
+    <dt>松开漂移后按 <kbd>↑</kbd></dt><dd>小喷；从苏堤的桥上飞起落地时按 <kbd>↑</kbd> 是落地喷</dd>
+    <dt><kbd>Ctrl</kbd> / <kbd>空格</kbd></dt><dd>放氮气（用 WASD 的话请按空格）。小喷后马上放 = 双喷</dd>
+    <dt><kbd>R</kbd> <kbd>C</kbd> <kbd>Esc</kbd></dt><dd>回到赛道 · 切换视角 · 暂停</dd>
+  </dl>
+  <p class="touchhint">自动油门。左边两个键转向；右边按住“漂移”再配合方向漂移，松开自动小喷；“氮气”放氮气。</p>
+  <button class="btn" id="start">开始比赛</button>
+</div></div>
+
+<div id="hud" hidden>
+  <div class="tl">
+    <div class="card"><span class="lbl">名次</span><span class="big" id="pos">6<small>/6</small></span></div>
+    <div class="card"><span class="lbl">圈数</span><span class="mid" id="lap">1/2</span></div>
+    <div class="card"><span class="lbl">用时</span><span class="mid" id="time">00:00.00</span><br><span class="sm">最快 <span id="best">--:--.--</span></span></div>
+  </div>
+  <ol id="board" class="card"></ol>
+  <div class="spot" id="spot"></div>
+  <div class="toast" id="toast"></div>
+  <div class="count" id="count"></div>
+  <div id="wrong" hidden>逆行了</div>
+  <canvas id="mini" class="card" width="340" height="440"></canvas>
+  <div class="br card">
+    <div class="speed"><span id="kmh">0</span><span>km/h</span></div>
+    <div id="nitrobox"><div class="slot" id="n1">N</div><div class="slot" id="n2">N</div><div class="gaugebar"><div id="gauge"></div></div></div>
+  </div>
+</div>
+<button id="mute" aria-label="声音开关" title="声音（M）"><svg viewBox="0 0 24 24" fill="none" stroke="#2a3238" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="wave" d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"/></svg></button>
+
+<div class="pad l"><button data-key="left" aria-label="左">◀</button><button data-key="right" aria-label="右">▶</button></div>
+<div class="pad r"><div class="row"><button data-key="nitro">氮气</button><button data-key="drift">漂移</button></div><div class="row"><button data-key="down">刹车</button></div></div>
+
+<div id="paused" hidden><div class="card">已暂停 · 按 Esc 继续</div></div>
+<div id="result" hidden><div class="card">
+  <h2 id="rtitle">完赛</h2>
+  <ol id="rlist"></ol>
+  <p id="rbest"></p>
+  <button class="btn" id="again">再来一局</button>
+</div></div>
+<div id="stats" hidden></div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "/dream/vendor/three-r170/three.module.min.js",
+  "three/addons/": "/dream/vendor/three-r170/addons/"
+} }
+</script>
+<script type="module" src="./js/main.js"></script>
+</body>
+</html>
