@@ -307,7 +307,45 @@ noise.
 
 **Debug** (`?debug`): `dreamDebug.buses()`, `stops()`, `freeze(t)`, `advance(s)`, `atStop(line, k, i, aboard,
 after, look)`, `meet([[line, stop], …])`, `atShelter(line, i)`, `ride()`, `deck(u, v)`, `hint()`, `stopGround()`,
-`stopWalk()`, `inView()`.
+`stopWalk()`, `inView()`, `acts()`, `act(n)`, `card()`, `pressGo()`, `pressOff()`, `tapBus(line, k)`,
+`goHeard()`, `busAt(line, k, t)`, `online()`, `stopXZ(line, i, site)`.
+
+## Done: 立即发车, getting on and off by tapping, and a bigger 小区
+
+**立即发车 (send the bus off now).** A rider alone on a waiting bus, with nobody standing at the stop (by the
+shelter or the front door, within 7 units), may send it off early. That is an event `{ l, b, i, a }`: bus b of
+line l leaves stop i at a (1.5 s after the tap, for the doors). The timetable (`js/bus/timetable.js`) places a
+bus by time *and* its line's events: it runs the leg early, then waits at the next stop until its scheduled
+departure from there, so from then on it is exactly on the timetable again. Only the latest event of a bus
+matters, and only until then. A bus may be at most `maxAhead = headway − dwell − 3 s` early (520: 18.5 s, 1314:
+42.7 s), so it reaches a stop at least 3 s after the bus in front has left it; the button says how long to
+wait when it is too soon. `accept()` keeps only events that could have happened (the bus was waiting at that
+stop, not already leaving, not too early), the same way for everyone. Events travel in presence (`go` in the
+meta, the sender's latest); each visitor keeps what it has heard until it stops mattering, so a bus does not
+jump back when the sender leaves. A newcomer who arrives after the sender has gone and before the bus is back
+on the timetable (at most one leg plus two stops) sees it where the timetable alone puts it.
+Checked with three tabs: the sender, someone already there and a newcomer compute the same bus at every moment.
+
+**Tapping instead of walking.**
+- Near a stop (18 units) buttons appear above the overview button: 上车 · 1314路 → 下一站 while a bus waits
+  there, otherwise 候车 · 1314路 N 秒后到. Either walks you to the front-door spot and gets you on the next bus
+  that stops there (`busIntent`); tapping a bus does the same (the stop it waits at, or its nearest stop
+  within 40 units). Walking yourself, or the button (now 取消), cancels it.
+- On board the card has 下车 (while waiting: walk across into the aisle, down it, into the rear door well,
+  and off) and, while moving, 下站下车 (the same at the next stop, like pressing the bell), and 立即发车 while
+  waiting (disabled with the reason: 车上还有别人, 站台有人在等, N 秒后可发车).
+- Doors stay open for as long as a bus waits (an early bus waits longer than 20 s).
+- After getting off (or any jump that is not a walk) your pose is sent at once (`company.jumped()`), so others
+  no longer see you where you got on until you next walk.
+
+**小区.** The courtyard is 80 × 25 (eight times its first area of 19 × 13), wide along the road rather than
+deep, so all of it lies where the ground mesh is fine (its back is 30 units from the ring, where rows are
+~0.7 apart; a deeper courtyard would have run onto ~1.5-unit rows and jagged lawn edges). The three towers are
+24 units apart (were 6), 4.5 × 3.1 and 15 floors (were 3.3 × 2.3, 12). A bigger fountain on a round plaza in the
+middle, paths from the gate and to each tower's door (`HOME_PATHS`, which trees keep off), trees in a row inside
+the front railing, round the fountain, in the corners and between the towers. The gate line moved back 2.9 units
+so the 1314's 家 stop stands on the road outside the railing, right of the gate; the guard booth moved left.
+Cost: draw calls and load time unchanged within noise.
 
 ## Next
 

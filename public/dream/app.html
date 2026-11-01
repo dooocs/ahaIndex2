@@ -170,12 +170,33 @@
   .ride-card[hidden] { display: none; }
   .ride-card b { grid-row: span 2; padding: 6px 9px; border-radius: 8px; color: #fff; font-weight: 400; letter-spacing: 0.04em; }
   .ride-card small { font-size: 12px; opacity: 0.7; }
-  .bus-hint {
-    position: fixed; left: 50%; bottom: calc(68px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); margin: 0;
-    padding: 7px 14px; border-radius: 999px; font: 400 14px/1.3 var(--display); color: #f4f7f2; background: rgba(31, 36, 40, 0.78);
-    pointer-events: none; white-space: nowrap; max-width: calc(100vw - 32px); overflow: hidden; text-overflow: ellipsis;
+  .rc-acts { grid-column: 1 / -1; display: flex; gap: 6px; margin-top: 3px; }
+  .rc-acts button {
+    font: 400 13px/1 var(--display); letter-spacing: 0.04em; padding: 7px 11px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--line); background: rgba(255, 255, 255, 0.6); color: var(--ink); white-space: nowrap;
   }
-  .bus-hint[hidden] { display: none; }
+  .rc-acts button[hidden] { display: none; }
+  .rc-acts button:hover:not(:disabled), .rc-acts button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #f4f7f2; }
+  .rc-acts button:disabled { cursor: default; opacity: 0.55; }
+  .rc-acts button:focus-visible, .bus-acts button:focus-visible { outline: 2px solid var(--sun); outline-offset: 1px; }
+  /* above the overview button: a passing hint, and the 上车 / 候车 buttons near a stop */
+  .bus-dock {
+    position: fixed; left: 50%; bottom: calc(66px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; width: max-content; max-width: calc(100vw - 24px);
+  }
+  .bus-hint {
+    margin: 0; padding: 7px 14px; border-radius: 999px; font: 400 14px/1.3 var(--display); color: #f4f7f2; background: rgba(31, 36, 40, 0.78);
+    white-space: nowrap; max-width: calc(100vw - 32px); overflow: hidden; text-overflow: ellipsis;
+  }
+  .bus-hint[hidden], .bus-acts[hidden] { display: none; }
+  .bus-acts { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; pointer-events: auto; }
+  .bus-acts button {
+    display: flex; align-items: center; gap: 8px; padding: 9px 15px; border-radius: 999px; cursor: pointer;
+    font: 400 14px/1.2 var(--display); letter-spacing: 0.04em; color: var(--ink);
+    background: var(--card); border: 1px solid var(--line); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  }
+  .bus-acts button:hover { border-color: var(--ink); }
+  .bus-acts i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
   /* the overview toggle: shown while the avatar is somewhere that has one (西湖) */
   .overview-btn {
     position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
@@ -218,8 +239,11 @@
 <div id="labels" aria-hidden="true"></div>
 <div id="peer-tags" aria-hidden="true"></div>
 <div class="stick" id="stick" aria-hidden="true"><div class="knob"></div></div>
-<div class="ride-card" id="ride-card" hidden></div>
-<p class="bus-hint" id="bus-hint" hidden></p>
+<div class="ride-card" id="ride-card" hidden>
+  <b id="rc-line"></b><span id="rc-now"></span><small id="rc-sub"></small>
+  <div class="rc-acts"><button type="button" id="rc-go">立即发车</button><button type="button" id="rc-off" aria-pressed="false">下车</button></div>
+</div>
+<div class="bus-dock"><p class="bus-hint" id="bus-hint" hidden></p><div class="bus-acts" id="bus-acts" hidden></div></div>
 <p class="touch-hint" id="touch-hint" hidden>↑ 滑动看看　·　↓ 按住走路</p>
 
 <header class="brand">
@@ -1678,8 +1702,11 @@ const busM = new THREE.Matrix4(), busX = new THREE.Vector3(), busY = new THREE.V
  * Where bus `bus` of `line` is now: { s, state, d, up, fwd, left, h, M } (planet space; M maps the bus's own
  * frame to planet space, with the deck tilted to follow the ground).
  */
-function busPose(line, bus, t) {
-  const st = line.tt.at(bus, t), { d, t: fwd } = line.route.at(st.s);
+function busPose(line, bus, t) { return poseAt(line, null, line.tt.at(bus, t, line.go)); }
+/** the pose of a bus standing at arc length s on the line (or where `st` puts it) */
+function poseAt(line, s, st = null) {
+  st = st || { s };
+  const { d, t: fwd } = line.route.at(st.s);
   const hf = terrainH(line.route.at(st.s + 2.6).d), hb = terrainH(line.route.at(st.s - 2.6).d), h = (hf + hb) / 2;
   const up = d.clone(), f = fwd.clone().multiplyScalar(5.2).addScaledVector(up, hf - hb).normalize();
   const left = new THREE.Vector3().crossVectors(up, f).normalize();
@@ -1723,7 +1750,7 @@ function drawBoard(stop, t) {
   x.textBaseline = 'middle'; x.font = '700 46px "ZCOOL KuaiLe", "PingFang SC", "Noto Sans SC", sans-serif';
   x.fillStyle = LINE_HEX[line.name]; x.fillRect(16, 18, 150, 64);
   x.fillStyle = '#fff'; x.textAlign = 'center'; x.fillText(line.name, 91, 52);
-  const n = line.tt.nextAt(i, t);
+  const n = line.tt.nextAt(i, t, line.go);
   x.textAlign = 'left'; x.fillStyle = '#ffc65a';
   x.fillText(n.wait === 0 ? `进站 · 还停 ${Math.ceil(n.dwellLeft)} 秒` : `${Math.ceil(n.wait)} 秒后到站`, 186, 52);
   x.font = '400 34px "ZCOOL KuaiLe", "PingFang SC", "Noto Sans SC", sans-serif'; x.fillStyle = '#c9d2d4';
@@ -1812,12 +1839,14 @@ async function buildHangzhou() {
   const share = f => { const n = 6000, v = new THREE.Vector3(); let m = 0; for (let i = 0; i < n; i++) { const y = 1 - 2 * (i + 0.5) / n, r = Math.sqrt(1 - y * y), a = i * 2.399963; m += f(v.set(r * Math.cos(a), y, r * Math.sin(a))); } return m / n; };
   const TREE_SHARE = share(treeFill), GRASS_SHARE = share(grassFill);
 
-// 小区: three 12-floor towers round a courtyard, behind a railing with a gate on the road side
-const HOME_FENCE = { x0: -9.6, x1: 9.6, z0: -8.6, z1: 4.4 }, HOME_GATE = 1.2;
+// 小区: three 15-floor towers round a courtyard, behind a railing with a gate on the road side. The courtyard
+// is 80 × 25 (eight times its first area, 19 × 13), wide along the road rather than deep, so it stays where the
+// ground is fine (within ~30 units of the ring); its front leaves room for the 1314's 家 stop by the gate.
+const HOME_FENCE = { x0: -40, x1: 40, z0: -23.5, z1: 1.5 }, HOME_GATE = 1.2;
 // the railing all round the courtyard except the gate: drawn by buildHome, walked against via walk.barrier
 const HOME_RAIL = (({ x0, x1, z0, z1 }, gw) => [[-gw, z1], [x0, z1], [x0, z0], [x1, z0], [x1, z1], [gw, z1]])(HOME_FENCE, HOME_GATE + 0.55);
-const TOWERS = [[-5.9, -3.6], [0, -5.7], [5.9, -3.6]], TOWER = { w: 3.3, d: 2.3, floors: 12, fh: 0.46 };
-const CAR = [4.6, 2.2], FOUNTAIN = [0, 0.5];
+const TOWERS = [[-24.4, -14.0], [0, -18.0], [24.4, -14.0]], TOWER = { w: 4.5, d: 3.1, floors: 15, fh: 0.46 };
+const CAR = [12, -1.4], FOUNTAIN = [0, -5.5], FOUNTAIN_R = 3.4, HOME_BOOTH = [-2.6, HOME_FENCE.z1 + 0.8];
 // 天街
 const MALL_BOX = { x0: -6.0, x1: 6.0, z0: -4.6, z1: -0.4 };
 // 西湖文体中心: round plan of two halves under a square roof plate
@@ -1915,11 +1944,16 @@ sites.forEach((s, i) => {
   for (let k = 0; k < n; k++) (ringKind[i] === 'road' ? ROADS : STONES).push([sph(0, s.lon + gap * k / n), sph(0, s.lon + gap * (k + 1) / n), ringKind[i] === 'road' ? 0.05 : 0.03]);
 });
 arcsIn(HOME, [[0, HOME.roadZ], [0, HOME_FENCE.z1 + 0.2]], 0.03, ROADS);
-arcsIn(HOME, [[0.9, 4.3], [4.3, 3.5]], 0.022, ROADS);
-arcsIn(HOME, [[0, 4.4], [0, 1.9]], 0.02, STONES);
-TOWERS.forEach(([x, z]) => arcsIn(HOME, [FOUNTAIN, [x, z + 1.5]], 0.016, STONES));
+// the courtyard's paths: the drive to the car, gate to fountain, fountain to each tower's door (trees keep off them)
+const HOME_PATHS = [
+  [[0.9, HOME_FENCE.z1 - 0.2], [CAR[0] - 1.5, CAR[1] + 0.4]],
+  [[0, HOME_FENCE.z1], [0, FOUNTAIN[1] + FOUNTAIN_R - 0.3]],
+  ...TOWERS.map(([x, z]) => [FOUNTAIN, [x * 0.45, (z + FOUNTAIN[1]) / 2 + 1.5], [x, z + TOWER.d / 2 + 1.3]]),
+];
+arcsIn(HOME, HOME_PATHS[0], 0.022, ROADS);
+HOME_PATHS.slice(1).forEach((pts, i) => arcsIn(HOME, pts, i ? 0.02 : 0.022, STONES));
 STONE_RECTS.push([HOME, -2.4, 2.4, HOME_FENCE.z1, HOME.roadZ - 0.7]);
-STONE_CIRCS.push([HOME, FOUNTAIN[0], FOUNTAIN[1], 1.9], [HOME, CAR[0], CAR[1], 1.35]);
+STONE_CIRCS.push([HOME, FOUNTAIN[0], FOUNTAIN[1], FOUNTAIN_R], [HOME, CAR[0], CAR[1], 1.35]);
 STONE_RECTS.push([MALL, -6.4, 6.4, -0.6, MALL.roadZ - 0.7]);
 STONE_RECTS.push([SPORTS, -4.3, 4.3, 2.4, SPORTS.roadZ - 0.7]);
 STONE_CIRCS.push([SPORTS, DRUM.cx, DRUM.cz, DRUM.r + 0.7]);
@@ -2019,7 +2053,7 @@ function xixiShape(p, h) {
 }
 terrainH = function (d, w = pathWeight(d)) {
   let flat = Math.min(1, w * 1.6), p;
-  if ((p = local(HOME, d))) flat = Math.max(flat, rectFall(p, -10.2, 10.2, -9.2, HOME.roadZ, 2.5));
+  if ((p = local(HOME, d))) flat = Math.max(flat, rectFall(p, HOME_FENCE.x0 - 0.6, HOME_FENCE.x1 + 0.6, HOME_FENCE.z0 - 0.6, HOME.roadZ, 2.5));
   if ((p = local(MALL, d))) flat = Math.max(flat, rectFall(p, -6.8, 6.8, -5.2, MALL.roadZ, 2.5));
   if ((p = local(SPORTS, d))) flat = Math.max(flat, clamp01(1 - Math.max(0, Math.hypot(p.x - DRUM.cx, p.z - DRUM.cz) - 5.0) / 2.5), rectFall(p, -4.8, 4.8, 2, SPORTS.roadZ, 2.5));
   const lp = local(LAKE, d), lr = lp ? lakeReach(lp) : 0;
@@ -2047,9 +2081,9 @@ await slice();
   // h: roughly how tall each thing is, so the camera can move in front of what would hide you
   const box = (s, x0, x1, z0, z1, h) => walk.footprint(s, shapes.box(x0, x1, z0, z1), { h });
   const disc = (s, x, z, r, h) => walk.footprint(s, shapes.circle(x, z, r), { h });
-  TOWERS.forEach(([x, z]) => box(HOME, x - 1.75, x + 1.75, z - 1.25, z + 1.8, TOWER.floors * TOWER.fh + 1));
-  disc(HOME, FOUNTAIN[0], FOUNTAIN[1], 1.3);
-  box(HOME, 1.7, 2.8, HOME_FENCE.z1 + 0.3, HOME_FENCE.z1 + 1.3);
+  TOWERS.forEach(([x, z]) => box(HOME, x - TOWER.w / 2 - 0.1, x + TOWER.w / 2 + 0.1, z - TOWER.d / 2 - 0.1, z + TOWER.d / 2 + 0.65, TOWER.floors * TOWER.fh + 1));
+  disc(HOME, FOUNTAIN[0], FOUNTAIN[1], 2.05);
+  box(HOME, HOME_BOOTH[0] - 0.55, HOME_BOOTH[0] + 0.55, HOME_BOOTH[1] - 0.5, HOME_BOOTH[1] + 0.5);
   box(HOME, CAR[0] - 0.75, CAR[0] + 0.75, CAR[1] - 1.25, CAR[1] + 1.25, 1.5);
   box(MALL, MALL_BOX.x0 - 0.1, MALL_BOX.x1 + 0.1, MALL_BOX.z0 - 0.1, MALL_BOX.z1 + 0.15, 3.6);
   disc(MALL, 0, -0.6, 2.1, 4.5);
@@ -2064,8 +2098,8 @@ await slice();
 // ---------- stops shown in the HUD, and smaller landmark tags ----------
 // via: points walked through after leaving the ring road; stand/look: where to stop and what to face
 zones = [
-  { name: '家', s: HOME, via: [[0, 5.2], [0, 3.3]], stand: [0, 2.7], look: [0, -5.7], zoom: 2.1, label: [0, -5.7], h: 6.9 },
-  { name: '车子', noTag: true, s: HOME, via: [[0, 5.2], [0.8, 3.95], [4.6, 3.95]], stand: [7.4, 3.0], look: CAR, zoom: 1.0, label: CAR, h: 1.9 },
+  { name: '家', s: HOME, via: [[0, HOME_FENCE.z1 + 1.8], [0, HOME_FENCE.z1 - 0.8]], stand: [0, HOME_FENCE.z1 - 1.4], look: TOWERS[1], zoom: 2.9, label: TOWERS[1], h: 8.6 },
+  { name: '车子', noTag: true, s: HOME, via: [[0, HOME_FENCE.z1 + 1.8], [0, HOME_FENCE.z1 - 0.8], [CAR[0] - 3.2, CAR[1] + 1.4]], stand: [CAR[0] + 2.8, CAR[1] + 0.8], look: CAR, zoom: 1.0, label: CAR, h: 1.9 },
   { name: '天街', s: MALL, via: [], stand: [0.9, 3.0], look: [0, -1.8], zoom: 1.75, label: [0, -0.6], h: 5.9 },
   { name: '文体中心', s: SPORTS, via: [], stand: [0.9, 4.4], look: [0, -1], zoom: 1.85, label: [0, -1], h: 5.9 },
   { name: '西溪湿地', s: XIXI, via: [[0.4, 6.0], [2.2, 4.2], [1.2, 2.4]], stand: [1.0, 1.25], look: [-1.2, -3.2], zoom: 1.35, label: [0.1, -3.4], h: 3.2 },
@@ -2181,7 +2215,7 @@ const onBusway = d => arcW(BUSWAY, d) > 0;
 
 const LINES = [
   { name: '1314', body: 0xc8433a, loop: Array.from({ length: 180 }, (_, i) => sph(0, i * 2)), stops: [
-    { name: '家', at: L(HOME, 12.5, HOME.roadZ) },
+    { name: '家', at: L(HOME, 6.5, HOME.roadZ) },                     // by the 小区 gate
     { name: '天街', at: L(MALL, 9, MALL.roadZ) },
     { name: '文体中心', at: L(SPORTS, 8.5, SPORTS.roadZ) },
     { name: '西溪湿地', at: L(XIXI, 9.5, XIXI.roadZ) },
@@ -2200,7 +2234,7 @@ const LINES = [
   const stops = def.stops.map(s => ({ ...s, s: route.nearest(s.at) })).sort((a, b) => a.s - b.s);
   stops.forEach((s, i) => { s.i = i; });
   const tt = makeTimetable({ length: route.length, stops: stops.map(s => s.s), speed: BUS.SPEED * W.walkSpeed, buses: 3 });
-  return { name: def.name, body: def.body, route, stops, tt, buses: [], poses: [] };
+  return { name: def.name, body: def.body, route, stops, tt, buses: [], poses: [], go: [] };
 });
 // the shelters' spots, so trees keep clear of them
 const STOP_SPOTS = LINES.flatMap(line => line.stops.map(s => { const { d } = line.route.at(s.s); return d.clone().multiplyScalar(R).addScaledVector(line.route.right(s.s), 2.45).normalize(); }));
@@ -2280,23 +2314,32 @@ function buildHome() {
   g.add(arm, 0xe25a4a);
   g.box(0.22, 0.75, 0.22, 0x3c434b, HOME_GATE - 0.1, 0.37, 0.35);
   // guard booth outside the gate
-  const b = kit(HOME, 2.25, z1 + 0.8);
+  const b = kit(HOME, HOME_BOOTH[0], HOME_BOOTH[1]);
   b.box(1.0, 1.0, 0.85, 0xf3efe7, 0, 0.5, 0);
   b.box(1.02, 0.42, 0.7, 0x86b0bf, 0, 0.62, 0, G_OPTS);
   b.box(1.25, 0.08, 1.1, 0x3c434b, 0, 1.04, 0);
   // fountain in the middle of the courtyard
-  const f = kit(HOME, FOUNTAIN[0], FOUNTAIN[1]);
-  f.cyl(1.2, 1.25, 0.34, 0xd8cfbe, 0, 0.1, 0, 36);
-  f.cyl(1.02, 1.02, 0.06, 0x7cc4c8, 0, 0.26, 0, 36, { kind: 'WATER', shade: 0x4e93a8, breakMul: 0.2, noiseScale: 3 });
-  f.cyl(0.16, 0.22, 0.6, 0xd8cfbe, 0, 0.5, 0, 12);
-  f.cyl(0.45, 0.2, 0.12, 0xd8cfbe, 0, 0.82, 0, 20);
-  f.cyl(0.03, 0.11, 0.55, 0xe8f6f7, 0, 1.15, 0, 10, { shade: 0xbfdde4, breakMul: 0 });
+  const f = kit(HOME, FOUNTAIN[0], FOUNTAIN[1]), fs = 1.6;                           // a size up, for the bigger courtyard
+  f.cyl(1.2 * fs, 1.25 * fs, 0.34, 0xd8cfbe, 0, 0.1, 0, 48);
+  f.cyl(1.02 * fs, 1.02 * fs, 0.06, 0x7cc4c8, 0, 0.26, 0, 48, { kind: 'WATER', shade: 0x4e93a8, breakMul: 0.2, noiseScale: 3 });
+  f.cyl(0.16 * fs, 0.22 * fs, 0.6 * fs, 0xd8cfbe, 0, 0.5 * fs, 0, 12);
+  f.cyl(0.45 * fs, 0.2 * fs, 0.12 * fs, 0xd8cfbe, 0, 0.82 * fs, 0, 20);
+  f.cyl(0.03 * fs, 0.11 * fs, 0.55 * fs, 0xe8f6f7, 0, 1.15 * fs, 0, 10, { shade: 0xbfdde4, breakMul: 0 });
   // the car, parked on its pad
   const car = new THREE.Group(), body = buildCar(); body.rotation.y = -Math.PI / 2; car.add(body);
   placeFrame(car, L(HOME, CAR[0], CAR[1]), LT(HOME, -0.12, 1));
   addObj(car);
-  [[-8.3, 3.4], [-3.4, 2.6], [2.5, 2.0], [-8.5, -0.9], [8.5, -1.0], [-3.0, -1.3], [3.0, -1.2], [-8.5, -7.7], [8.5, -7.7], [-3.0, -7.9], [3.0, -7.9], [-8.6, -4.6], [8.6, -4.6]]
-    .forEach(([x, z]) => heroTrees.push([HOME, x, z]));
+  // trees: a row inside the front railing (clear of the gate and the drive), a ring round the fountain (clear
+  // of its paths), groves in the corners and between the towers
+  const { x0, x1, z0 } = HOME_FENCE, T = [];
+  for (let x = 6; x <= 36; x += 6) T.push([-x, z1 - 2.2], [x, z1 - 2.2]);
+  for (let a = 0; a < 8; a++) { const t = (a + 0.5) / 8 * Math.PI * 2; T.push([FOUNTAIN[0] + Math.cos(t) * (FOUNTAIN_R + 2.0), FOUNTAIN[1] + Math.sin(t) * (FOUNTAIN_R + 2.0)]); }
+  [[x0 + 3.5, -6], [x0 + 3.2, -12.5], [x0 + 4.0, -19.5], [x0 + 9.5, z0 + 2.6], [-14, z0 + 2.4], [-10.5, -11], [-15, -6.5],
+   [x1 - 3.5, -6], [x1 - 3.2, -12.5], [x1 - 4.0, -19.5], [x1 - 9.5, z0 + 2.6], [14, z0 + 2.4], [10.5, -11], [20, -6.5], [-31, -9], [31, -9],
+   [-12, -15.5], [12, -15.5], [-18, -20.5], [18, -20.5], [-33, -16.5], [33, -16.5], [-7, -19.5], [7, -19.5], [-30, -3], [30, -3], [-21, -8], [24.5, -8]]
+    .forEach(p => T.push(p));
+  const clear = ([x, z]) => Math.hypot(x - CAR[0], z - CAR[1]) > 3.2 && HOME_PATHS.every(pts => polyD({ x, z }, pts) > 2.0) && TOWERS.every(([tx, tz]) => Math.abs(x - tx) > TOWER.w / 2 + 2.2 || Math.abs(z - tz) > TOWER.d / 2 + 2.6);
+  T.filter(clear).forEach(([x, z]) => heroTrees.push([HOME, x, z]));
 }
 
 // ---------- 天街: a mall of the user's own design, on the road opposite ----------
@@ -2753,7 +2796,7 @@ function buildTransit() {
       stop.ring = ring;
     });
     const model = busModel(line.body, 0xf6f3ec, `${line.name}路`);
-    for (let k = 0; k < 3; k++) line.buses.push(makeBus(model, line.body));
+    for (let k = 0; k < 3; k++) { const root = makeBus(model, line.body); root.userData.busOf = { line: line.name, k }; line.buses.push(root); }
   }
   // the ribbon: a strip 4.8 units wide following the ground, with light edges
   const pts = CENTRE_520.pts, n = pts.length, pos = [], idx = [], edge = [], eidx = [];
@@ -2918,7 +2961,7 @@ updateBoats(0);
 siteKeepout = function (d, m = 0) {
   let p;
   if (onBusway(d) || nearStop(d, 3.2 + m)) return true;
-  if ((p = local(HOME, d)) && inRect(p, -10.0 - m, 10.0 + m, -9.0 - m, HOME.roadZ + 1)) return true;
+  if ((p = local(HOME, d)) && inRect(p, HOME_FENCE.x0 - 0.4 - m, HOME_FENCE.x1 + 0.4 + m, HOME_FENCE.z0 - 0.4 - m, HOME.roadZ + 1)) return true;
   if ((p = local(MALL, d)) && inRect(p, -6.6 - m, 6.6 + m, -5.2 - m, MALL.roadZ + 1)) return true;
   if ((p = local(SPORTS, d)) && (Math.hypot(p.x - DRUM.cx, p.z - DRUM.cz) < 5.0 + m || inRect(p, -4.8 - m, 4.8 + m, 2, SPORTS.roadZ + 1))) return true;
   if ((p = local(XIXI, d)) && Math.hypot(p.x, p.z) < 10.2 + m) return true;
@@ -3117,7 +3160,7 @@ W.overview = { s: LAKE, near: d => nearLake(d), centre: mp(1000, 760), label: '�
 W.lawnEx = HOME.ex.clone();
 W.startLon = -6;
 // arrivals stand outside the 小区 gate, looking in at the courtyard and the towers
-W.spawn = { s: HOME, at: [0, HOME_FENCE.z1 + 0.9], look: [0, 0] };
+W.spawn = { s: HOME, at: [0, HOME_FENCE.z1 + 0.9], look: [0, -10] };
 }
 
 // ======================= 滑雪星球: 北海道 + 羊蹄山 + 崇礼 + 雪如意 =======================
@@ -3561,8 +3604,8 @@ function ringRoute(fromLon, toIdx) {
 }
 function travelTo(i) {
   if (building) return;
-  if (myRide) { showBusHint('在车上啦 · 到站后走到车尾后门下车，再去别处'); return; }
-  autoWalk = null;
+  if (myRide) { showBusHint('在车上啦 · 先点「下车」，再去别处'); return; }
+  autoWalk = null; busIntent = null;
   const z = zones[i], here = avatarLocalDir(), route = [];
   if (curStop != null && zones[curStop].s === z.s) {
     // another stop at the same place: walk straight across
@@ -3693,12 +3736,24 @@ canvas.addEventListener('pointerup', e => { gestures.up(ptr(e)); if (!gestures.a
 canvas.addEventListener('pointercancel', e => { gestures.up(ptr(e), true); if (!gestures.active) canvas.classList.remove('dragging'); });
 addEventListener('blur', () => gestures.reset());
 const ray = new THREE.Raycaster(), ndcV = new THREE.Vector2();
+/** the bus a ray hits first, if it hits one before anything else: { line, k } */
+function pickBus(r) {
+  if (!W || !W.lines) return null;
+  const roots = W.lines.flatMap(l => l.buses), hit = r.intersectObjects(roots, true)[0];
+  if (!hit) return null;
+  const ground = r.intersectObject(planet, true)[0];
+  if (ground && ground.distance < hit.distance - 0.01) return null;
+  for (let o = hit.object; o; o = o.parent) if (o.userData.busOf) return o.userData.busOf;
+  return null;
+}
 function tapAt(x, y) {
   ndcV.set(x / innerWidth * 2 - 1, -(y / innerHeight) * 2 + 1);
   ray.setFromCamera(ndcV, camera);
-  const peer = company.pick(ray);
+  const peer = company.pick(ray), bus = !peer && !myRide && pickBus(ray);
   if (peer) company.openSay(peer);                                          // tapped someone: say hello
+  else if (bus) tapBus(lineOf(bus.line), bus.k);                            // tapped a bus: get on it (or wait for it)
   else {
+    busIntent = null;
     const hit = ray.intersectObject(planet, true)[0];
     if (hit) walkTo(planet.worldToLocal(hit.point.clone()).normalize());   // stops are reached from their labels
   }
@@ -3762,7 +3817,7 @@ function placeMarker(d, ok) {
   marker.visible = true;
 }
 function walkTo(dir) {
-  if (myRide) { showBusHint('在车上啦 · 到站后走到车尾后门下车'); return false; }
+  if (myRide) { showBusHint('在车上啦 · 点「下车」，或到站后走到后门下车'); return false; }
   const route = findPath(walk, avatarLocalDir(), dir);
   if (!route) { placeMarker(dir, false); return false; }
   stopTravel(); setActive(null);
@@ -3863,6 +3918,7 @@ async function loadWorld(key) {
   seed = 7;
   W = { key, update: null, extras: [], ski: false, lawnEx: null, startLon: 0 };
   if (myRide) { myRide = null; syncRide(true); }
+  busIntent = null; goHeard.clear();
   await PLANETS[key].build();
   W.walkSpeed ??= 0.2 * R; W.travelSpeed ??= 0.38 * R; W.tagCos ??= [0.86, 0.9];
   G.uR.value = R; G.uWater.value = WATER;
@@ -3934,7 +3990,7 @@ const company = (() => {
   scene.add(group);
   const shown = new Map();                    // id → { a, tag, p, f, k, phase, kind }
   const MAX_SHOWN = 30, TAG_UP = 1.15;
-  let connect = null, presence = null, interacted = false, away = false, rideState = null;
+  let connect = null, presence = null, interacted = false, away = false, rideState = null, goState = null, jumpFrames = 0;
   let lastInput = performance.now(), hiddenSince = document.hidden ? performance.now() : 0, province = '未知', planetKey = null;
   const v3 = a => new THREE.Vector3(a[0], a[1], a[2]).normalize();
   const basis = new THREE.Matrix4(), xAxis = new THREE.Vector3(), tmp = new THREE.Vector3();
@@ -3950,7 +4006,7 @@ const company = (() => {
   }
   function ensure() {
     if (presence || !connect) return;
-    presence = createPresence({ connect, me: { id: visitorId, g: myLook.g, look: myLook, prov: province, ride: rideState } });
+    presence = createPresence({ connect, me: { id: visitorId, g: myLook.g, look: myLook, prov: province, ride: rideState, go: goState } });
     presence.onChange(hud);
     presence.onMessage(onMessage);
     if (planetKey) presence.setPlanet(planetKey);
@@ -4080,6 +4136,9 @@ const company = (() => {
     get presence() { return presence; },
     /** the bus I am on ({ line, bus, since, u, v }) or null, for everyone else */
     setRide(r) { rideState = r; if (presence) presence.setProfile({ ride: r }); },
+    setGo(e) { goState = e; if (presence) presence.setProfile({ go: e }); },
+    /** I moved without walking (got off a bus, …): send where I am now rather than when I next walk */
+    jumped() { jumpFrames = 2; },
     /** the person under a ray (a canvas click), if any */
     pick(ray) {
       for (const h of ray.intersectObject(group, true)) for (let o = h.object; o; o = o.parent) if (o.userData.peerId) return o.userData.peerId;
@@ -4092,7 +4151,8 @@ const company = (() => {
     update(dt, t) {
       if (presence && presence.started) {
         const pose = bodyPose();
-        presence.move([pose.p.x, pose.p.y, pose.p.z], [pose.f.x, pose.f.y, pose.f.z], moveSpeed > 0.08 || !!travel);
+        presence.move([pose.p.x, pose.p.y, pose.p.z], [pose.f.x, pose.f.y, pose.f.z], moveSpeed > 0.08 || !!travel || jumpFrames > 0);
+        if (jumpFrames > 0) jumpFrames--;
       }
       group.quaternion.copy(planet.quaternion);
       const here = avatarDir;
@@ -4172,19 +4232,41 @@ addEventListener('message', e => {
 
 // ---------- buses each frame: move them, open their doors at stops, keep the stop boards ticking ----------
 const ringGeo = new THREE.RingGeometry(0.52, 0.74, 32); ringGeo.rotateX(-Math.PI / 2);
-let boardTick = 0;
+let boardTick = 0, actsTick = 0;
 const DETAIL_NEAR = 80;            // units: bus door leaves, route boards and stop countdowns are drawn within this
+const NEAR_STOP = 18;              // units: within this of a stop, its 上车 / 候车 buttons show
+const lineOf = name => W && W.lines && W.lines.find(l => l.name === name);
 /** this frame's pose of bus `bus` on line `name` (null if the planet has no such line) */
 function transitPose(name, bus) {
-  const line = W && W.lines && W.lines.find(l => l.name === name);
+  const line = lineOf(name);
   return line && line.poses[bus] ? line.poses[bus] : null;
 }
+
+// Early departures (立即发车) heard from anyone, mine included: presence carries each visitor's latest as `go`
+// ({ l: line, b: bus, i: stop, a: when it moves }). They are kept here until they stop mattering, so a bus
+// does not jump back when the one who sent it off leaves; each line keeps the ones its timetable accepts.
+const goHeard = new Map();
+let goDirty = false;
+function hearGo(e) {
+  const line = e && lineOf(e.l);
+  if (!line || !Number.isInteger(e.b) || !Number.isInteger(e.i) || !(e.i >= 0 && e.i < line.stops.length) || !Number.isFinite(e.a)) return;
+  const k = `${e.l}:${e.b}:${e.a}`;
+  if (!goHeard.has(k)) { goHeard.set(k, { l: e.l, b: e.b, i: e.i, a: e.a }); goDirty = true; }
+}
+function refreshGo(t) {
+  if (company.presence) for (const q of company.presence.peers()) if (q.planet === W.key && q.go) hearGo(q.go);
+  for (const [k, e] of goHeard) if (!lineOf(e.l) || lineOf(e.l).tt.endOf({ bus: e.b, i: e.i, a: e.a }) < t - 1) { goHeard.delete(k); goDirty = true; }
+  if (!goDirty) return;
+  goDirty = false;
+  for (const line of W.lines) line.go = line.tt.accept([...goHeard.values()].filter(e => e.l === line.name).map(e => ({ bus: e.b, i: e.i, a: e.a })));
+}
+
 function updateTransit(dt) {
   if (!W || !W.lines) return;
   const t = serverNow();
   boardTick -= dt;
   const redraw = boardTick <= 0;
-  if (redraw) boardTick = 0.5;
+  if (redraw) { boardTick = 0.5; refreshGo(t); }
   for (const line of W.lines) {
     line.buses.forEach((root, k) => {
       const pose = busPose(line, k, t);
@@ -4194,8 +4276,8 @@ function updateTransit(dt) {
       root.matrixAutoUpdate = false;
       root.matrix.copy(pose.M);
       root.matrixWorldNeedsUpdate = true;
-      // doors: open while waiting, shut a second before leaving
-      const open = pose.state.stop !== null && pose.state.dwellLeft > 1.0 && pose.state.dwellLeft < line.tt.dwell - 0.6 ? 1 : 0;
+      // doors: open from just after it stops until a second before it leaves (however long it waits)
+      const st = pose.state, open = st.stop !== null && st.since > 0.6 && st.dwellLeft > 1.0 ? 1 : 0;
       root.userData.open = (root.userData.open ?? 0) + (open - (root.userData.open ?? 0)) * Math.min(1, dt * 5);
       for (const leaf of root.userData.doors) leaf.position.z = leaf.userData.z0 + leaf.userData.side * root.userData.open * (BUS.DOOR * 2 - 0.08);
     });
@@ -4218,16 +4300,25 @@ function updateTransit(dt) {
       }
     });
   }
+  actsTick -= dt;
+  if (actsTick <= 0) { actsTick = 0.25; updateActs(t); }
 }
 
 // ---------- riding: on at the front door, about on the deck, off at the back door ----------
-let myRide = null;            // { line, bus, since, u, v, yaw: view − bus heading, face: facing − bus heading, fwd }
+// Everything can be done by walking (into the ring at the front door; into the rear door well at a stop) or
+// by tapping: 上车 / 候车 (or tapping a bus) walks you to the front door of a stop and gets you on the next
+// bus there; 下车 / 下站下车 walks you to the rear door and off at this stop or the next. Walking yourself
+// cancels either.
+let myRide = null;            // { line, bus, since, u, v, yaw: view − bus heading, face: facing − bus heading, fwd, exit }
+let busIntent = null;         // { line, i, spot, waiting }: on my way to stop i's front door (waiting: there, for the next bus)
 let rideR = 0, hintUntil = 0, lastRideSync = 0;
-const rideCard = document.getElementById('ride-card'), busHint = document.getElementById('bus-hint');
+const rideCard = document.getElementById('ride-card'), busHint = document.getElementById('bus-hint'), busActs = document.getElementById('bus-acts');
+const rc = { line: document.getElementById('rc-line'), now: document.getElementById('rc-now'), sub: document.getElementById('rc-sub'), go: document.getElementById('rc-go'), off: document.getElementById('rc-off') };
 function showBusHint(text, ms = 2600) {
   if (!busHint.hidden && busHint.textContent === text) { hintUntil = Math.max(hintUntil, performance.now() + ms); return; }
   busHint.textContent = text; busHint.hidden = false; hintUntil = performance.now() + ms;
 }
+const setText = (el, text) => { if (el.textContent !== text) el.textContent = text; };
 function ridersNow() {
   const list = company.presence ? company.presence.peers().filter(q => q.planet === W.key && q.ride).map(q => ({ id: q.id, ride: q.ride })) : [];
   if (myRide) list.push({ id: visitorId, ride: myRide });
@@ -4245,10 +4336,18 @@ function syncRide(force) {
   company.setRide(r);
 }
 function stopName(line, i) { return line.stops[i].name; }
+/** where you stand to get on at stop i: beside the front door of a bus waiting there */
+function doorSpot(line, i) { return deckPoint(poseAt(line, line.stops[i].s), BUS.FRONT, -BUS.W / 2 - 0.62, 0).dir; }
+/** someone (not on a bus) standing at stop i of the line: by its shelter or its front door */
+function someoneWaiting(line, i) {
+  if (!company.presence) return false;
+  const spots = [line.stops[i].at, doorSpot(line, i)], v = new THREE.Vector3();
+  return company.presence.peers().some(q => q.planet === W.key && !q.ride && Array.isArray(q.p) && spots.some(s => v.set(q.p[0], q.p[1], q.p[2]).normalize().angleTo(s) * R < 7));
+}
 function board(line, k) {
   const pose = line.poses[k], { p, c } = readView();
-  myRide = { line: line.name, bus: k, since: serverNow(), u: BUS.FRONT, v: -0.7, yaw: angleRight(pose.fwd.clone().addScaledVector(p, -pose.fwd.dot(p)).normalize(), c, p), face: Math.PI / 2, fwd: null };
-  stopTravel(); autoWalk = null; setActive(null);
+  myRide = { line: line.name, bus: k, since: serverNow(), u: BUS.FRONT, v: -0.7, yaw: angleRight(pose.fwd.clone().addScaledVector(p, -pose.fwd.dot(p)).normalize(), c, p), face: Math.PI / 2, fwd: null, exit: false };
+  stopTravel(); autoWalk = null; setActive(null); busIntent = null;
   syncRide(true);
   showBusHint(`上车啦 · ${line.name}路 · 下一站 ${stopName(line, (pose.state.stop + 1) % line.stops.length)}`);
 }
@@ -4258,7 +4357,25 @@ function alight(line, pose, why) {
   myRide = null; syncRide(true);
   heading = null;
   writeView({ p: dir, c: c.clone().addScaledVector(dir, -c.dot(dir)).normalize() });
+  company.jumped();
   showBusHint(why || `到站 · ${stopName(line, pose.state.stop)}`);
+}
+/** walk to stop i's front door and get on the next bus of the line that stops there */
+function goBoard(line, i) {
+  if (myRide || building) return;
+  const spot = doorSpot(line, i);
+  if (avatarDir.angleTo(spot) * R < 0.7) { stopTravel(); busIntent = { line: line.name, i, spot, waiting: true }; return; }
+  if (!walkTo(spot)) { showBusHint('从这里走不过去'); return; }
+  busIntent = { line: line.name, i, spot, waiting: false };
+}
+/** a tap on a bus: get on it if it is waiting near you; otherwise wait for this line at its nearest stop */
+function tapBus(line, k) {
+  if (myRide) return;
+  const st = line.poses[k].state, near = i => line.stops[i].at.angleTo(avatarDir) * R;
+  if (st.stop !== null && !st.leaving && st.dwellLeft > 1.5 && near(st.stop) < 40) { goBoard(line, st.stop); return; }
+  const i = line.stops.map((_, j) => j).sort((a, b) => near(a) - near(b))[0];
+  if (near(i) < 40) { goBoard(line, i); showBusHint(`去 ${stopName(line, i)} 等 ${line.name}路`); }
+  else showBusHint(`${line.name}路 · 下一站 ${stopName(line, st.next)} · 离你有点远`);
 }
 /** per frame while not riding: step into a waiting bus's front-door ring to get on */
 function tryBoard() {
@@ -4272,29 +4389,104 @@ function tryBoard() {
     board(line, k);
     return;
   }
+  // on the way to a stop: once there, wait; if the walk gave up short of it, forget it
+  if (busIntent && !busIntent.waiting && !autoWalk) {
+    if (avatarDir.angleTo(busIntent.spot) * R < 1.0) busIntent.waiting = true;
+    else busIntent = null;
+  }
 }
-/** per frame while riding: walk about the deck (keys or stick), carry the view with the bus, get off at the back */
+/** the 上车 / 候车 buttons near stops (not riding) */
+function updateActs(t) {
+  const items = [];
+  if (!myRide && !building) {
+    if (busIntent) {
+      const line = lineOf(busIntent.line), n = line.tt.nextAt(busIntent.i, t, line.go);
+      const what = busIntent.waiting ? (n.wait === 0 ? `${line.name}路 到了，上车中` : `候车 · ${line.name}路 ${Math.ceil(n.wait)} 秒后到`) : `去 ${stopName(line, busIntent.i)} 坐 ${line.name}路`;
+      items.push({ key: 'cancel', line, text: `${what} · 取消` });
+    } else for (const line of W.lines) line.stops.forEach((st, i) => {
+      if (st.at.angleTo(avatarDir) * R > NEAR_STOP) return;
+      const n = line.tt.nextAt(i, t, line.go), to = stopName(line, (i + 1) % line.stops.length);
+      items.push(n.wait === 0 && n.dwellLeft > 2.5
+        ? { key: `go:${line.name}:${i}`, line, text: `上车 · ${line.name}路 → ${to}` }
+        : { key: `wait:${line.name}:${i}`, line, text: `候车 · ${line.name}路 ${Math.ceil(n.wait)} 秒后到` });
+    });
+  }
+  busActs.hidden = !items.length;
+  const keep = new Set(items.map(o => o.key));
+  for (const b of [...busActs.children]) if (!keep.has(b.dataset.key)) b.remove();
+  items.forEach((o, n) => {
+    let b = busActs.querySelector(`[data-key="${o.key}"]`);
+    if (!b) { b = document.createElement('button'); b.type = 'button'; b.dataset.key = o.key; b.innerHTML = '<i></i><span></span>'; busActs.appendChild(b); }
+    b.firstChild.style.background = LINE_HEX[o.line.name];
+    setText(b.lastChild, o.text);
+    if (busActs.children[n] !== b) busActs.insertBefore(b, busActs.children[n]);
+  });
+}
+busActs.addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  if (e.detail) b.blur();
+  const [kind, name, i] = b.dataset.key.split(':');
+  if (kind === 'cancel') { busIntent = null; autoWalk = null; return; }
+  goBoard(lineOf(name), +i);
+});
+/** may I send my bus off now? { ok, go } or { ok: false, text } (why not, for the button) */
+function goCheck(line, k, t) {
+  const g = line.tt.canGo(k, t, line.go);
+  if (!g.ok) return { ok: false, text: g.why === 'early' ? `${Math.ceil(g.wait)} 秒后可发车` : '正在关门' };
+  if (ridersOn(ridersNow(), line.name, k).length > 1) return { ok: false, text: '车上还有别人' };
+  if (someoneWaiting(line, g.i)) return { ok: false, text: '站台有人在等' };
+  return { ok: true, go: g };
+}
+function sendOff() {
+  const line = myRide && lineOf(myRide.line);
+  if (!line) return;
+  const c = goCheck(line, myRide.bus, serverNow());
+  if (!c.ok) { showBusHint(c.text); return; }
+  const e = { l: line.name, b: myRide.bus, i: c.go.i, a: +c.go.a.toFixed(3) };
+  hearGo(e); refreshGo(serverNow());
+  company.setGo(e);
+  showBusHint('关门，发车');
+}
+rc.go.addEventListener('click', e => { if (e.detail) rc.go.blur(); sendOff(); });
+rc.off.addEventListener('click', e => {
+  if (e.detail) rc.off.blur();
+  if (!myRide) return;
+  const pose = transitPose(myRide.line, myRide.bus), waiting = pose && pose.state.stop !== null && !pose.state.leaving;
+  myRide.exit = waiting ? true : !myRide.exit;
+});
+/** per frame while riding: walk about the deck (keys, stick, or to the rear door after 下车), carry the view with the bus */
 function rideStep(dt, fw, sd) {
-  const line = W.lines && W.lines.find(l => l.name === myRide.line), pose = line && line.poses[myRide.bus];
+  const line = lineOf(myRide.line), pose = line && line.poses[myRide.bus];
   if (!pose) { myRide = null; syncRide(true); return 0; }
   const { p, c } = readView();
   const fwdAt = pose.fwd.clone().addScaledVector(p, -pose.fwd.dot(p)).normalize();
   // the view keeps its angle to the bus's heading (turned by hand in between, via applyLook)
   if (myRide.fwd) myRide.yaw = angleRight(myRide.fwd.clone().addScaledVector(p, -myRide.fwd.dot(p)).normalize(), c, p);
-  let amount = 0;
+  let amount = 0, du = 0, dv = 0;
   const mx = fw || sd ? sd : stickNow && stickNow.amount > 0 ? stickNow.x : 0, my = fw || sd ? fw : stickNow && stickNow.amount > 0 ? stickNow.y : 0;
   if (mx || my) {
+    myRide.exit = false;                                    // walking yourself cancels 下车
     amount = fw || sd ? 1 : stickNow.amount;
-    const mv = viewDir(mx, my), du = mv.dot(fwdAt), dv = mv.dot(pose.left);
-    const len = Math.hypot(du, dv) || 1;
-    [myRide.v, myRide.u] = clampDeck(myRide.v + dv / len * 3.0 * amount * dt, myRide.u + du / len * 3.0 * amount * dt);
+    const mv = viewDir(mx, my);
+    du = mv.dot(fwdAt); dv = mv.dot(pose.left);
+  } else if (myRide.exit) {
+    // to the rear door: across into the aisle, back down it, then into the door well
+    const atRear = Math.abs(myRide.u - BUS.REAR) < 0.06, inAisle = Math.abs(myRide.v) <= 0.31;
+    const [tu, tv] = atRear ? [BUS.REAR, -0.8] : inAisle ? [BUS.REAR, myRide.v] : [myRide.u, Math.max(-0.3, Math.min(0.3, myRide.v))];
+    du = tu - myRide.u; dv = tv - myRide.v;
+    if (Math.hypot(du, dv) > 0.02) amount = 1; else du = dv = 0;
+  }
+  if (amount) {
+    const len = Math.hypot(du, dv) || 1, step = Math.min(3.0 * amount * dt, Math.hypot(du, dv));
+    [myRide.v, myRide.u] = clampDeck(myRide.v + dv / len * step, myRide.u + du / len * step);
     myRide.face = Math.atan2(dv, du);
   }
   // overfull (two took the last seat at once): the later one steps off while the doors are open
   if (pose.state.stop !== null && isBumped(ridersNow(), line.name, myRide.bus, BUS.CAP, visitorId)) { alight(line, pose, '车满了，请等下一班'); return 0; }
   if (inRearWell(myRide.v, myRide.u)) {
     if (pose.state.stop !== null && root0Open(line, myRide.bus)) { alight(line, pose); return 0; }
-    showBusHint('车还在开，到站后再从后门下车', 1200);
+    if (!myRide.exit) showBusHint('车还在开，到站后再从后门下车', 1200);
   }
   const { dir, r } = deckPoint(pose, myRide.u, myRide.v);
   rideR = r;
@@ -4304,12 +4496,17 @@ function rideStep(dt, fw, sd) {
   heading = new THREE.Vector3().copy(turnTangent(dir, f2, -myRide.face));
   myRide.fwd = pose.fwd.clone();
   syncRide(false);
-  // the card: where we are, where next, how full
-  const st = pose.state, aboard = ridersOn(ridersNow(), line.name, myRide.bus).length;
+  // the card: where we are, where next, how full, and the two buttons
+  const st = pose.state, waiting = st.stop !== null && !st.leaving, aboard = ridersOn(ridersNow(), line.name, myRide.bus).length;
   rideCard.hidden = false;
-  rideCard.innerHTML = `<b style="background:${LINE_HEX[line.name]}">${line.name}路</b>` +
-    (st.stop !== null ? `<span>停靠 ${stopName(line, st.stop)} · ${Math.ceil(st.dwellLeft)} 秒后开</span>` : `<span>下一站 ${stopName(line, st.next)} · ${Math.ceil(st.eta)} 秒</span>`) +
-    `<small>车上 ${aboard}/${BUS.CAP} 人 · 到站后走到车尾后门下车</small>`;
+  rc.line.style.background = LINE_HEX[line.name];
+  setText(rc.line, `${line.name}路`);
+  setText(rc.now, st.leaving ? `关门 · 开往 ${stopName(line, (st.stop + 1) % line.stops.length)}` : waiting ? `停靠 ${stopName(line, st.stop)} · ${Math.ceil(st.dwellLeft)} 秒后开` : `下一站 ${stopName(line, st.next)} · ${Math.ceil(st.eta)} 秒`);
+  setText(rc.sub, `车上 ${aboard}/${BUS.CAP} 人`);
+  rc.go.hidden = !waiting;
+  if (waiting) { const g = goCheck(line, myRide.bus, serverNow()); rc.go.disabled = !g.ok; setText(rc.go, g.ok ? '立即发车' : `立即发车 · ${g.text}`); }
+  setText(rc.off, waiting ? (myRide.exit ? '下车中…' : '下车') : myRide.exit ? '到站下车 ✓' : '下站下车');
+  rc.off.setAttribute('aria-pressed', myRide.exit ? 'true' : 'false');
   return amount * 0.6;
 }
 const root0Open = (line, k) => (line.buses[k].userData.open ?? 0) > 0.6;
@@ -4356,6 +4553,7 @@ function frame() {
   updateTransit(dt);
   applyLook(dt);
   if (overviewOn && (fw || sd || (stickNow && stickNow.amount > 0) || autoWalk || travel)) setOverview(false);
+  if (!myRide && busIntent && (fw || sd || (stickNow && stickNow.amount > 0))) busIntent = null;
   if (myRide) walking = rideStep(dt, fw, sd);
   else if (fw || sd) { walking = moveBody(viewDir(sd, fw), 1, dt); setActive(null); }
   else if (stickNow && stickNow.amount > 0) walking = moveBody(viewDir(stickNow.x, stickNow.y), stickNow.amount, dt);
@@ -4514,6 +4712,7 @@ function frame() {
   loadWorld(start).then(() => {
     requestAnimationFrame(() => veil.classList.remove('on'));
     // ?debug: stand anywhere for screenshots and checks — dreamDebug.view('lake', [x, z], [lookX, lookZ], zoom, pitch)
+    let lastShift = 0;
     if (/[?&]debug\b/.test(location.search)) window.dreamDebug = {
       ready: true,
       view(key, at, look, zoom = 1.35, pitch = null) {
@@ -4522,6 +4721,7 @@ function frame() {
         if (overviewOn) setOverview(false);
         ov = 0; pitchGoal = null; lookPending = 0;
         writeView({ p, c: q.addScaledVector(p, -q.dot(p)).normalize() });
+        company.jumped();
         camZoom = zoom; zoomUser = zoom / 1.35; camReach = 1; if (pitch !== null) camPitch = pitch;
         renderer.shadowMap.needsUpdate = true;
       },
@@ -4534,6 +4734,12 @@ function frame() {
       stops() { return (W.lines || []).map(l => `${l.name}: ` + l.stops.map((st, i) => `${i}:${st.name}@${st.s.toFixed(0)}`).join(' ')).join('\n'); },
       /** jump the clock so bus k of a line has just arrived at stop i, and stand at its front door (or aboard) */
       freeze(t) { clockFreeze = t === undefined ? serverNow() : t; },
+      shift() { return lastShift; },
+      // a stop's shelter and front-door spot in a site's own coordinates
+      stopXZ(name, i, key) { const st = sites.find(o => o.key === key), l = lineOf(name), f = d => { const p = local(st, d); return p ? `[${p.x.toFixed(2)}, ${p.z.toFixed(2)}]` : 'off-site'; }; return `shelter ${f(l.stops[i].at)} door ${f(doorSpot(l, i))} roadZ ${st.roadZ}`; },
+      now() { return serverNow(); },
+      busAt(name, k, t) { refreshGo(serverNow()); const l = lineOf(name), st = l.tt.at(k, t, l.go); return `${st.stop === null ? 'move' : 'stop' + st.stop} s=${st.s.toFixed(2)} v=${st.v.toFixed(2)} left=${st.dwellLeft.toFixed(2)}`; },
+      online() { const st = lineOf('1314').stops[3].at; return company.presence ? company.presence.peers().map(q => `${q.id.slice(0, 4)}:${q.ride ? q.ride.line + '#' + q.ride.bus : '-'}:${q.go ? q.go.a : '-'}:p=${Array.isArray(q.p) ? (new THREE.Vector3(q.p[0], q.p[1], q.p[2]).normalize().angleTo(st) * R).toFixed(1) + 'u from 湖滨1314' : JSON.stringify(q.p)}`).join(' ') : 'no presence'; },
       // a moment when each [line, stop] has a bus standing there with between lo and hi seconds left; freezes the clock on it
       meet(specs, lo = 6, hi = 16) {
         const ls = specs.map(([n, i]) => [W.lines.find(x => x.name === n), i]);
@@ -4544,6 +4750,14 @@ function frame() {
       cam(zoom, pitch = null) { camZoom = zoom; zoomUser = zoom / 1.35; camReach = 1; if (pitch !== null) camPitch = pitch; renderer.shadowMap.needsUpdate = true; },
       ride() { return myRide && { ...myRide, fwd: undefined, card: rideCard.innerText }; },
       deck(u, v) { if (myRide) { myRide.u = u; myRide.v = v; } },
+      // the tap paths: the buttons near a stop, the ride card, a tap on a bus
+      acts() { return [...busActs.children].map(b => b.textContent).join(' | ') + (busIntent ? ` [intent ${busIntent.line}:${busIntent.i}${busIntent.waiting ? ' waiting' : ''}]` : ''); },
+      act(n = 0) { busActs.children[n] && busActs.children[n].click(); },
+      card() { return rideCard.hidden ? '' : `${rc.line.textContent} | ${rc.now.textContent} | ${rc.sub.textContent} | go:${rc.go.hidden ? '-' : (rc.go.disabled ? 'off ' : 'on ') + rc.go.textContent} | off:${rc.off.textContent}`; },
+      pressGo() { rc.go.click(); },
+      pressOff() { rc.off.click(); },
+      tapBus(name, k) { tapBus(lineOf(name), k); },
+      goHeard() { refreshGo(serverNow()); return [...goHeard.values()].map(e => JSON.stringify(e)).join(' ') + ' accepted: ' + W.lines.map(l => `${l.name}:${l.go.length}`).join(' '); },
       // can you stand where you board (front door) and where you are set down (rear door)? clearance >= 0 is yes
       stopWalk() { return W.lines.map(l => l.stops.map(st => { const t = l.tt.legs[st.i].t0 + 1 - 0 * l.tt.period, k = 0, pose = busPose(l, k, t - k * l.tt.period / l.tt.buses); return `${l.name} ${st.name}: ` + [deckPoint(pose, BUS.FRONT, -BUS.W / 2 - 0.62, 0).dir, deckPoint(pose, BUS.REAR, -BUS.W / 2 - 0.9, 0).dir].map(d => walk.clearance(d).toFixed(2)).join(' '); }).join('\n')).join('\n'); },
       // stand in the lane at a stop, facing its shelter
@@ -4552,6 +4766,7 @@ function frame() {
         const p = d.clone().multiplyScalar(R).addScaledVector(r, 0.3).addScaledVector(l.route.at(st.s).t, -1.2).normalize();
         stopTravel(); heading = null;
         writeView({ p, c: r.clone().addScaledVector(p, -r.dot(p)).normalize() });
+        company.jumped();
         camZoom = zoom; zoomUser = zoom / 1.35; camReach = 1; camPitch = pitch; renderer.shadowMap.needsUpdate = true;
       },
       // ground height across each stop: road centre, lane, shelter front/back, 3 units beyond
@@ -4562,6 +4777,7 @@ function frame() {
         const l = W.lines.find(x => x.name === name), t = serverNow(), want = l.tt.legs[i].t0 + after - k * l.tt.period / l.tt.buses;
         const shift = ((((want - t) % l.tt.period) + l.tt.period) % l.tt.period);
         if (clockFreeze !== null) clockFreeze += shift; else serverOffset += shift * 1000;
+        lastShift = shift;
         updateTransit(0.016);
         const pose = l.poses[k], door = deckPoint(pose, BUS.FRONT, -BUS.W / 2 - 1.6, 0).dir;
         stopTravel(); heading = null;
