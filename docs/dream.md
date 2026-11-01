@@ -213,6 +213,24 @@ of the band), which would take ~150k ground vertices off the build.
 `overview(on)`, `settle()` (skip the easing), `stats()`, `budget()` (triangles on the planet by kind),
 `drawn()` (triangles drawn in the current view by kind), `tags()` and `walkable(site, points)`.
 
+## Done: paths through the woods, and trees that get out of the way
+
+Around 西湖 the hill forest used to be planted without looking at the lanes, so near 雷峰塔 big trees stood on
+and beside 南山路 and the avatar disappeared behind their crowns.
+
+- **Clearings.** Every lake lane is recorded in `LAKE_LANES` when it is painted (`laneIn`); `laneD(p)` is the
+  distance to the nearest one. Hill-forest trees keep their centres 3.6 units from a lane (about 2.5 units of
+  open ground once the crowns overhang), meadow trees in the lake's area too; bushes and rocks 1.6. Clearings
+  round 雷峰塔 (6), 保俶塔 (4), 双峰's pagodas and the stele pavilions (3.5) and 净慈寺. Along 北山街 and 南山路,
+  where they run under the hills, low street trees stand every ~5 units on alternate sides, 2.7 units out.
+- **See-through trees.** Trees (all `cut: true` toon materials: the three tree variants, willows, peaches)
+  live on `TREE_LAYER` (2). In the vertex shader each tree works out from its crown's centre whether it is
+  nearer the camera than the avatar and over it on screen (`CUT_VERT`), and fades as a whole with an ordered
+  4×4 dither: gone right over the avatar, thinning toward a circle ~2.1 units round it. Per tree rather than
+  per pixel, because a crown cut open per pixel showed its dark inside. The line pass draws layer 0 with
+  `normalMat` and then the tree layer with `normalCutMat` (the same fade injected into MeshNormalMaterial), so
+  a faded tree leaves no ink. Shadows are untouched. `updateCut()` sets the uniforms once a frame.
+
 ## Next
 
 1. **Pose and motion modes.** Make the pose `{ p, f }` the single source of truth and derive the planet

@@ -312,6 +312,7 @@ function placeCamera() {
 }
 placeCamera();
 camera.layers.enable(1);
+camera.layers.enable(2);   // TREE_LAYER (trees)
 
 const sun = new THREE.DirectionalLight(0xffffff, 1);
 sun.castShadow = true;
@@ -469,10 +470,45 @@ float vn(vec3 x){ vec3 i = floor(x), f = fract(x); f = f*f*(3.0-2.0*f);
              mix(mix(h3(i+vec3(0,0,1)), h3(i+vec3(1,0,1)), f.x), mix(h3(i+vec3(0,1,1)), h3(i+vec3(1,1,1)), f.x), f.y), f.z); }
 float fbm(vec3 p){ return 0.55*vn(p) + 0.3*vn(p*2.13+3.1) + 0.15*vn(p*4.37+7.7); }
 `;
-
+// The see-through window: a tree whose crown is nearer the camera than the avatar and near it on screen fades as
+// a whole, with an ordered dither (screen-door transparency): gone when it sits right over the avatar, thinning
+// toward the rim of a circle round it. Deciding per tree (from its crown's centre, in the vertex shader) rather
+// than per pixel keeps a crown from being half cut open, which showed its dark inside. Used in both the colour
+// and the line pass, so a faded tree leaves no ink. uCutPos/uCutR/uCutRes are in drawing-buffer pixels, uCutZ is
+// the avatar's view depth; updateCut() sets them every frame.
+const CUT_VERT = /* glsl */`
+#ifdef CUT
+  {
+    #ifdef USE_INSTANCING
+      mat4 cm = modelViewMatrix * instanceMatrix;
+    #else
+      mat4 cm = modelViewMatrix;
+    #endif
+    vec4 cc = cm * vec4(0.0, 1.3, 0.0, 1.0);                       // the crown's middle
+    float cz = max(0.3, -cc.z);
+    vec4 cp = projectionMatrix * cc;
+    vec2 sp = (cp.xy / cp.w * 0.5 + 0.5) * uCutRes;
+    float crown = 1.1 * length(cm[0].xyz) / cz * uCutRes.y * 0.5 * projectionMatrix[1][1];   // its radius on screen
+    float off = max(0.0, length(sp - uCutPos) - crown) / uCutR;
+    vCut = (1.0 - smoothstep(0.35, 1.0, off)) * smoothstep(0.4, 1.6, uCutZ - cz);
+  }
+#endif
+`;
+const CUT_GLSL = /* glsl */`
+#ifdef CUT
+  varying float vCut;
+  float bayer2(vec2 a){ a = floor(a); return fract(a.x / 2.0 + a.y * a.y * 0.75); }
+  float bayer4(vec2 a){ return bayer2(0.5 * a) * 0.25 + bayer2(a); }
+  void cutWindow(){ if (vCut > 0.001 && vCut > bayer4(gl_FragCoord.xy)) discard; }
+#else
+  void cutWindow(){}
+#endif
+`;
+const CUT_UNIFORMS_GLSL = 'uniform vec2 uCutPos; uniform float uCutR; uniform float uCutZ; uniform vec2 uCutRes; varying float vCut;';
 const G = {   // uniforms shared by every toon material
   uToon: { value: 1 }, uBreak: { value: 1 }, uPlanetInv: { value: new THREE.Matrix4() }, uInk: { value: new THREE.Color(0x2a3238) },
   uYardEx: { value: new THREE.Vector3(0, 0, 1) }, uTime: { value: 0 }, uR: { value: R }, uWater: { value: WATER },
+  uCutPos: { value: new THREE.Vector2(-1e4, -1e4) }, uCutR: { value: 1 }, uCutZ: { value: 0 }, uCutRes: { value: new THREE.Vector2(1, 1) },
 };
 
 const TOON_VERT = /* glsl */`
@@ -480,6 +516,9 @@ const TOON_VERT = /* glsl */`
 #include <shadowmap_pars_vertex>
 attribute float aPath; attribute float aYard; attribute float aRoad;
 varying vec3 vN; varying vec3 vW; varying vec3 vObj; varying vec3 vCol; varying float vPath; varying float vYard; varying float vRoad;
+#ifdef CUT
+  ${CUT_UNIFORMS_GLSL}
+#endif
 void main(){
   #include <beginnormal_vertex>
   #include <defaultnormal_vertex>
@@ -487,6 +526,7 @@ void main(){
   #include <project_vertex>
   #include <worldpos_vertex>
   #include <shadowmap_vertex>
+  ${CUT_VERT}
   vN = normalize(transformedNormal);
   vec4 wp = vec4(transformed, 1.0);
   #ifdef USE_INSTANCING
@@ -516,7 +556,9 @@ uniform float uToon; uniform float uBreak; uniform float uBreakMul; uniform floa
 uniform mat4 uPlanetInv; uniform vec3 uYardEx; uniform float uTime; uniform float uR; uniform float uWater;
 varying vec3 vN; varying vec3 vW; varying vec3 vObj; varying vec3 vCol; varying float vPath; varying float vYard; varying float vRoad;
 ${NOISE_GLSL}
+${CUT_GLSL}
 void main(){
+  cutWindow();
   vec3 N = normalize(vN);
   vec3 L = directionalLights[0].direction;
   float ndl = dot(N, L);
@@ -632,6 +674,7 @@ function toon(hex, opts = {}) {
   const defines = {};
   if (opts.kind) defines[opts.kind] = '';
   if (opts.local) defines.LOCALNOISE = '';
+  if (opts.cut) defines.CUT = '';
   if (opts.defs) opts.defs.forEach(x => { defines[x] = ''; });
   const m = new THREE.ShaderMaterial({ uniforms, defines, vertexShader: TOON_VERT, fragmentShader: TOON_FRAG, lights: true, side: opts.side ?? THREE.FrontSide });
   matCache.set(key, m);
@@ -1325,6 +1368,16 @@ function setMyLook(look) {
 const rtColor = new THREE.WebGLRenderTarget(1, 1, { samples: 4 });
 const rtNormal = new THREE.WebGLRenderTarget(1, 1, { depthTexture: new THREE.DepthTexture(1, 1) });
 const normalMat = new THREE.MeshNormalMaterial();
+// trees live on their own layer (TREE_LAYER) and go through the line pass with this one, which cuts the window
+const TREE_LAYER = 2;
+const normalCutMat = new THREE.MeshNormalMaterial();
+normalCutMat.onBeforeCompile = sh => {
+  Object.assign(sh.uniforms, { uCutPos: G.uCutPos, uCutR: G.uCutR, uCutZ: G.uCutZ, uCutRes: G.uCutRes });
+  sh.vertexShader = '#define CUT\n' + sh.vertexShader.replace('#include <common>', '#include <common>\n' + CUT_UNIFORMS_GLSL)
+    .replace('#include <project_vertex>', '#include <project_vertex>\n' + CUT_VERT);
+  sh.fragmentShader = '#define CUT\n' + CUT_GLSL + sh.fragmentShader.replace('void main() {', 'void main() {\n  cutWindow();');
+};
+normalCutMat.customProgramCacheKey = () => 'cut';
 // stand-ins for the normal pass (it draws everything with normalMat), so loading can link its shader
 // variants — plain, instanced, instanced with colours — ahead of the first frame too
 const normalProbe = new THREE.Scene();
@@ -1334,6 +1387,8 @@ const normalProbe = new THREE.Scene();
   g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(9), 3));
   const ic = new THREE.InstancedMesh(g, normalMat, 1); ic.setColorAt(0, new THREE.Color());
   [new THREE.Mesh(g, normalMat), new THREE.InstancedMesh(g, normalMat, 1), ic].forEach(m => { m.castShadow = m.receiveShadow = true; normalProbe.add(m); });
+  const icc = new THREE.InstancedMesh(g, normalCutMat, 1); icc.setColorAt(0, new THREE.Color());
+  [new THREE.InstancedMesh(g, normalCutMat, 1), icc].forEach(m => { m.castShadow = m.receiveShadow = true; normalProbe.add(m); });
 }
 
 const post = new THREE.ShaderMaterial({
@@ -1595,14 +1650,22 @@ STONE_RECTS.push([SPORTS, -4.3, 4.3, 2.4, SPORTS.roadZ - 0.7]);
 STONE_CIRCS.push([SPORTS, DRUM.cx, DRUM.cz, DRUM.r + 0.7]);
 arcsIn(XIXI, [[0, XIXI.roadZ], [0.4, 6.0]], 0.022, STONES);
 arcsIn(XIXI, [[-6.8, -1.95], [-2.0, -1.9], [3.0, -2.1], [5.2, -2.05]], 0.013, STONES);
-// 西湖: 湖滨 promenade, 北山街 and 南山路 along the shore, lanes on the causeways and 杨公堤, paths in from the ring road
-arcsIn(LAKE, mpl([[1287, 140], [1312, 175], [1362, 240], [1412, 330], [1462, 435], [1427, 520], [1362, 620], [1292, 720], [1227, 815], [1212, 900], [1210, 1030], [1225, 1175]]), 0.022, STONES);
-arcsIn(LAKE, mpl([[560, 445], [620, 428], [690, 416], [740, 374], [780, 354], [860, 304], [930, 246], [1000, 198], [1060, 174], [1110, 166], [1180, 139], [1265, 114]]), 0.02, STONES);
-arcsIn(LAKE, mpl([[1225, 1185], [1110, 1192], [1010, 1225], [930, 1282], [880, 1310], [760, 1295], [650, 1272]]), 0.02, STONES);
-arcsIn(LAKE, SUDI, 0.015, STONES); arcsIn(LAKE, BAIDI, 0.015, STONES); arcsIn(LAKE, YGD, 0.02, STONES);
-[[YF.shore[0], 55.2], [QWC[0] + 5, 34], [66.4, 34], [-54, 29.2], [12, 37.8], [-31, 33]].forEach(([x, z]) => arcsIn(LAKE, [[x, LAKE.roadZ], [x, z]], 0.02, STONES));
-arcsIn(LAKE, [[QWC[0], QWC[1] - 3.1], [QWC[0], QWC[1] - 13]], 0.02, STONES);
-arcsIn(LAKE, [[JINGCI[0] + 3.4, JINGCI[1]], [JINGCI[0] + 5.1, JINGCI[1]]], 0.02, STONES);
+// 西湖: 湖滨 promenade, 北山街 and 南山路 along the shore, lanes on the causeways and 杨公堤, paths in from the ring road.
+// Every lane is also kept in LAKE_LANES, so the hill forest can keep clear of it.
+const LAKE_LANES = [];
+const laneD = p => { let m = Infinity; for (const l of LAKE_LANES) if (p.x > l.x0 && p.x < l.x1 && p.z > l.z0 && p.z < l.z1) m = Math.min(m, polyD(p, l.pts)); return m; };
+const laneIn = (pts, hw) => {
+  arcsIn(LAKE, pts, hw, STONES);
+  const b = pts.reduce((o, [x, z]) => ({ x0: Math.min(o.x0, x), x1: Math.max(o.x1, x), z0: Math.min(o.z0, z), z1: Math.max(o.z1, z) }), { x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity });
+  LAKE_LANES.push({ pts, x0: b.x0 - 8, x1: b.x1 + 8, z0: b.z0 - 8, z1: b.z1 + 8 });
+};
+laneIn(mpl([[1287, 140], [1312, 175], [1362, 240], [1412, 330], [1462, 435], [1427, 520], [1362, 620], [1292, 720], [1227, 815], [1212, 900], [1210, 1030], [1225, 1175]]), 0.022);
+laneIn(mpl([[560, 445], [620, 428], [690, 416], [740, 374], [780, 354], [860, 304], [930, 246], [1000, 198], [1060, 174], [1110, 166], [1180, 139], [1265, 114]]), 0.02);
+laneIn(mpl([[1225, 1185], [1110, 1192], [1010, 1225], [930, 1282], [880, 1310], [760, 1295], [650, 1272]]), 0.02);
+laneIn(SUDI, 0.015); laneIn(BAIDI, 0.015); laneIn(YGD, 0.02);
+[[YF.shore[0], 55.2], [QWC[0] + 5, 34], [66.4, 34], [-54, 29.2], [12, 37.8], [-31, 33]].forEach(([x, z]) => laneIn([[x, LAKE.roadZ], [x, z]], 0.02));
+laneIn([[QWC[0], QWC[1] - 3.1], [QWC[0], QWC[1] - 13]], 0.02);
+laneIn([[JINGCI[0] + 3.4, JINGCI[1]], [JINGCI[0] + 5.1, JINGCI[1]]], 0.02);
 STONE_CIRCS.push([LAKE, YF.shore[0] + YF.n[0] * -2.6, YF.shore[1] + YF.n[1] * -2.6, 3.4]);
 STONE_RECTS.push([LAKE, APPLE[0] - 3.6, APPLE[0] + 3.6, LAKE.roadZ + 0.8, APPLE[1] + 2.4]);
 STONE_RECTS.push([LAKE, QWC[0] - 3.4, QWC[0] + 3.4, QWC[1] - 2.9, QWC[1] + 2.9], [LAKE, JINGCI[0] - 3.2, JINGCI[0] + 3.2, JINGCI[1] - 3.6, JINGCI[1] + 3.6]);
@@ -2187,6 +2250,16 @@ function buildLake() {
   along(YGD, YGD_S, YGD_BR, 2.0, 1.25, ['willow', 'willow', 'peach']);
   const e0 = lakeTrees.length, EAST = mpl([[1265, 138], [1290, 175], [1340, 240], [1390, 330], [1440, 435], [1405, 520], [1340, 620], [1270, 720], [1205, 815], [1190, 900], [1188, 1030], [1205, 1160]]);
   along(EAST, polyLen(EAST), [], 3.2, 0, ['willow']);
+  // 北山街 and 南山路 under the hills: low street trees every ~5 units, alternating sides, 2.7 units out
+  for (const ln of [mpl([[560, 445], [620, 428], [690, 416], [740, 374], [780, 354], [860, 304], [930, 246], [1000, 198], [1060, 174], [1110, 166], [1180, 139], [1265, 114]]),
+    mpl([[1225, 1185], [1110, 1192], [1010, 1225], [930, 1282], [880, 1310], [760, 1295], [650, 1272]])]) {
+    const cum = polyLen(ln);
+    for (let s = 2, k = 0; s < cum.at(-1) - 1; s += 5, k++) {
+      const { p, dir } = polyAtS(ln, cum, s), sd = k % 2 ? 2.7 : -2.7, x = p[0] - dir[1] * sd, z = p[1] + dir[0] * sd;
+      if (terrainH(L(LAKE, x, z)) < 0.25 || Math.hypot(x - LEIFENG[0], z - LEIFENG[1]) < 6 || Math.hypot(x - BAOCHU[0], z - BAOCHU[1]) < 4) continue;
+      heroTrees.push([LAKE, x, z, 'small']);
+    }
+  }
   for (let i = e0; i < lakeTrees.length; i++) lakeTrees[i][1] += 1.3;   // the east-shore row, just inland
   for (let x = LWYY.x0; x <= LWYY.x1; x += 2.4) for (let z = LWYY.z0 + 5.0; z <= LWYY.z1; z += 2.4) if (rand() < 0.8) lakeTrees.push([x + (rand() - 0.5) * 2.0, z + (rand() - 0.5) * 2.0, rand() < 0.15 ? 'peach' : 'willow']);
 }
@@ -2237,6 +2310,7 @@ siteKeepout = function (d, m = 0) {
   if ((p = local(LAKE, d)) && inRect(p, LAKE_AREA.x0, LAKE_AREA.x1, LAKE_AREA.z0, LAKE_AREA.z1)) {
     const sd = lakeSd(p);
     if (sd < 0.4 + m * 2 || polyD(p, YGD) < 1.3 + m) return true;
+    if (m >= 0.45 ? laneD(p) < 3.6 : m > 0 && laneD(p) < 1.6) return true;   // trees / bushes and rocks
     if (m > 0 && p.z > 18 && sd < 30 && p.x > LK_BOX.x0 && p.x < LK_BOX.x1 + 12) return true;   // the city side of the shore: planted by hand
     if (p.z > LAKE.roadZ - 1 && Math.abs(p.x - APPLE[0]) < 5) return true;
   }
@@ -2252,9 +2326,11 @@ await slice();
   // near trees (courtyards, plazas, islands) get detailed crowns; the many meadow and hill trees lighter ones
   const near = variants.map(() => []), far = variants.map(() => []);
   const meadow = scatterDirs(Math.round(240 * AREA * TREE_SHARE), 0.05, 0.5, 0.02, 90000 * TRIES, null, treeFill);
-  const lakeClear = p => Math.hypot(p.x - LEIFENG[0], p.z - LEIFENG[1]) > 3.4 && Math.hypot(p.x - BAOCHU[0], p.z - BAOCHU[1]) > 2.0
-    && !SHUANGFENG.some(([x, z]) => Math.hypot(p.x - x, p.z - z) < 1.0) && !Object.values(STELES).some(([x, z]) => Math.hypot(p.x - x, p.z - z) < 1.0)
-    && !(Math.abs(p.x - JINGCI[0]) < 4.4 && Math.abs(p.z - JINGCI[1]) < 4.8) && polyD(p, YGD) > 1.8;
+  // the hill forest leaves ~2.5 units of open ground beside every lane (tree centres 3.6 away: crowns overhang)
+  // and a clearing round each landmark
+  const lakeClear = p => Math.hypot(p.x - LEIFENG[0], p.z - LEIFENG[1]) > 6 && Math.hypot(p.x - BAOCHU[0], p.z - BAOCHU[1]) > 4
+    && !SHUANGFENG.some(([x, z]) => Math.hypot(p.x - x, p.z - z) < 3.5) && !Object.values(STELES).some(([x, z]) => Math.hypot(p.x - x, p.z - z) < 3.5)
+    && !(Math.abs(p.x - JINGCI[0]) < 6.5 && Math.abs(p.z - JINGCI[1]) < 7) && laneD(p) > 3.6;
   const forest = scatterIn(LAKE, 1500, -100, 100, -104, 32, p => terrainH(L(LAKE, p.x, p.z)) > 0.8 && lakeClear(p), 0.095);
   const islets = scatterIn(XIXI, 40, -9.5, 9.5, -9.5, 5.4, p => Math.hypot(p.x, p.z) < 9.4 && !(p.z > 0.4 && Math.abs(p.x - 1) < 2.8) && !(p.z > -4.8 && p.z < 1.4 && p.x > -6.4 && p.x < 4.6) && polyD(p, BOARDWALK) > 1.0
     && !XIXI_HOUSES.some(([x, z, w, d]) => Math.abs(p.x - x) < w / 2 + 0.7 && Math.abs(p.z - z) < d / 2 + 0.9) && xixiWater(p) < 0.05, 0.05);
@@ -2266,11 +2342,11 @@ await slice();
     const tg = new THREE.CylinderGeometry(vt.trunk[0], vt.trunk[1], vt.trunk[2], 7, 1); tg.translate(0, vt.trunk[2] / 2, 0);
     [[near[vi], 2], [far[vi], 1]].forEach(([list, detail]) => {
       if (!list.length) return;
-      const trunks = new THREE.InstancedMesh(tg, toon(0x8a6a52, { shade: 0x5a4c50 }), list.length);
-      const crowns = new THREE.InstancedMesh(canopy(vt.clumps, vi * 11, detail), toon(0x5fa65a, { kind: 'FOLIAGE', shade: 0x2f6f5e, breakMul: 0.75, noiseScale: 1.4 }), list.length);
+      const trunks = new THREE.InstancedMesh(tg, toon(0x8a6a52, { shade: 0x5a4c50, cut: true }), list.length);
+      const crowns = new THREE.InstancedMesh(canopy(vt.clumps, vi * 11, detail), toon(0x5fa65a, { kind: 'FOLIAGE', shade: 0x2f6f5e, breakMul: 0.75, noiseScale: 1.4, cut: true }), list.length);
       const col = new THREE.Color();
       list.forEach((m, i) => { trunks.setMatrixAt(i, m); crowns.setMatrixAt(i, m); crowns.setColorAt(i, col.setHex(leafTints[i % leafTints.length])); });
-      [trunks, crowns].forEach(o => { o.castShadow = o.receiveShadow = true; addObj(o); });
+      [trunks, crowns].forEach(o => { o.castShadow = o.receiveShadow = true; o.layers.set(TREE_LAYER); addObj(o); });
     });
   });
 
@@ -2288,18 +2364,18 @@ await slice();
       parts.push(c);
     }
     const crown = blobify(mergeGeometries(parts.map(prep)), new THREE.Vector3(0, 1.5, 0), 0.25);
-    const wt = new THREE.InstancedMesh(trunk, toon(0x7a6150, { shade: 0x56484c }), willowM.length);
-    const wc = new THREE.InstancedMesh(crown, toon(0xa3cf6e, { kind: 'FOLIAGE', shade: 0x5e9264, breakMul: 0.6, noiseScale: 1.6 }), willowM.length);
+    const wt = new THREE.InstancedMesh(trunk, toon(0x7a6150, { shade: 0x56484c, cut: true }), willowM.length);
+    const wc = new THREE.InstancedMesh(crown, toon(0xa3cf6e, { kind: 'FOLIAGE', shade: 0x5e9264, breakMul: 0.6, noiseScale: 1.6, cut: true }), willowM.length);
     willowM.forEach((m, i) => { wt.setMatrixAt(i, m); wc.setMatrixAt(i, m); });
-    [wt, wc].forEach(o => { o.castShadow = o.receiveShadow = true; addObj(o); });
+    [wt, wc].forEach(o => { o.castShadow = o.receiveShadow = true; o.layers.set(TREE_LAYER); addObj(o); });
   }
   {
     const trunk = new THREE.CylinderGeometry(0.05, 0.08, 0.8, 6); trunk.translate(0, 0.4, 0);
     const crown = canopy([[0, 1.0, 0, 0.48], [0.3, 0.86, 0.1, 0.34], [-0.28, 0.9, -0.1, 0.35]], 61);
-    const pt = new THREE.InstancedMesh(trunk, toon(0x7a5a4a, { shade: 0x56484c }), peachM.length);
-    const pc = new THREE.InstancedMesh(crown, toon(0xf4b4c4, { kind: 'FOLIAGE', shade: 0xc3809a, breakMul: 0.6, noiseScale: 1.8 }), peachM.length);
+    const pt = new THREE.InstancedMesh(trunk, toon(0x7a5a4a, { shade: 0x56484c, cut: true }), peachM.length);
+    const pc = new THREE.InstancedMesh(crown, toon(0xf4b4c4, { kind: 'FOLIAGE', shade: 0xc3809a, breakMul: 0.6, noiseScale: 1.8, cut: true }), peachM.length);
     peachM.forEach((m, i) => { pt.setMatrixAt(i, m); pc.setMatrixAt(i, m); });
-    [pt, pc].forEach(o => { o.castShadow = o.receiveShadow = true; addObj(o); });
+    [pt, pc].forEach(o => { o.castShadow = o.receiveShadow = true; o.layers.set(TREE_LAYER); addObj(o); });
   }
   {
     const spots = [[3.7, -2.9], [-7.6, 1.6], [7.2, -1.9]];
@@ -3477,6 +3553,18 @@ function setLowTier(t) {
 
 const shadowQ = new THREE.Quaternion();
 let shadowTick = 0;
+const cutV = new THREE.Vector3(), CUT_RADIUS = 2.1;   // world units round the avatar
+function updateCut() {
+  camera.updateMatrixWorld();
+  cutV.set(0, me.root.position.y + 0.6, 0).applyMatrix4(camera.matrixWorldInverse);
+  const depth = -cutV.z;
+  cutV.set(0, me.root.position.y + 0.6, 0).project(camera);
+  const w = rtColor.width, h = rtColor.height;
+  G.uCutPos.value.set((cutV.x * 0.5 + 0.5) * w, (cutV.y * 0.5 + 0.5) * h);
+  G.uCutZ.value = depth;
+  G.uCutRes.value.set(w, h);
+  G.uCutR.value = CUT_RADIUS / Math.max(0.5, depth) * (h / 2) / Math.tan(camera.fov * D2R / 2);
+}
 function frame() {
   requestAnimationFrame(frame);
   if (building) { clock.getDelta(); return; }
@@ -3587,7 +3675,14 @@ function frame() {
   // pass 1: normals + depth for the line pass (no grass/flowers); skipped when lines are off
   camera.layers.set(0);
   renderer.setRenderTarget(rtNormal); renderer.setClearColor(0x000000, 0); renderer.clear();
-  if (post.uniforms.uLine.value > 0.5) { scene.overrideMaterial = normalMat; renderer.render(scene, camera); scene.overrideMaterial = null; }
+  updateCut();
+  if (post.uniforms.uLine.value > 0.5) {
+    scene.overrideMaterial = normalMat; renderer.render(scene, camera);
+    camera.layers.set(TREE_LAYER); scene.overrideMaterial = normalCutMat;
+    renderer.autoClear = false; renderer.render(scene, camera); renderer.autoClear = true;
+    scene.overrideMaterial = null; camera.layers.set(0);
+  }
+  camera.layers.enable(TREE_LAYER);
   if (lowTier < 1) camera.layers.enable(1);
   // pass 2: colour (shadow map redrawn once per frame, here). In an overview the wide shadow box is costly
   // and nothing big moves under it unless the view turns, so it is redrawn then, or every sixth frame.
