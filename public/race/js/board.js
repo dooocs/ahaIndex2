@@ -34,11 +34,11 @@ export const nickname = () => LS.get('race.nick') || '';
 export const setNickname = n => LS.set('race.nick', n);
 
 // 本机最佳（离线也有）
-export function localBest() { try { return JSON.parse(LS.get('race.best.v2') || 'null'); } catch { return null; } }
+export function localBest() { try { return JSON.parse(LS.get('race.best.v3') || 'null'); } catch { return null; } }
 export function saveLocalBest(total, lap) {
   const b = localBest() || {};
   const out = { total: Math.min(b.total ?? Infinity, total), lap: Math.min(b.lap ?? Infinity, lap) };
-  LS.set('race.best.v2', JSON.stringify(out));
+  LS.set('race.best.v3', JSON.stringify(out));
   return { out, newTotal: total < (b.total ?? Infinity), newLap: lap < (b.lap ?? Infinity) };
 }
 
@@ -65,7 +65,7 @@ export async function submit({ nick, laps }) {
   const total_ms = lap_ms.reduce((a, b) => a + b, 0);
   await rest('race_scores', {
     method: 'POST', headers: { Prefer: 'return=minimal' },
-    body: JSON.stringify({ player_key: playerKey(), nickname: nick, laps: lap_ms.length, lap_ms, total_ms, best_lap_ms: Math.min(...lap_ms), version: '2' }),
+    body: JSON.stringify({ player_key: playerKey(), nickname: nick, laps: lap_ms.length, lap_ms, total_ms, best_lap_ms: Math.min(...lap_ms), version: '3' }),
   });
   return myBest();
 }

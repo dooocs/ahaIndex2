@@ -5,7 +5,7 @@ import { animateCar, TUNE } from './car.js';
 import { damp } from './noise.js';
 import { speedProfile } from './line.js';
 
-export const AI_TUNE = { aiLat: 8.4, aiBrake: 9.5 };   // AI 走线完美，所以抓地和刹车给得比玩家低：纯抓地开干净大约排中间，会漂移才能赢
+export const AI_TUNE = { aiLat: 17.5, aiBrake: 10.6 };   // AI 跟随街机抓地提速，但高手可通过走线、控漂与喷气胜出。
 
 export const AI_DRIVERS = [
   { name: '白娘子', body: 0xf3efe6, trim: 0x9ccfd8, helmet: 0xffffff, skill: 1.0 },

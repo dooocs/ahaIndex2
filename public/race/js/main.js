@@ -8,7 +8,7 @@ import { makePilot } from './pilot.js';
 import { buildTerrain, WATER } from './terrain.js';
 import { classify, buildTrackMeshes, cornerSigns } from './trackMesh.js';
 import { buildScenery, buildBoats, updateLOD } from './scenery.js';
-import { buildCarModel, PlayerCar, IDLE } from './car.js';
+import { buildCarModel, PlayerCar, IDLE, TUNE } from './car.js';
 import { AICar, AI_DRIVERS } from './ai.js';
 import { Smoke, Skids } from './effects.js';
 import { Sound } from './audio.js';
@@ -127,7 +127,7 @@ async function build() {
   prog(0, 0.35)(1);
   classify(track);
   buildTrackMeshes(track, scene);
-  cornerSigns(track, scene);
+  cornerSigns(track, scene, TUNE.latGrip);
   // 杨公堤里六桥的名字：按经过顺序（由北往南）
   const yang = (track.bridgeRuns || []).filter(([a]) => track.px[a % track.N] < -380).sort((p, q) => p[0] - q[0]);
   yang.forEach(([a, b], k) => SPOTS.push({ d: ((a + b) / 2) * track.ds - 12, name: LY.YANG_BRIDGES[k] || '', small: true }));
