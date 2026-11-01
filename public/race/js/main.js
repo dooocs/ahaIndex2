@@ -40,6 +40,7 @@ const sun = new THREE.DirectionalLight(0xffffff, 1);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
 Object.assign(sun.shadow.camera, { left: -55, right: 55, top: 55, bottom: -55, near: 1, far: 400 });
+sun.shadow.camera.layers.enable(1);   // 柳条在第 1 层（不描线），影子照样要投
 sun.shadow.bias = -0.0008; sun.shadow.normalBias = 0.06; sun.shadow.radius = 3;
 scene.add(sun, sun.target);
 const post = createPost(camera);
@@ -164,12 +165,24 @@ function ranking() { return [...cars].sort((a, b) => (a.finished && b.finished ?
 
 $('start').addEventListener('click', () => startRace());
 $('again').addEventListener('click', () => { $('result').hidden = true; resetRace(); startRace(); });
-$('mute').addEventListener('click', () => { sound.setOn(!sound.on); $('mute').classList.toggle('off', !sound.on); });
+// 声音：浏览器要用户点一下才肯出声，所以标题页上喇叭先显示“开音乐”，点了就开始放；关掉的选择记在本机
+const muteKey = 'race.mute';
+try { sound.on = localStorage.getItem(muteKey) !== '1'; } catch { /* 无痕模式 */ }
+const syncMute = () => { const on = !!sound.ctx && sound.on; $('mute').classList.toggle('off', !on); $('mute').classList.toggle('short', state !== 'title'); $('mute').title = on ? '关掉声音（M）' : '打开声音和音乐（M）'; };
+$('mute').addEventListener('click', () => {
+  const turnOn = !(sound.ctx && sound.on);
+  sound.setOn(turnOn);
+  if (turnOn) sound.start();
+  try { localStorage.setItem(muteKey, turnOn ? '0' : '1'); } catch { /* 无痕模式 */ }
+  $('mute').classList.remove('hint');
+  syncMute(); $('mute').blur();   // 别让空格（喷氮气）再“按”到这个按钮
+});
 function startRace() {
-  sound.start();
+  sound.start(); $('mute').classList.remove('hint');
   $('title').hidden = true; $('hud').hidden = false;
   if (state === 'title' || state === 'finish') resetRace();
   state = 'count'; countT = Q.has('skipcount') ? 0.61 : 3.6; lastCount = 4;
+  syncMute();
   canvas.focus();
 }
 let lastCount = 4;
