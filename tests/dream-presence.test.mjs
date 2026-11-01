@@ -108,6 +108,21 @@ test('switching planets is visible to others', async () => {
   w.done();
 });
 
+test('the bus someone rides is shared, and cleared when they get off', async () => {
+  const w = world();
+  const a = w.join('a'), b = w.join('b');
+  await wait(80);
+  assert.equal(b.peers()[0].ride, null);
+  const ride = { line: '1314', bus: 2, since: 1000.5, u: 2.75, v: -0.7 };
+  a.setProfile({ ride });
+  await wait(40);
+  assert.deepEqual(b.peers()[0].ride, ride);
+  a.setProfile({ ride: null });
+  await wait(40);
+  assert.equal(b.peers()[0].ride, null);
+  w.done();
+});
+
 test('a late pose after someone left does not bring them back', async () => {
   const w = world();
   const a = w.join('a'), b = w.join('b');

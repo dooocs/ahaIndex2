@@ -160,6 +160,22 @@
   .who button:hover { background: rgba(31, 111, 120, 0.1); }
   .who button[aria-pressed="true"] { background: var(--accent); color: #f4f7f2; }
   .who button:focus-visible { outline: 2px solid var(--sun); outline-offset: 1px; }
+  /* on a bus: which line, where next, how full */
+  .ride-card {
+    position: fixed; left: 14px; top: calc(14px + env(safe-area-inset-top, 0px) + var(--inset-top, 0px));
+    display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; align-items: center; max-width: min(360px, calc(100vw - 120px));
+    padding: 9px 12px; font: 400 14px/1.3 var(--display); color: var(--ink);
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  }
+  .ride-card[hidden] { display: none; }
+  .ride-card b { grid-row: span 2; padding: 6px 9px; border-radius: 8px; color: #fff; font-weight: 400; letter-spacing: 0.04em; }
+  .ride-card small { font-size: 12px; opacity: 0.7; }
+  .bus-hint {
+    position: fixed; left: 50%; bottom: calc(68px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); margin: 0;
+    padding: 7px 14px; border-radius: 999px; font: 400 14px/1.3 var(--display); color: #f4f7f2; background: rgba(31, 36, 40, 0.78);
+    pointer-events: none; white-space: nowrap; max-width: calc(100vw - 32px); overflow: hidden; text-overflow: ellipsis;
+  }
+  .bus-hint[hidden] { display: none; }
   /* the overview toggle: shown while the avatar is somewhere that has one (西湖) */
   .overview-btn {
     position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
@@ -202,6 +218,8 @@
 <div id="labels" aria-hidden="true"></div>
 <div id="peer-tags" aria-hidden="true"></div>
 <div class="stick" id="stick" aria-hidden="true"><div class="knob"></div></div>
+<div class="ride-card" id="ride-card" hidden></div>
+<p class="bus-hint" id="bus-hint" hidden></p>
 <p class="touch-hint" id="touch-hint" hidden>↑ 滑动看看　·　↓ 按住走路</p>
 
 <header class="brand">
@@ -262,6 +280,10 @@ import { createGestures } from './js/input/gestures.js';
 import { createPresence, activityOf } from './js/net/presence.js';
 import { createLocalConnect } from './js/net/local.js';
 import { lookupProvince } from './js/net/province.js';
+// Buses: timetables from the clock alone, a server-synced clock, and seat counting from presence (unit-tested in tests/dream-bus.test.mjs)
+import { makeTimetable } from './js/bus/timetable.js';
+import { syncClock } from './js/bus/clock.js';
+import { ridersOn, hasRoom, isBumped } from './js/bus/riders.js';
 
 // Authored hex colours are used as-is in every shader (no sRGB conversion), so the
 // palette on screen is exactly the palette written here.
@@ -1502,6 +1524,256 @@ function resize() {
 window.addEventListener('resize', resize);
 resize();
 
+// ======================= buses (js/bus): shared, timetabled, open-top =======================
+// Every visitor computes every bus from the same timetable on the same server-synced clock, so the buses are
+// shared without a server: everyone sees bus 2 of the 1314 leave 西溪湿地 at the same moment. Who is aboard
+// travels in presence (ride: { line, bus, since, u, v }); seats are counted from that (js/bus/riders.js).
+// A planet declares its lines in W.lines (see buildTransit in the 杭州 builder).
+let serverOffset = 0;                                           // ms, server − this browser
+let clockFreeze = null;                                         // ?debug only: hold the buses still for a screenshot
+const serverNow = () => clockFreeze ?? (Date.now() + serverOffset) / 1000;
+syncClock({
+  fetchDate: async () => {
+    const r = await fetch(`${location.pathname}?clock=${Math.random().toString(36).slice(2)}`, { method: 'HEAD', cache: 'no-store' });
+    const d = Date.parse(r.headers.get('date') || '');
+    return Number.isFinite(d) ? { date: d, age: +(r.headers.get('age') || 0) } : null;
+  },
+}).then(r => { serverOffset = r.offset; }, () => {});
+
+// the bus, in its own frame: +z forward, +y up, +x to the left (so the doors, on the right, are at −x)
+const BUS = { L: 7.2, W: 2.2, FLOOR: 0.9, FRONT: 2.75, REAR: -2.75, DOOR: 0.4, CAP: 13, SPEED: 5 };   // SPEED: × walking speed
+const slerpV = (a, b, t) => {
+  const ang = a.angleTo(b);
+  if (ang < 1e-9) return a.clone();
+  const s = Math.sin(ang);
+  return a.clone().multiplyScalar(Math.sin((1 - t) * ang) / s).addScaledVector(b, Math.sin(t * ang) / s).normalize();
+};
+/** round the corners of an open 2D polyline ([x, z] in a site's plane) with radius r (quadratic Béziers) */
+function fillet2(pts, r) {
+  const out = [pts[0]];
+  for (let i = 1; i < pts.length - 1; i++) {
+    const [ax, az] = pts[i - 1], [bx, bz] = pts[i], [cx, cz] = pts[i + 1];
+    const lu = Math.hypot(bx - ax, bz - az), lw = Math.hypot(cx - bx, cz - bz);
+    const ux = (bx - ax) / lu, uz = (bz - az) / lu, wx = (cx - bx) / lw, wz = (cz - bz) / lw;
+    const th = Math.acos(Math.max(-1, Math.min(1, ux * wx + uz * wz)));
+    if (th < 0.04) { out.push(pts[i]); continue; }
+    const tl = Math.min(r * Math.tan(th / 2), lu * 0.45, lw * 0.45);
+    const p0 = [bx - ux * tl, bz - uz * tl], p1 = [bx + wx * tl, bz + wz * tl], n = Math.max(3, Math.ceil(th * tl / 0.8));
+    for (let k = 0; k <= n; k++) {
+      const t = k / n, a = (1 - t) * (1 - t), b = 2 * (1 - t) * t, c = t * t;
+      out.push([a * p0[0] + b * bx + c * p1[0], a * p0[1] + b * bz + c * p1[1]]);
+    }
+  }
+  out.push(pts[pts.length - 1]);
+  return out;
+}
+/**
+ * A closed route on the sphere: `loop` is a ring of unit directions (consecutive ones joined along great
+ * circles); `lane` shifts it to the right of travel. at(s) gives the point and heading s units along it.
+ */
+function makeRoute(loop, lane = 0) {
+  let pts = [];
+  for (let i = 0; i < loop.length; i++) {
+    const a = loop[i], b = loop[(i + 1) % loop.length], k = Math.max(1, Math.ceil(a.angleTo(b) * R / 1.2));
+    for (let j = 0; j < k; j++) pts.push(slerpV(a, b, j / k));
+  }
+  const n = pts.length, tan = (arr, i) => arr[(i + 1) % n].clone().sub(arr[(i - 1 + n) % n]);
+  if (lane) pts = pts.map((p, i) => { const right = new THREE.Vector3().crossVectors(tan(pts, i), p).normalize(); return p.clone().multiplyScalar(R).addScaledVector(right, lane).normalize(); });
+  // one pass of corner cutting softens what is left of the joins
+  pts = pts.map((p, i) => p.clone().multiplyScalar(2).add(pts[(i - 1 + n) % n]).add(pts[(i + 1) % n]).normalize());
+  const cum = [0];
+  for (let i = 1; i <= n; i++) cum.push(cum[i - 1] + pts[i - 1].angleTo(pts[i % n]) * R);
+  const length = cum[n];
+  const route = {
+    pts, cum, length,
+    /** { d: unit direction, t: unit heading } s units along */
+    at(s) {
+      s = ((s % length) + length) % length;
+      let lo = 0, hi = n - 1;
+      while (lo < hi) { const m = (lo + hi + 1) >> 1; if (cum[m] <= s) lo = m; else hi = m - 1; }
+      const a = pts[lo], b = pts[(lo + 1) % n], f = (s - cum[lo]) / (cum[lo + 1] - cum[lo] || 1);
+      const d = slerpV(a, b, f), t = b.clone().sub(a);
+      t.addScaledVector(d, -t.dot(d)).normalize();
+      return { d, t };
+    },
+    /** arc length of the point of the route nearest to direction d */
+    nearest(d) {
+      let best = 0, bd = Infinity;
+      for (let i = 0; i < n; i++) { const a = pts[i].angleTo(d); if (a < bd) { bd = a; best = i; } }
+      return cum[best];
+    },
+    /** right of travel at s (unit, tangent to the sphere) */
+    right(s) { const { d, t } = route.at(s); return new THREE.Vector3().crossVectors(t, d).normalize(); },
+  };
+  return route;
+}
+
+// ---------- the bus model: built once per line colour, cloned per bus (a handful of draw calls each) ----------
+function busModel(body, trim, label) {
+  const parts = new Map();                 // material key → { hex, opts, geos }
+  const put = (g, hex, opts = {}) => { const key = hex + JSON.stringify(opts); if (!parts.has(key)) parts.set(key, { hex, opts, geos: [] }); parts.get(key).geos.push(prep(g)); };
+  const bx = (w, h, d, hex, x, y, z, opts) => { const g = new THREE.BoxGeometry(w, h, d); g.translate(x, y, z); put(g, hex, opts); };
+  const { L, W, FLOOR } = BUS, WALL_TOP = FLOOR + 0.85, DARK = 0x2c3136, GLASS = 0x86b0bf;
+  // wheels and chassis
+  [-1, 1].forEach(sx => [-2.45, 2.45].forEach(z => { const g = new THREE.CylinderGeometry(0.38, 0.38, 0.28, 14); g.rotateZ(Math.PI / 2); g.translate(sx * (W / 2 - 0.12), 0.38, z); put(g, DARK); }));
+  bx(W, 0.62, L, body, 0, 0.62, 0);
+  bx(W + 0.04, 0.08, L + 0.04, trim, 0, 0.32, 0);
+  bx(W - 0.08, 0.06, L - 0.2, 0xb9b3a7, 0, FLOOR - 0.03, 0);             // deck
+  // walls: full on the left, with the two door openings on the right
+  bx(0.1, WALL_TOP - FLOOR, L, body, W / 2 - 0.05, (FLOOR + WALL_TOP) / 2, 0);
+  [[-L / 2, BUS.REAR - BUS.DOOR], [BUS.REAR + BUS.DOOR, BUS.FRONT - BUS.DOOR], [BUS.FRONT + BUS.DOOR, L / 2]].forEach(([z0, z1]) => bx(0.1, WALL_TOP - FLOOR, z1 - z0, body, -W / 2 + 0.05, (FLOOR + WALL_TOP) / 2, (z0 + z1) / 2));
+  bx(W, WALL_TOP - FLOOR, 0.1, body, 0, (FLOOR + WALL_TOP) / 2, -L / 2 + 0.05);
+  // white top rail round the open deck, and a stripe
+  bx(0.16, 0.08, L, trim, W / 2 - 0.05, WALL_TOP + 0.04, 0);
+  [[-L / 2, BUS.REAR - BUS.DOOR], [BUS.REAR + BUS.DOOR, BUS.FRONT - BUS.DOOR], [BUS.FRONT + BUS.DOOR, L / 2 - 0.6]].forEach(([z0, z1]) => bx(0.16, 0.08, z1 - z0, trim, -W / 2 + 0.05, WALL_TOP + 0.04, (z0 + z1) / 2));
+  bx(W, 0.08, 0.16, trim, 0, WALL_TOP + 0.04, -L / 2 + 0.05);
+  [W / 2 + 0.005, -W / 2 - 0.005].forEach(x => bx(0.02, 0.12, L - 0.3, trim, x, FLOOR + 0.1, 0));
+  // the front: bonnet, a windscreen, lights, the route board
+  bx(W, 0.95, 0.7, body, 0, FLOOR + 0.2, L / 2 - 0.35);
+  const ws = new THREE.BoxGeometry(W - 0.12, 0.62, 0.06); ws.rotateX(-0.3); ws.translate(0, WALL_TOP + 0.28, L / 2 - 0.62); put(ws, GLASS, G_OPTS);
+  [-0.72, 0.72].forEach(x => bx(0.32, 0.14, 0.04, trim, x, 0.72, L / 2 + 0.01));
+  bx(W - 0.3, 0.1, 0.04, DARK, 0, 0.42, L / 2 + 0.01);
+  // seats: six rows of two either side of the aisle, and one at the back on the left: 13
+  const SEAT = 0x2f7f7a, rows = [-2.0, -1.2, -0.4, 0.4, 1.2, 2.0];
+  const seat = (x, z) => { bx(0.62, 0.12, 0.55, SEAT, x, FLOOR + 0.3, z); bx(0.62, 0.5, 0.08, SEAT, x, FLOOR + 0.55, z - 0.26); bx(0.08, 0.3, 0.08, DARK, x, FLOOR + 0.12, z); };
+  rows.forEach(z => { seat(0.72, z); seat(-0.72, z); });
+  seat(0.72, -2.85);
+  bx(0.45, 0.5, 0.4, DARK, 0.6, FLOOR + 0.25, 2.95);             // driver
+  const wheel = new THREE.TorusGeometry(0.16, 0.025, 6, 14); wheel.rotateX(-1.1); wheel.translate(0.6, FLOOR + 0.62, 3.1); put(wheel, DARK);
+  // steps under both doors
+  [BUS.FRONT, BUS.REAR].forEach(z => bx(0.35, 0.08, BUS.DOOR * 2 - 0.1, DARK, -W / 2 - 0.12, 0.45, z));
+  bx(1.6, 0.42, 0.06, DARK, 0, WALL_TOP + 0.62, L / 2 - 0.54);            // the route board's backing
+  [-0.75, 0.75].forEach(x => bx(0.05, 0.5, 0.05, DARK, x, WALL_TOP + 0.3, L / 2 - 0.54));
+  const g = new THREE.Group();
+  for (const { hex, opts, geos } of parts.values()) {
+    const m = mesh(mergeGeometries(geos), hex, opts); m.castShadow = true; m.receiveShadow = true; g.add(m);
+  }
+  // route boards, front and back (the only lettering)
+  const front = signMesh(label, 1.5, 0.34, '#1f2428', '#ffc65a'); front.position.set(0, WALL_TOP + 0.62, L / 2 - 0.5); front.userData.detail = true; g.add(front);
+  const back = signMesh(label, 1.2, 0.3, '#1f2428', '#ffc65a'); back.position.set(0, FLOOR + 0.45, -L / 2 - 0.02); back.rotation.y = Math.PI; back.userData.detail = true; g.add(back);
+  return g;
+}
+// one bus: the shared body plus two door leaves of its own; each slides along the outside of the wall at stops
+// (the front one back, the rear one forward, both onto the long wall between the doors)
+function makeBus(model, body) {
+  const root = new THREE.Group();
+  root.add(model.clone());
+  const doors = [];
+  [[BUS.FRONT, -1], [BUS.REAR, 1]].forEach(([z, side]) => {
+    const leaf = mesh(new THREE.BoxGeometry(0.06, 0.8, BUS.DOOR * 2 - 0.04), body, { cast: false });
+    leaf.userData = { z0: z, side };
+    leaf.position.set(-BUS.W / 2 - 0.04, BUS.FLOOR + 0.42, z);
+    root.add(leaf); doors.push(leaf);
+  });
+  root.userData.doors = doors;
+  // the small parts (door leaves, route boards) are only drawn near the avatar: further off they are specks
+  root.userData.detail = [...doors];
+  root.traverse(o => { if (o.userData.detail) root.userData.detail.push(o); });
+  root.userData.near = true;
+  planet.add(root);
+  return root;
+}
+const busM = new THREE.Matrix4(), busX = new THREE.Vector3(), busY = new THREE.Vector3(), busZ = new THREE.Vector3();
+/**
+ * Where bus `bus` of `line` is now: { s, state, d, up, fwd, left, h, M } (planet space; M maps the bus's own
+ * frame to planet space, with the deck tilted to follow the ground).
+ */
+function busPose(line, bus, t) {
+  const st = line.tt.at(bus, t), { d, t: fwd } = line.route.at(st.s);
+  const hf = terrainH(line.route.at(st.s + 2.6).d), hb = terrainH(line.route.at(st.s - 2.6).d), h = (hf + hb) / 2;
+  const up = d.clone(), f = fwd.clone().multiplyScalar(5.2).addScaledVector(up, hf - hb).normalize();
+  const left = new THREE.Vector3().crossVectors(up, f).normalize();
+  const y = new THREE.Vector3().crossVectors(f, left).normalize();
+  const M = new THREE.Matrix4().makeBasis(left, y, f).setPosition(d.clone().multiplyScalar(R + h + 0.02));
+  return { s: st.s, state: st, d, up: y, fwd: f, left, h, M };
+}
+/** a point on a bus's deck (u forward, v to the left) in planet space, and its height above R */
+function deckPoint(pose, u, v, lift = BUS.FLOOR) {
+  const p = new THREE.Vector3(v, lift, u).applyMatrix4(pose.M);
+  return { dir: p.clone().normalize(), r: p.length() };
+}
+// where you may stand on the deck: the aisle and the two door wells
+const DECK = [[-0.36, 0.36, -3.2, 2.6], [-1.0, 0.36, BUS.FRONT - BUS.DOOR + 0.05, BUS.FRONT + BUS.DOOR - 0.05], [-1.0, 0.36, BUS.REAR - BUS.DOOR + 0.05, BUS.REAR + BUS.DOOR - 0.05]];
+function clampDeck(v, u) {
+  let best = null, bd = Infinity;
+  for (const [x0, x1, z0, z1] of DECK) {
+    const cv = Math.max(x0, Math.min(x1, v)), cu = Math.max(z0, Math.min(z1, u)), d = (cv - v) ** 2 + (cu - u) ** 2;
+    if (d < bd) { bd = d; best = [cv, cu]; }
+  }
+  return best;
+}
+const inRearWell = (v, u) => v < -0.45 && u > BUS.REAR - BUS.DOOR && u < BUS.REAR + BUS.DOOR;
+
+// ---------- shelters: platform, glass roof, bench, a sign column with the route badges, a live countdown board ----------
+function kitDir(d, fwd, o = {}) {
+  const M = frameMatrix(d, fwd, o.scale || 1, o.sink || 0, o.h ?? null);
+  const K = {
+    M,
+    add(geo, hex, opts) { pushGeo(prep(geo).applyMatrix4(M), hex, opts); return K; },
+    box(w, h, dd, hex, px = 0, py = 0, pz = 0, opts) { const g = new THREE.BoxGeometry(w, h, dd); g.translate(px, py, pz); return K.add(g, hex, opts); },
+    cyl(rt, rb, h, hex, px = 0, py = 0, pz = 0, seg = 12, opts) { const g = new THREE.CylinderGeometry(rt, rb, h, seg); g.translate(px, py, pz); return K.add(g, hex, opts); },
+    place(obj, px = 0, py = 0, pz = 0, ry = 0) { obj.applyMatrix4(new THREE.Matrix4().makeRotationY(ry).setPosition(px, py, pz)); obj.applyMatrix4(M); planet.add(obj); return obj; },
+  };
+  return K;
+}
+const LINE_HEX = { 1314: '#c8433a', 520: '#e57a9b' };
+function drawBoard(stop, t) {
+  const { cv, tex, line, i } = stop.board, x = cv.getContext('2d');
+  x.fillStyle = '#1f2428'; x.fillRect(0, 0, cv.width, cv.height);
+  x.textBaseline = 'middle'; x.font = '700 46px "ZCOOL KuaiLe", "PingFang SC", "Noto Sans SC", sans-serif';
+  x.fillStyle = LINE_HEX[line.name]; x.fillRect(16, 18, 150, 64);
+  x.fillStyle = '#fff'; x.textAlign = 'center'; x.fillText(line.name, 91, 52);
+  const n = line.tt.nextAt(i, t);
+  x.textAlign = 'left'; x.fillStyle = '#ffc65a';
+  x.fillText(n.wait === 0 ? `进站 · 还停 ${Math.ceil(n.dwellLeft)} 秒` : `${Math.ceil(n.wait)} 秒后到站`, 186, 52);
+  x.font = '400 34px "ZCOOL KuaiLe", "PingFang SC", "Noto Sans SC", sans-serif'; x.fillStyle = '#c9d2d4';
+  x.fillText(`下一站 ${line.stops[(i + 1) % line.stops.length].name}${stop.transfer ? ` · 换乘 ${stop.transfer}` : ''}`, 20, 128);
+  tex.needsUpdate = true;
+}
+// the plate on the sign column: the stop's name over a band in the line's colour (one texture, one draw)
+function stopPlate(name, lineName) {
+  const cv = document.createElement('canvas'); cv.width = 768; cv.height = 384;
+  const tex = new THREE.CanvasTexture(cv); tex.anisotropy = 4;
+  const draw = () => {
+    const x = cv.getContext('2d');
+    x.fillStyle = '#f4f1ea'; x.fillRect(0, 0, 768, 220);
+    x.fillStyle = LINE_HEX[lineName]; x.fillRect(0, 220, 768, 164);
+    x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.fillStyle = '#1f2428'; x.font = '700 120px "ZCOOL KuaiLe", "PingFang SC", "Noto Sans SC", sans-serif'; x.fillText(name, 384, 116, 720);
+    x.fillStyle = '#ffffff'; x.font = '700 104px "ZCOOL KuaiLe", "PingFang SC", "Noto Sans SC", sans-serif'; x.fillText(`${lineName}路`, 384, 306, 720);
+    tex.needsUpdate = true;
+  };
+  draw();
+  if (document.fonts) document.fonts.load('700 40px "ZCOOL KuaiLe"', name + lineName + '路').then(draw, () => {});
+  return new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.75), new THREE.MeshBasicMaterial({ map: tex }));
+}
+function buildShelter(line, stop) {
+  const { d } = line.route.at(stop.s), right = line.route.right(stop.s), fwd = line.route.at(stop.s).t;
+  const c = d.clone().multiplyScalar(R).addScaledVector(right, 2.45).normalize();
+  // the shelter faces the road (its +z toward the lane), its +x runs against the direction of travel
+  const k = kitDir(c, right.clone().negate());
+  const STONE = 0xdcd8cf, POST = 0x5b646c, GL = 0x9cc3cf;
+  k.box(4.6, 0.16, 1.8, STONE, 0, 0.08, 0);
+  k.box(4.6, 0.17, 0.12, 0xe8c547, 0, 0.085, 0.86);
+  [-1.9, 0, 1.9].forEach(px => k.box(0.08, 2.1, 0.08, POST, px, 1.05, -0.72));
+  k.box(3.7, 1.4, 0.05, GL, 0, 0.95, -0.74, G_OPTS);
+  k.box(4.3, 0.08, 1.7, GL, 0, 2.15, -0.05, G_OPTS);
+  k.box(4.35, 0.12, 0.1, POST, 0, 2.14, 0.8);
+  k.box(2.4, 0.08, 0.42, 0x8a6448, -0.3, 0.52, -0.42);
+  [-1.3, 0.7].forEach(px => k.box(0.06, 0.44, 0.3, POST, px, 0.3, -0.42));
+  // the sign column just past the roof's front end, its plate (stop name over the line badge) clear above the roof
+  const sx = 2.45;
+  k.box(0.1, 3.05, 0.1, POST, sx, 1.525, 0.55);
+  k.place(stopPlate(stop.name, line.name), sx, 2.66, 0.62);
+  // the countdown board under the roof
+  const cv = document.createElement('canvas'); cv.width = 640; cv.height = 160;
+  const tex = new THREE.CanvasTexture(cv); tex.anisotropy = 4;
+  const board = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.4), new THREE.MeshBasicMaterial({ map: tex }));
+  k.place(board, -0.95, 1.78, -0.6);                // between the back posts, clear of the middle one
+  stop.board = { cv, tex, line, i: stop.i, mesh: board };
+  stop.at = c;
+}
+
 // ======================= 杭州星球 =======================
 async function buildHangzhou() {
   // R = 200 (was 100, before that 50): room for 西湖 at eight times its first size and for new places. The
@@ -1585,7 +1857,7 @@ const RGD = { x: mp(792, 648)[0], z: mp(792, 648)[1], r: 1.8 };              // 
 const SANTAN = mpl([[882, 1000], [913, 1011], [944, 999]]);                   // 三潭印月's three stone lanterns
 const LEIFENG = mp(1065, 1132), BAOCHU = mp(1015, 60), JINGCI = mp(1060, 1308);   // 雷峰塔, 保俶塔, 净慈寺 (南屏晚钟)
 const PHQY = mp(918, 490), QYFH = mp(588, 515), HGGY = mp(760, 1230);            // 平湖秋月, 曲院风荷 (lotus), 花港观鱼
-const STELES = { sudi: mp(886, 1302), duanqiao: mp(1140, 160), shuangfeng: mp(398, 470) };   // 碑亭 of 苏堤春晓, 断桥残雪, 双峰插云
+const STELES = { sudi: mp(886, 1302), duanqiao: [67.8, 14.5], shuangfeng: mp(398, 470) };   // 断桥's stele stands back from 北山街   // 碑亭 of 苏堤春晓, 断桥残雪, 双峰插云
 const SHUANGFENG = [[34, -88, 9.2, 12.9], [-14, -86, 9.2, 11.7]];                  // 北高峰, 南高峰 [x, z, r, h]
 const LWYY = { x0: -31, x1: -15.2, z0: 32.8, z1: 55 };                         // 柳浪闻莺's willow grove
 // the music fountain runs along the shore off 湖滨; the glass store faces it across the road
@@ -1636,7 +1908,7 @@ const YGD_BR = LK_CHANNELS.map(([a, b]) => {                                    
 
 await slice();
 // ---------- ground paint: asphalt roads, stone lanes and plazas ----------
-const ringKind = ['road', 'road', 'stone', 'stone', 'road'];   // segment from place i to i+1
+const ringKind = ['road', 'road', 'road', 'road', 'road'];   // segment from place i to i+1 (all asphalt: the 1314 bus runs the whole ring)
 // in pieces of at most 60°: an arc between two points always takes the short way, and 西湖 → home is 223°
 sites.forEach((s, i) => {
   const gap = ((sites[(i + 1) % 5].lon - s.lon) % 360 + 360) % 360, n = Math.ceil(gap / 60);
@@ -1657,16 +1929,19 @@ arcsIn(XIXI, [[-6.8, -1.95], [-2.0, -1.9], [3.0, -2.1], [5.2, -2.05]], 0.013, ST
 // Every lane is also kept in LAKE_LANES, so the hill forest can keep clear of it.
 const LAKE_LANES = [];
 const laneD = p => { let m = Infinity; for (const l of LAKE_LANES) if (p.x > l.x0 && p.x < l.x1 && p.z > l.z0 && p.z < l.z1) m = Math.min(m, polyD(p, l.pts)); return m; };
-const laneIn = (pts, hw) => {
-  arcsIn(LAKE, pts, hw, STONES);
+const laneIn = (pts, hw, list = STONES) => {
+  arcsIn(LAKE, pts, hw, list);
   const b = pts.reduce((o, [x, z]) => ({ x0: Math.min(o.x0, x), x1: Math.max(o.x1, x), z0: Math.min(o.z0, z), z1: Math.max(o.z1, z) }), { x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity });
   LAKE_LANES.push({ pts, x0: b.x0 - 8, x1: b.x1 + 8, z0: b.z0 - 8, z1: b.z1 + 8 });
 };
 laneIn(mpl([[1287, 140], [1312, 175], [1362, 240], [1412, 330], [1462, 435], [1427, 520], [1362, 620], [1292, 720], [1227, 815], [1212, 900], [1210, 1030], [1225, 1175]]), 0.022);
-laneIn(mpl([[560, 445], [620, 428], [690, 416], [740, 374], [780, 354], [860, 304], [930, 246], [1000, 198], [1060, 174], [1110, 166], [1180, 139], [1265, 114]]), 0.02);
+// 北山街 is a road now (the 520 bus runs along it), joined to the ring at its east end
+const BEISHAN = mpl([[560, 445], [620, 428], [690, 416], [740, 374], [780, 354], [860, 304], [930, 246], [1000, 198], [1060, 174], [1110, 166], [1180, 139], [1265, 114]]);
+laneIn(BEISHAN, 0.042, ROADS);
+laneIn([[68.5, LAKE.roadZ], [70.2, 40], BEISHAN.at(-1)], 0.042, ROADS);
 laneIn(mpl([[1225, 1185], [1110, 1192], [1010, 1225], [930, 1282], [880, 1310], [760, 1295], [650, 1272]]), 0.02);
 laneIn(SUDI, 0.015); laneIn(BAIDI, 0.015); laneIn(YGD, 0.02);
-[[YF.shore[0], 55.2], [QWC[0] + 5, 34], [66.4, 34], [-54, 29.2], [12, 37.8], [-31, 33]].forEach(([x, z]) => laneIn([[x, LAKE.roadZ], [x, z]], 0.02));
+[[YF.shore[0], 55.2], [QWC[0] + 5, 34], [-54, 29.2], [12, 37.8], [-31, 33]].forEach(([x, z]) => laneIn([[x, LAKE.roadZ], [x, z]], 0.02));
 laneIn([[QWC[0], QWC[1] - 3.1], [QWC[0], QWC[1] - 13]], 0.02);
 laneIn([[JINGCI[0] + 3.4, JINGCI[1]], [JINGCI[0] + 5.1, JINGCI[1]]], 0.02);
 STONE_CIRCS.push([LAKE, YF.shore[0] + YF.n[0] * -2.6, YF.shore[1] + YF.n[1] * -2.6, 3.4]);
@@ -1762,7 +2037,7 @@ const deckOn = (pts, cum, s, half, hw, rise) => { const { p, dir } = polyAtS(pts
 const LAKE_BRIDGES = [
   ...SUDI_BR.map(s => [deckOn(SUDI, SUDI_S, s, 1.5, 0.58, 0.6), 1.16]),
   ...BAIDI_BR.map(s => [deckOn(BAIDI, BAIDI_S, s, 1.5, 0.55, 0.58), 1.1]),
-  [walk.deck(LAKE, BAIDI.at(-1), mp(1112, 182), 0.62, 0.6), 1.25],
+  [walk.deck(LAKE, BAIDI.at(-1), [61.8, 16.2], 0.62, 0.6), 1.25],   // 断桥, landing short of 北山街
   [walk.deck(LAKE, mp(740, 448), mp(708, 418), 0.55, 0.55), 1.1],
   ...YGD_BR.map(s => [deckOn(YGD, YGD_S, s, 1.6, 0.6, 0.45), 1.2]),
 ];
@@ -1827,7 +2102,7 @@ LANDMARKS = [
 // (a floor is 0.46 units, like the home towers), not the map's.
 const CITY = { x0: -44, x1: 78, z0: LAKE.roadZ + 3.2, z1: LAKE.roadZ + 41 };
 const DONGPO = LAKE.roadZ + 14, YANAN = LAKE.roadZ + 26.8;                 // 东坡路, 延安路 (z)
-const CROSS = [[74, 0.03], [48.5, 0.028], [27.2, 0.022], [15.8, 0.03], [3.6, 0.024], [-9.6, 0.02]];   // 庆春路 平海路 邮电路 解放路 开元路 清波街 [x, half-width]
+const CROSS = [[74, 0.03], [48.5, 0.042], [27.2, 0.022], [15.8, 0.03], [3.6, 0.024], [-9.6, 0.02]];   // 庆春路 平海路 邮电路 解放路 开元路 清波街 [x, half-width]
 CROSS.forEach(([x, hw]) => arcsIn(LAKE, [[x, LAKE.roadZ], [x, CITY.z1]], hw, ROADS));
 arcsIn(LAKE, [[-18, DONGPO], [30, DONGPO], [CITY.x1, DONGPO]], 0.03, ROADS);
 arcsIn(LAKE, [[-14, YANAN], [30, YANAN], [CITY.x1, YANAN]], 0.035, ROADS);
@@ -1836,16 +2111,16 @@ arcsIn(LAKE, [[-44, LAKE.roadZ + 9.6], [-14, LAKE.roadZ + 9.6]], 0.016, STONES);
 const ROW_A = [LAKE.roadZ + 3.8, DONGPO - 2.9], ROW_B = [DONGPO + 3.0, YANAN - 3.2], ROW_C = [YANAN + 3.4, YANAN + 11];
 const mid = r => (r[0] + r[1]) / 2, dep = r => r[1] - r[0];
 const CITY_LOTS = [
-  ['hotel', 67.5, mid(ROW_A), 9.6, dep(ROW_A), 10],
-  ['mall', 55.4, mid(ROW_A), 10.2, dep(ROW_A), 4, 0xe8e2d6],                   // in77 B区
-  ['mall', 43.2, ROW_A[1] - 2.5, 7.0, 5.0, 3, 0xdcd6ca],                       // in77 A区, behind the glass store
+  ['hotel', 68.4, mid(ROW_A), 7.8, dep(ROW_A), 10],
+  ['mall', 54.6, mid(ROW_A), 8.6, dep(ROW_A), 4, 0xe8e2d6],                    // in77 B区 (the 520 stop stands between it and 君悦)
+  ['mall', 43.0, ROW_A[1] - 2.5, 6.4, 5.0, 3, 0xdcd6ca],                       // in77 A区, behind the glass store
   ['mall', 33.4, mid(ROW_A), 9.0, dep(ROW_A), 4, 0xe6dccb],                    // in77 A区
   ['mall', 21.5, mid(ROW_A), 8.2, dep(ROW_A), 3, 0xd2d6d8],                    // in77 C区
   ['tower', 9.7, mid(ROW_A), 8.0, dep(ROW_A) - 1, 6, 0xdcd6ca],
-  ['campus', -3, mid(ROW_A), 9.4, dep(ROW_A), 2],                              // 中国美术学院
+  ['mall', -3, mid(ROW_A), 9.4, dep(ROW_A), 2, 0xe6dccb],                     // 西湖天地 side: low shops
   ['tower', 67, mid(ROW_B), 8.6, dep(ROW_B), 8, 0xd2d6d8],
   ['tower', 55.4, mid(ROW_B), 9.0, dep(ROW_B), 6, 0xe6dccb],
-  ['mall', 43.2, mid(ROW_B), 7.6, dep(ROW_B), 3, 0xe8e2d6],                   // 星远里 / in77 D区
+  ['mall', 42.9, mid(ROW_B), 6.6, dep(ROW_B), 3, 0xe8e2d6],                   // 星远里 / in77 D区
   ['theatre', 33.4, mid(ROW_B), 7.6, dep(ROW_B)],                              // 东坡大剧院
   ['dept', 21.5, mid(ROW_B), 8.2, dep(ROW_B), 6],                              // 杭州解百
   ['tower', 9.7, mid(ROW_B), 8.0, dep(ROW_B), 9, 0xe8e2d6],
@@ -1855,15 +2130,87 @@ const CITY_LOTS = [
   // 河坊街: old two-storey houses at the foot of 吴山
   ...[-41, -36.5, -32, -27.5, -23, -18.5].flatMap(x => [['old', x, LAKE.roadZ + 6.3, 3.6, 2.6, 1.3], ['old', x, LAKE.roadZ + 12.9, 3.6, 2.6, x % 2 ? 1.9 : 1.3]]),
 ];
+// 南山路, on the lake side of the ring south of 柳浪闻莺: 中国美术学院, 浙江美术馆 near 长桥, cafés along the road
+const NANSHAN_LOTS = [
+  ['campus', -42, 46, 15, 13],                                                  // 中国美术学院 南山校区
+  ['museum', -62, 40.5, 12, 9],                                                 // 浙江美术馆
+  ...[-70.2, -65.6, -61, -49, -44.4, -39.8].map((x, i) => ['cafe', x, LAKE.roadZ - 6.4, 4.0, 3.0, i % 3]),   // 南山路 cafés and bars
+];
+const ALL_LOTS = [...CITY_LOTS, ...NANSHAN_LOTS];
 // pavements: every plot and a margin round it, found through one local() call and a bounding test
-const CITY_PAVE = CITY_LOTS.map(([, x, z, w, d]) => [x - w / 2 - 1.3, x + w / 2 + 1.3, z - d / 2 - 1.3, z + d / 2 + 1.3]);
+const CITY_PAVE = ALL_LOTS.map(([, x, z, w, d]) => [x - w / 2 - 1.3, x + w / 2 + 1.3, z - d / 2 - 1.3, z + d / 2 + 1.3]);
+const PAVE_BOX = CITY_PAVE.reduce((b, [x0, x1, z0, z1]) => ({ x0: Math.min(b.x0, x0), x1: Math.max(b.x1, x1), z0: Math.min(b.z0, z0), z1: Math.max(b.z1, z1) }), { x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity });
+const inLot = (p, m) => CITY_PAVE.some(([x0, x1, z0, z1]) => p.x > x0 - m && p.x < x1 + m && p.z > z0 - m && p.z < z1 + m);
 stoneExtra = d => {
   const p = local(LAKE, d);
-  if (!p || p.x < CITY.x0 - 2 || p.x > CITY.x1 + 2 || p.z < CITY.z0 - 2 || p.z > CITY.z1 + 2) return 0;
+  if (!p || p.x < PAVE_BOX.x0 - 1 || p.x > PAVE_BOX.x1 + 1 || p.z < PAVE_BOX.z0 - 1 || p.z > PAVE_BOX.z1 + 1) return 0;
   let w = 0;
   for (const [x0, x1, z0, z1] of CITY_PAVE) if (p.x > x0 - 0.5 && p.x < x1 + 0.5 && p.z > z0 - 0.5 && p.z < z1 + 0.5) w = Math.max(w, 1 - Math.hypot(Math.max(x0 - p.x, 0, p.x - x1), Math.max(z0 - p.z, 0, p.z - z1)) / 0.5);
   return w;
 };
+
+// ---------- 公交: 1314 round the ring road, 520 along a meridian through 湖滨 (runtime: updateTransit / rideStep) ----------
+// 1314 runs the equator eastward (+lon) in the right-hand lane; its stops are on the right, so on the lake side
+// at 湖滨 and 钱王祠. 520 is a great circle at right angles to it: up 平海路 from the south, a short way along
+// 湖滨路 (opposite the 1314), along 北山街 past 断桥 and 曲院风荷, over 西山 through the saddle between 北高峰
+// and the hill to its north, across the north pole, down the far side (where it meets the 1314 again), across
+// the south pole and back. Its far-side and polar stretch is a road surface of its own (the ground there is
+// too coarse to paint a road on); everything near the lake is painted like the other roads.
+const lonOfDir = d => Math.atan2(d.x, -d.z) / D2R;
+const LON_520 = lonOfDir(L(LAKE, 48.5, LAKE.roadZ)), LON_FAR = LON_520 + 180;
+const unitDeg = 1 / (R * D2R);                                                // degrees per unit along a great circle
+const NORTH = new THREE.Vector3(0, 1, 0), SOUTH = new THREE.Vector3(0, -1, 0);
+const SADDLE = [[34, -58], [42, -68], [48, -80], [47, -96], [45, -114]];        // 西山: up the valley, between the peaks
+const LOCAL_520 = fillet2([[48.5, LAKE.roadZ + 46], [48.5, LAKE.roadZ], [68.5, LAKE.roadZ], [70.2, 40], ...BEISHAN.slice().reverse(), ...SADDLE], 5.5);
+const LOOP_520 = [SOUTH, ...LOCAL_520.map(([x, z]) => L(LAKE, x, z)), NORTH, sph(0, LON_FAR)];
+const CENTRE_520 = makeRoute(LOOP_520, 0);
+// which stretches of the 520 get their own road surface: away from the painted roads near the lake and the ring
+const ribbonAt = d => {
+  const p = local(LAKE, d);
+  if (p && p.z > -47 && p.z < LAKE.roadZ + 44 && Math.abs(p.x) < 120) return false;      // painted (平海路, 湖滨路, 北山街)
+  return Math.abs(Math.asin(Math.max(-1, Math.min(1, d.y)))) * R > 24;                    // the far-side crossing is painted too
+};
+const BUSWAY = [];            // the ribbon stretches as arcs, to keep trees, grass and rocks off them
+{
+  const pts = CENTRE_520.pts, n = pts.length;
+  for (let i = 0; i < n; i++) if (ribbonAt(pts[i]) || ribbonAt(pts[(i + 1) % n])) BUSWAY.push([pts[i], pts[(i + 1) % n], 0.08]);
+}
+// the far-side crossing: 520 painted across the ring road
+ROADS.push([sph(26 * unitDeg, LON_FAR), sph(-26 * unitDeg, LON_FAR), 0.042]);
+const onBusway = d => arcW(BUSWAY, d) > 0;
+
+const LINES = [
+  { name: '1314', body: 0xc8433a, loop: Array.from({ length: 180 }, (_, i) => sph(0, i * 2)), stops: [
+    { name: '家', at: L(HOME, 12.5, HOME.roadZ) },
+    { name: '天街', at: L(MALL, 9, MALL.roadZ) },
+    { name: '文体中心', at: L(SPORTS, 8.5, SPORTS.roadZ) },
+    { name: '西溪湿地', at: L(XIXI, 9.5, XIXI.roadZ) },
+    { name: '湖滨·音乐喷泉', at: L(LAKE, 58, LAKE.roadZ), transfer: '520' },
+    { name: '钱王祠', at: L(LAKE, -13, LAKE.roadZ) },
+    { name: '星球背面', at: sph(0, LON_FAR - 6 * unitDeg), transfer: '520' },
+  ] },
+  { name: '520', body: 0xe57a9b, loop: LOOP_520, stops: [
+    { name: '湖滨·平海路', at: L(LAKE, 61.7, LAKE.roadZ), transfer: '1314' },
+    { name: '断桥', at: L(LAKE, 62.2, 7) },
+    { name: '曲院风荷', at: L(LAKE, 34.6, -37.5) },
+    { name: '星球背面', at: sph(6 * unitDeg, LON_FAR), transfer: '1314' },
+  ] },
+].map(def => {
+  const route = makeRoute(def.loop, 1.1);
+  const stops = def.stops.map(s => ({ ...s, s: route.nearest(s.at) })).sort((a, b) => a.s - b.s);
+  stops.forEach((s, i) => { s.i = i; });
+  const tt = makeTimetable({ length: route.length, stops: stops.map(s => s.s), speed: BUS.SPEED * W.walkSpeed, buses: 3 });
+  return { name: def.name, body: def.body, route, stops, tt, buses: [], poses: [] };
+});
+// the shelters' spots, so trees keep clear of them
+const STOP_SPOTS = LINES.flatMap(line => line.stops.map(s => { const { d } = line.route.at(s.s); return d.clone().multiplyScalar(R).addScaledVector(line.route.right(s.s), 2.45).normalize(); }));
+const nearStop = (d, m) => STOP_SPOTS.some(q => q.angleTo(d) * R < m);
+// a paved bay at every stop, from the kerb to behind the shelter; paving levels the ground, so the stops stand
+// flat even where a hill comes down to the road (断桥 under 宝石山)
+for (const line of LINES) for (const st of line.stops) {
+  const bay = s => { const { d } = line.route.at(s); return d.clone().multiplyScalar(R).addScaledVector(line.route.right(s), 2.6).normalize(); };
+  STONES.push([bay(st.s - 4.6), bay(st.s + 4.6), 0.072]);
+}
 
 // ground spacing: 0.4 units along the ring, 1.6 from 44 units out, 2.4 from ~110 (only far hills and poles), 3.4 near the poles;
 // 西湖 keeps a 0.55-unit patch over the water and its near hills
@@ -2320,7 +2667,47 @@ function cityPavilionTower(x, z) {
   k.cyl(0.03, 0.03, 0.8, 0xd8b65e, 0, y + 0.2, 0, 6);
   walk.footprint(LAKE, shapes.circle(x, z, 3.1), { h: 7 });
 }
+// 浙江美术馆: a white base under rows of dark, steeply pitched glass-and-steel roofs, after the 江南 roofline
+function cityArtMuseum(x, z, w, d) {
+  const k = kit(LAKE, x, z, 0, -1), WALL = 0xf1eee7, ROOF = 0x3f474f, GL = 0x7d9fb0;
+  k.box(w, 1.1, d, WALL, 0, 0.55, 0);
+  k.box(w - 0.6, 0.5, 0.05, 0x86b0bf, 0, 0.5, d / 2 + 0.01, G_OPTS);
+  const ridge = (rx, rz, rw, rd, rh, hex) => {
+    const sh = new THREE.Shape(); sh.moveTo(-rd / 2, 0); sh.lineTo(rd / 2, 0); sh.lineTo(rd * 0.1, rh); sh.closePath();
+    const g = new THREE.ExtrudeGeometry(sh, { depth: rw, bevelEnabled: false }); g.translate(0, 0, -rw / 2); g.rotateY(Math.PI / 2); g.translate(rx, 1.1, rz);
+    k.add(g, hex, { shade: 0x262c32 });
+  };
+  [[-w * 0.28, -d * 0.18, w * 0.42, d * 0.5, 1.6], [w * 0.2, d * 0.12, w * 0.5, d * 0.6, 2.2], [-w * 0.05, -d * 0.36, w * 0.3, d * 0.26, 1.2]].forEach(([rx, rz, rw, rd, rh], i) => ridge(rx, rz, rw, rd, rh, i === 1 ? GL : ROOF));
+  k.box(w * 0.5, 0.06, 1.4, WALL, w * 0.15, 0.05, d / 2 + 0.7);
+  cityFoot(x, z, w, d, 3.2);
+}
+// 南山路 cafés: two light storeys, a timber screen, an awning and a couple of tables out front
+function cityCafe(x, z, w, d, v) {
+  const k = kit(LAKE, x, z, 0, 1), WALL = [0xf4f1ea, 0xe9e2d4, 0xdfe3e4][v], WOOD = 0x8a6448, AWN = [0x3f6f6a, 0xb0573f, 0x46566e][v];
+  k.box(w, 1.0, d, WALL, 0, 0.5, 0);
+  k.box(w - 0.5, 0.62, 0.05, 0x86b0bf, 0, 0.45, d / 2 + 0.01, G_OPTS);
+  k.box(w * 0.85, 0.85, d * 0.8, WALL, -w * 0.05, 1.42, -d * 0.08);
+  for (let i = 0; i < 7; i++) k.box(0.05, 0.7, 0.05, WOOD, -w * 0.35 + i * w * 0.1, 1.42, d * 0.32 + 0.02);
+  k.box(w * 0.9, 0.06, d * 0.84, 0x4b5159, -w * 0.05, 1.88, -d * 0.08);
+  const aw = new THREE.BoxGeometry(w - 0.3, 0.05, 0.8); aw.rotateX(0.28); aw.translate(0, 1.02, d / 2 + 0.35); k.add(aw, AWN);
+  [-0.9, 0.9].forEach(tx => { k.cyl(0.24, 0.24, 0.04, 0xe9e6df, tx, 0.42, d / 2 + 1.1, 12); k.cyl(0.03, 0.03, 0.42, 0x5d5249, tx, 0.21, d / 2 + 1.1, 6); });
+  cityFoot(x, z, w, d, 2.2);
+}
 function buildCity() {
+  for (const [kind, x, z, w, d, a] of NANSHAN_LOTS) {
+    if (kind === 'campus') { cityCampus(x, z, w, d); cityCampus(x - w * 0.02, z - d * 0.36, w * 0.5, d * 0.2); }
+    else if (kind === 'museum') cityArtMuseum(x, z, w, d);
+    else if (kind === 'cafe') cityCafe(x, z, w, d, a);
+  }
+  // in ?debug, report any plot that sits on water, a lane or the ring road
+  if (/[?&]debug\b/.test(location.search)) for (const [kind, x, z, w, d] of NANSHAN_LOTS) {
+    const bad = [];
+    for (let i = 0; i <= 6; i++) for (let j = 0; j <= 6; j++) {
+      const q = { x: x - w / 2 + w * i / 6, z: z - d / 2 + d * j / 6 };
+      if (lakeSd(q) < 2.5) bad.push('water'); if (laneD(q) < 1.2) bad.push('lane'); if (Math.abs(q.z - LAKE.roadZ) < 3.0) bad.push('ring');
+    }
+    if (bad.length) console.warn('[nanshan] plot', kind, x, z, [...new Set(bad)].join(','));
+  }
   for (const [kind, x, z, w, d, a, b] of CITY_LOTS) {
     if (kind === 'mall') cityMall(x, z, w, d, a, b);
     else if (kind === 'tower') cityTower(x, z, w, d, a, b);
@@ -2345,13 +2732,60 @@ function buildCity() {
   }
   LANDMARKS.push(
     { name: '湖滨银泰 in77', s: LAKE, at: [33.4, mid(ROW_A)], h: 3.2 },
-    { name: '君悦酒店', s: LAKE, at: [67.5, mid(ROW_A)], h: 5.8 },
+    { name: '君悦酒店', s: LAKE, at: [68.4, mid(ROW_A)], h: 5.8 },
     { name: '东坡大剧院', s: LAKE, at: [33.4, mid(ROW_B)], h: 2.9 },
     { name: '杭州解百', s: LAKE, at: [21.5, mid(ROW_B)], h: 3.9 },
-    { name: '中国美术学院', s: LAKE, at: [-3, mid(ROW_A)], h: 2.8 },
+    { name: '中国美术学院', s: LAKE, at: [NANSHAN_LOTS[0][1], NANSHAN_LOTS[0][2]], h: 2.8 },
+    { name: '浙江美术馆', s: LAKE, at: [NANSHAN_LOTS[1][1], NANSHAN_LOTS[1][2]], h: 3.6 },
+    { name: '南山路', s: LAKE, at: [-55, LAKE.roadZ - 6.4], h: 2.6 },
     { name: '城隍阁', s: LAKE, at: WUSHAN, h: 9.4 },
     { name: '河坊街', s: LAKE, at: [-30, LAKE.roadZ + 9.6], h: 2.6 },
   );
+}
+// shelters, boarding rings, the buses, and the 520's own road surface where the ground is coarse
+function buildTransit() {
+  for (const line of LINES) {
+    line.stops.forEach(stop => {
+      buildShelter(line, stop);
+      const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: line.body, transparent: true, opacity: 0.85, depthWrite: false }));
+      ring.visible = false; ring.renderOrder = 2;
+      planet.add(ring);
+      stop.ring = ring;
+    });
+    const model = busModel(line.body, 0xf6f3ec, `${line.name}路`);
+    for (let k = 0; k < 3; k++) line.buses.push(makeBus(model, line.body));
+  }
+  // the ribbon: a strip 4.8 units wide following the ground, with light edges
+  const pts = CENTRE_520.pts, n = pts.length, pos = [], idx = [], edge = [], eidx = [];
+  const strip = (a0, a1, outP, outI) => {
+    let prev = -1;
+    for (let i = 0; i <= n; i++) {
+      const d = pts[i % n];
+      if (!ribbonAt(d) && !ribbonAt(pts[(i + 1) % n]) && !ribbonAt(pts[(i - 1 + n) % n])) { prev = -1; continue; }
+      const t = pts[(i + 1) % n].clone().sub(pts[(i - 1 + n) % n]); t.addScaledVector(d, -t.dot(d)).normalize();
+      const right = new THREE.Vector3().crossVectors(t, d).normalize();
+      const base = outP.length / 3;
+      for (const a of [a0, a1]) {
+        const q = d.clone().multiplyScalar(R).addScaledVector(right, a).normalize();
+        const r = R + terrainH(q) + 0.09;
+        outP.push(q.x * r, q.y * r, q.z * r);
+      }
+      if (prev >= 0) outI.push(prev, prev + 1, base, prev + 1, base + 1, base);
+      prev = base;
+    }
+  };
+  strip(-2.4, 2.4, pos, idx);
+  strip(-2.4, -2.15, edge, eidx); strip(2.15, 2.4, edge, eidx);
+  for (const [P, I, hex, shade] of [[pos, idx, 0x949ca3, 0x68737f], [edge, eidx, 0xe9e6df, 0xa9b0b6]]) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3));
+    g.setIndex(I);
+    g.computeVertexNormals();
+    // every vertex's normal points out of the planet: the strip lies flat in the light like the ground
+    const nr = g.attributes.normal; for (let i = 0; i < nr.count; i++) { const x = P[3 * i], y = P[3 * i + 1], z = P[3 * i + 2], l = Math.hypot(x, y, z); nr.setXYZ(i, x / l, y / l, z / l); }
+    const m = toon(hex, { shade, breakMul: 0.2, ribbon: 1 }); m.polygonOffset = true; m.polygonOffsetFactor = -2; m.polygonOffsetUnits = -2;
+    addChunked(g, m);
+  }
 }
 function buildLake() {
   buildLeifeng();
@@ -2433,7 +2867,7 @@ function buildLake() {
     mpl([[1225, 1185], [1110, 1192], [1010, 1225], [930, 1282], [880, 1310], [760, 1295], [650, 1272]])]) {
     const cum = polyLen(ln);
     for (let s = 2, k = 0; s < cum.at(-1) - 1; s += 5, k++) {
-      const { p, dir } = polyAtS(ln, cum, s), sd = k % 2 ? 2.7 : -2.7, x = p[0] - dir[1] * sd, z = p[1] + dir[0] * sd;
+      const { p, dir } = polyAtS(ln, cum, s), sd = k % 2 ? 3.6 : -3.6, x = p[0] - dir[1] * sd, z = p[1] + dir[0] * sd;
       if (terrainH(L(LAKE, x, z)) < 0.25 || Math.hypot(x - LEIFENG[0], z - LEIFENG[1]) < 6 || Math.hypot(x - BAOCHU[0], z - BAOCHU[1]) < 4) continue;
       heroTrees.push([LAKE, x, z, 'small']);
     }
@@ -2452,6 +2886,8 @@ await slice();
 buildXixi();
 await slice();
 buildLake();
+await slice();
+buildTransit();
 await slice();
 flushBatches();
 await slice();
@@ -2481,6 +2917,7 @@ updateBoats(0);
 
 siteKeepout = function (d, m = 0) {
   let p;
+  if (onBusway(d) || nearStop(d, 3.2 + m)) return true;
   if ((p = local(HOME, d)) && inRect(p, -10.0 - m, 10.0 + m, -9.0 - m, HOME.roadZ + 1)) return true;
   if ((p = local(MALL, d)) && inRect(p, -6.6 - m, 6.6 + m, -5.2 - m, MALL.roadZ + 1)) return true;
   if ((p = local(SPORTS, d)) && (Math.hypot(p.x - DRUM.cx, p.z - DRUM.cz) < 5.0 + m || inRect(p, -4.8 - m, 4.8 + m, 2, SPORTS.roadZ + 1))) return true;
@@ -2490,6 +2927,7 @@ siteKeepout = function (d, m = 0) {
     if (sd < 0.4 + m * 2 || polyD(p, YGD) < 1.3 + m) return true;
     if (m >= 0.45 ? laneD(p) < 3.6 : m > 0 && laneD(p) < 1.6) return true;   // trees / bushes and rocks
     if (inRect(p, CITY.x0, CITY.x1, CITY.z0, CITY.z1) && Math.hypot(p.x - WUSHAN[0], p.z - WUSHAN[1]) > 8) return true;   // the city (吴山 keeps its trees)
+    if (inLot(p, 0.2)) return true;                                                 // 南山路's plots
     if (m > 0 && p.z > 18 && sd < 30 && p.x > LK_BOX.x0 && p.x < LK_BOX.x1 + 12) return true;   // the city side of the shore: planted by hand
     if (p.z > LAKE.roadZ - 1 && Math.abs(p.x - APPLE[0]) < 5) return true;
   }
@@ -2509,14 +2947,14 @@ await slice();
   // and a clearing round each landmark
   const lakeClear = p => Math.hypot(p.x - LEIFENG[0], p.z - LEIFENG[1]) > 6 && Math.hypot(p.x - BAOCHU[0], p.z - BAOCHU[1]) > 4
     && !SHUANGFENG.some(([x, z]) => Math.hypot(p.x - x, p.z - z) < 3.5) && !Object.values(STELES).some(([x, z]) => Math.hypot(p.x - x, p.z - z) < 3.5)
-    && !(Math.abs(p.x - JINGCI[0]) < 6.5 && Math.abs(p.z - JINGCI[1]) < 7) && laneD(p) > 3.6;
+    && !(Math.abs(p.x - JINGCI[0]) < 6.5 && Math.abs(p.z - JINGCI[1]) < 7) && laneD(p) > 3.6 && polyD(p, SADDLE) > 4.2;
   const forest = scatterIn(LAKE, 1500, -100, 100, -104, 32, p => terrainH(L(LAKE, p.x, p.z)) > 0.8 && lakeClear(p), 0.095);
   const islets = scatterIn(XIXI, 40, -9.5, 9.5, -9.5, 5.4, p => Math.hypot(p.x, p.z) < 9.4 && !(p.z > 0.4 && Math.abs(p.x - 1) < 2.8) && !(p.z > -4.8 && p.z < 1.4 && p.x > -6.4 && p.x < 4.6) && polyD(p, BOARDWALK) > 1.0
     && !XIXI_HOUSES.some(([x, z, w, d]) => Math.abs(p.x - x) < w / 2 + 0.7 && Math.abs(p.z - z) < d / 2 + 0.9) && xixiWater(p) < 0.05, 0.05);
   meadow.forEach((d, i) => far[i % 3].push(matrixOn(d, rand() * 6.28, 0.85 + rand() * 0.5, 0.05)));
   forest.forEach((d, i) => far[i % 2].push(matrixOn(d, rand() * 6.28, 1.3 + rand() * 0.7, 0.05)));   // 西湖's hills: fewer, bigger trees
   islets.forEach((d, i) => near[i % 3].push(matrixOn(d, rand() * 6.28, 0.85 + rand() * 0.5, 0.05)));
-  heroTrees.forEach(([s, x, z, kind]) => near[kind === 'small' ? 2 : 0].push(matrixOn(L(s, x, z), rand() * 6.28, kind === 'small' ? 1.0 : 0.95 + rand() * 0.25, 0.05)));
+  heroTrees.filter(([s, x, z]) => { const d = L(s, x, z); return roadW(d) < 0.02 && !nearStop(d, 2.6); }).forEach(([s, x, z, kind]) => near[kind === 'small' ? 2 : 0].push(matrixOn(L(s, x, z), rand() * 6.28, kind === 'small' ? 1.0 : 0.95 + rand() * 0.25, 0.05)));
   variants.forEach((vt, vi) => {
     const tg = new THREE.CylinderGeometry(vt.trunk[0], vt.trunk[1], vt.trunk[2], 7, 1); tg.translate(0, vt.trunk[2] / 2, 0);
     [[near[vi], 2], [far[vi], 1]].forEach(([list, detail]) => {
@@ -2532,7 +2970,7 @@ await slice();
   await slice();
   // willows (drooping strands round a soft crown), peach trees, persimmons with fruit
   const willowM = [], peachM = [];
-  lakeTrees.forEach(([x, z, kind]) => { const d = L(LAKE, x, z); if (terrainH(d) > WATER + 0.1) (kind === 'willow' ? willowM : peachM).push(matrixOn(d, rand() * 6.28, 0.9 + rand() * 0.2, 0.03)); });
+  lakeTrees.forEach(([x, z, kind]) => { const d = L(LAKE, x, z); if (terrainH(d) > WATER + 0.1 && roadW(d) < 0.02 && !nearStop(d, 2.6)) (kind === 'willow' ? willowM : peachM).push(matrixOn(d, rand() * 6.28, 0.9 + rand() * 0.2, 0.03)); });
   [[-6.2, 0.9], [-8.0, 0.6], [6.1, 0.85], [-6.6, -1.8], [5.3, -1.85], [7.6, 0.9]].forEach(([x, z]) => willowM.push(matrixOn(L(XIXI, x, z), rand() * 6.28, 0.95, 0.03)));
   {
     const trunk = new THREE.CylinderGeometry(0.07, 0.11, 1.75, 7); trunk.translate(0, 0.87, 0);
@@ -2655,7 +3093,7 @@ await slice();
   const blade = (x, z, h, lean) => { const g = new THREE.ConeGeometry(0.05, h, 3, 1); g.translate(0, h / 2, 0); g.rotateZ(lean); g.translate(x, 0, z); return prep(g); };
   const tuft = mergeGeometries([blade(0, 0, 0.34, 0.1), blade(0.07, 0.03, 0.26, -0.35), blade(-0.06, 0.04, 0.24, 0.4), blade(0.01, -0.07, 0.22, -0.15)]);
   const tn = tuft.attributes.normal; for (let i = 0; i < tn.count; i++) tn.setXYZ(i, 0, 1, 0);
-  const grassDirs = scatterDirs(Math.round(2700 * AREA * GRASS_SHARE), 0, 0, 0.4, 160000 * TRIES, d => !walk.inFootprint(d, 0.15), grassFill);
+  const grassDirs = scatterDirs(Math.round(2700 * AREA * GRASS_SHARE), 0, 0, 0.4, 160000 * TRIES, d => !walk.inFootprint(d, 0.15) && !onBusway(d) && !nearStop(d, 2.6), grassFill);
   const grass = new THREE.InstancedMesh(tuft, toon(0x7cb85e, { shade: 0x4a8468, breakMul: 0.5 }), grassDirs.length);
   grassDirs.forEach((d, i) => grass.setMatrixAt(i, matrixOn(d, rand() * 6.28, 0.7 + rand() * 0.8)));
   grass.receiveShadow = true; grass.layers.set(1);
@@ -2663,7 +3101,7 @@ await slice();
 
   await slice();
   const fg = new THREE.IcosahedronGeometry(0.07, 0); fg.translate(0, 0.16, 0);
-  const flowerDirs = scatterDirs(Math.round(310 * AREA * GRASS_SHARE), 0, 0, 0.3, 40000 * TRIES, d => !walk.inFootprint(d, 0.15), grassFill);
+  const flowerDirs = scatterDirs(Math.round(310 * AREA * GRASS_SHARE), 0, 0, 0.3, 40000 * TRIES, d => !walk.inFootprint(d, 0.15) && !onBusway(d) && !nearStop(d, 2.6), grassFill);
   const flowers = new THREE.InstancedMesh(fg, toon(0xffffff, { shade: 0xb9b6c8, breakMul: 0 }), flowerDirs.length);
   const fc = [0xfaf6ee, 0xf3d35c, 0xe98a7a, 0xb9a3e3];
   const c = new THREE.Color();
@@ -2673,6 +3111,7 @@ await slice();
 }
 
 W.update = t => { updateBoats(t); updateFountain(t); };
+W.lines = LINES;
 // 西湖's overview: from anywhere round the lake, up and out over the water toward its middle
 W.overview = { s: LAKE, near: d => nearLake(d), centre: mp(1000, 760), label: '俯瞰西湖', zoom: 10, pitch: 1.22, ahead: 42 };
 W.lawnEx = HOME.ex.clone();
@@ -3122,6 +3561,7 @@ function ringRoute(fromLon, toIdx) {
 }
 function travelTo(i) {
   if (building) return;
+  if (myRide) { showBusHint('在车上啦 · 到站后走到车尾后门下车，再去别处'); return; }
   autoWalk = null;
   const z = zones[i], here = avatarLocalDir(), route = [];
   if (curStop != null && zones[curStop].s === z.s) {
@@ -3322,6 +3762,7 @@ function placeMarker(d, ok) {
   marker.visible = true;
 }
 function walkTo(dir) {
+  if (myRide) { showBusHint('在车上啦 · 到站后走到车尾后门下车'); return false; }
   const route = findPath(walk, avatarLocalDir(), dir);
   if (!route) { placeMarker(dir, false); return false; }
   stopTravel(); setActive(null);
@@ -3421,6 +3862,7 @@ async function loadWorld(key) {
   scene.add(planet);
   seed = 7;
   W = { key, update: null, extras: [], ski: false, lawnEx: null, startLon: 0 };
+  if (myRide) { myRide = null; syncRide(true); }
   await PLANETS[key].build();
   W.walkSpeed ??= 0.2 * R; W.travelSpeed ??= 0.38 * R; W.tagCos ??= [0.86, 0.9];
   G.uR.value = R; G.uWater.value = WATER;
@@ -3492,7 +3934,7 @@ const company = (() => {
   scene.add(group);
   const shown = new Map();                    // id → { a, tag, p, f, k, phase, kind }
   const MAX_SHOWN = 30, TAG_UP = 1.15;
-  let connect = null, presence = null, interacted = false, away = false;
+  let connect = null, presence = null, interacted = false, away = false, rideState = null;
   let lastInput = performance.now(), hiddenSince = document.hidden ? performance.now() : 0, province = '未知', planetKey = null;
   const v3 = a => new THREE.Vector3(a[0], a[1], a[2]).normalize();
   const basis = new THREE.Matrix4(), xAxis = new THREE.Vector3(), tmp = new THREE.Vector3();
@@ -3508,7 +3950,7 @@ const company = (() => {
   }
   function ensure() {
     if (presence || !connect) return;
-    presence = createPresence({ connect, me: { id: visitorId, g: myLook.g, look: myLook, prov: province } });
+    presence = createPresence({ connect, me: { id: visitorId, g: myLook.g, look: myLook, prov: province, ride: rideState } });
     presence.onChange(hud);
     presence.onMessage(onMessage);
     if (planetKey) presence.setPlanet(planetKey);
@@ -3636,6 +4078,8 @@ const company = (() => {
     useTransport(fn) { if (!connect) { connect = fn; ensure(); } },
     setPlanet(key) { planetKey = key; if (presence) presence.setPlanet(key); },
     get presence() { return presence; },
+    /** the bus I am on ({ line, bus, since, u, v }) or null, for everyone else */
+    setRide(r) { rideState = r; if (presence) presence.setProfile({ ride: r }); },
     /** the person under a ray (a canvas click), if any */
     pick(ray) {
       for (const h of ray.intersectObject(group, true)) for (let o = h.object; o; o = o.parent) if (o.userData.peerId) return o.userData.peerId;
@@ -3669,13 +4113,23 @@ const company = (() => {
           e = { a, tag, p: P.clone(), f: Fh.clone(), k: 0, phase: Math.random() * 6 };
           group.add(a.root); shown.set(q.id, e);
         }
-        const before = e.p.clone();
-        e.p.lerp(P, ease).normalize();
-        e.f.lerp(Fh, ease); e.f.addScaledVector(e.p, -e.f.dot(e.p)).normalize();
-        const speed = before.angleTo(e.p) * R / Math.max(dt, 1e-3);
-        e.k += (Math.min(1, speed / W.walkSpeed) - e.k) * Math.min(1, dt * 8);
+        const onBus = q.ride && transitPose(q.ride.line, q.ride.bus);
+        if (onBus) {
+          // aboard: on this browser's copy of their bus (the same everywhere), where they stand on its deck
+          const { dir, r } = deckPoint(onBus, q.ride.u ?? 0, q.ride.v ?? 0);
+          e.p.copy(dir); e.r = r; e.k += (0 - e.k) * Math.min(1, dt * 8);
+          e.f.copy(onBus.fwd).addScaledVector(dir, -onBus.fwd.dot(dir)).normalize();
+          e.a.root.position.copy(dir).multiplyScalar(r);
+        } else {
+          e.r = null;
+          const before = e.p.clone();
+          e.p.lerp(P, ease).normalize();
+          e.f.lerp(Fh, ease); e.f.addScaledVector(e.p, -e.f.dot(e.p)).normalize();
+          const speed = before.angleTo(e.p) * R / Math.max(dt, 1e-3);
+          e.k += (Math.min(1, speed / W.walkSpeed) - e.k) * Math.min(1, dt * 8);
+          e.a.root.position.copy(e.p).multiplyScalar(R + walk.surfaceH(e.p));
+        }
         e.phase += dt * (4 + e.k * 7);
-        e.a.root.position.copy(e.p).multiplyScalar(R + walk.surfaceH(e.p));
         xAxis.crossVectors(e.p, e.f);
         basis.makeBasis(xAxis, e.p, e.f);       // modelled facing +z: +z → heading, +y → up
         e.a.root.quaternion.setFromRotationMatrix(basis);
@@ -3688,7 +4142,7 @@ const company = (() => {
     /** per frame, after rendering: put each name tag over its person */
     placeTags() {
       for (const e of shown.values()) {
-        tmp.copy(e.p).multiplyScalar(R + walk.surfaceH(e.p) + TAG_UP).applyQuaternion(group.quaternion);
+        tmp.copy(e.p).multiplyScalar((e.r ?? R + walk.surfaceH(e.p)) + TAG_UP).applyQuaternion(group.quaternion);
         const vis = tmp.y / tmp.length() > W.tagCos[0];
         tmp.project(camera);
         const sy = (-tmp.y * 0.5 + 0.5) * innerHeight;
@@ -3702,7 +4156,7 @@ const company = (() => {
         const e = key === 'me' ? null : shown.get(key);
         if (now > b.until || (key !== 'me' && !e)) { b.el.remove(); bubbles.delete(key); continue; }
         if (key === 'me') tmp.set(0, me.root.position.y + TAG_UP + 0.25, 0);
-        else tmp.copy(e.p).multiplyScalar(R + walk.surfaceH(e.p) + TAG_UP + 0.25).applyQuaternion(group.quaternion);
+        else tmp.copy(e.p).multiplyScalar((e.r ?? R + walk.surfaceH(e.p)) + TAG_UP + 0.25).applyQuaternion(group.quaternion);
         bubbleAt(b.el, tmp);
       }
     },
@@ -3715,6 +4169,150 @@ addEventListener('message', e => {
   const { url, key } = e.data.realtime;
   if (url && key) import('./js/net/supabase.js').then(m => company.useTransport(m.createSupabaseConnect({ url, key }))).catch(() => { /* realtime unavailable: no company */ });
 });
+
+// ---------- buses each frame: move them, open their doors at stops, keep the stop boards ticking ----------
+const ringGeo = new THREE.RingGeometry(0.52, 0.74, 32); ringGeo.rotateX(-Math.PI / 2);
+let boardTick = 0;
+const DETAIL_NEAR = 80;            // units: bus door leaves, route boards and stop countdowns are drawn within this
+/** this frame's pose of bus `bus` on line `name` (null if the planet has no such line) */
+function transitPose(name, bus) {
+  const line = W && W.lines && W.lines.find(l => l.name === name);
+  return line && line.poses[bus] ? line.poses[bus] : null;
+}
+function updateTransit(dt) {
+  if (!W || !W.lines) return;
+  const t = serverNow();
+  boardTick -= dt;
+  const redraw = boardTick <= 0;
+  if (redraw) boardTick = 0.5;
+  for (const line of W.lines) {
+    line.buses.forEach((root, k) => {
+      const pose = busPose(line, k, t);
+      const near = pose.d.angleTo(avatarDir) * R < DETAIL_NEAR;
+      if (near !== root.userData.near) { root.userData.near = near; for (const o of root.userData.detail) o.visible = near; }
+      line.poses[k] = pose;
+      root.matrixAutoUpdate = false;
+      root.matrix.copy(pose.M);
+      root.matrixWorldNeedsUpdate = true;
+      // doors: open while waiting, shut a second before leaving
+      const open = pose.state.stop !== null && pose.state.dwellLeft > 1.0 && pose.state.dwellLeft < line.tt.dwell - 0.6 ? 1 : 0;
+      root.userData.open = (root.userData.open ?? 0) + (open - (root.userData.open ?? 0)) * Math.min(1, dt * 5);
+      for (const leaf of root.userData.doors) leaf.position.z = leaf.userData.z0 + leaf.userData.side * root.userData.open * (BUS.DOOR * 2 - 0.08);
+    });
+    line.stops.forEach(stop => {
+      // countdown boards: only those near enough to read are drawn (and re-uploaded)
+      if (stop.board) {
+        const near = stop.at.angleTo(avatarDir) * R < DETAIL_NEAR, show = near !== stop.board.mesh.visible;
+        stop.board.mesh.visible = near;
+        if (near && (redraw || show)) drawBoard(stop, t);
+      }
+      // the boarding ring at the front door, while a bus of this line waits here
+      const at = line.poses.findIndex(p => p.state.stop === stop.i && p.state.dwellLeft > 0.8);
+      stop.ring.visible = at >= 0 && !myRide;
+      if (stop.ring.visible) {
+        const { dir } = deckPoint(line.poses[at], BUS.FRONT, -BUS.W / 2 - 0.62, 0);
+        stop.ring.position.copy(dir).multiplyScalar(R + terrainH(dir) + 0.06);
+        stop.ring.quaternion.setFromUnitVectors(Y, dir);
+        stop.ring.scale.setScalar(1 + 0.1 * Math.sin(elapsed * 5));
+        stop.ringBus = at;
+      }
+    });
+  }
+}
+
+// ---------- riding: on at the front door, about on the deck, off at the back door ----------
+let myRide = null;            // { line, bus, since, u, v, yaw: view − bus heading, face: facing − bus heading, fwd }
+let rideR = 0, hintUntil = 0, lastRideSync = 0;
+const rideCard = document.getElementById('ride-card'), busHint = document.getElementById('bus-hint');
+function showBusHint(text, ms = 2600) {
+  if (!busHint.hidden && busHint.textContent === text) { hintUntil = Math.max(hintUntil, performance.now() + ms); return; }
+  busHint.textContent = text; busHint.hidden = false; hintUntil = performance.now() + ms;
+}
+function ridersNow() {
+  const list = company.presence ? company.presence.peers().filter(q => q.planet === W.key && q.ride).map(q => ({ id: q.id, ride: q.ride })) : [];
+  if (myRide) list.push({ id: visitorId, ride: myRide });
+  return list;
+}
+// tell the others (through presence) which bus I am on and where I stand on it: at once on boarding and
+// alighting, otherwise only when I have moved on the deck, and at most once a second
+let lastRideJson = 'null';
+function syncRide(force) {
+  const now = performance.now();
+  if (!force && now - lastRideSync < 1000) return;
+  const r = myRide && { line: myRide.line, bus: myRide.bus, since: myRide.since, u: +myRide.u.toFixed(1), v: +myRide.v.toFixed(1) }, json = JSON.stringify(r);
+  if (json === lastRideJson) return;
+  lastRideSync = now; lastRideJson = json;
+  company.setRide(r);
+}
+function stopName(line, i) { return line.stops[i].name; }
+function board(line, k) {
+  const pose = line.poses[k], { p, c } = readView();
+  myRide = { line: line.name, bus: k, since: serverNow(), u: BUS.FRONT, v: -0.7, yaw: angleRight(pose.fwd.clone().addScaledVector(p, -pose.fwd.dot(p)).normalize(), c, p), face: Math.PI / 2, fwd: null };
+  stopTravel(); autoWalk = null; setActive(null);
+  syncRide(true);
+  showBusHint(`上车啦 · ${line.name}路 · 下一站 ${stopName(line, (pose.state.stop + 1) % line.stops.length)}`);
+}
+function alight(line, pose, why) {
+  const { dir } = deckPoint(pose, BUS.REAR, -BUS.W / 2 - 0.9, 0);
+  const { c } = readView();
+  myRide = null; syncRide(true);
+  heading = null;
+  writeView({ p: dir, c: c.clone().addScaledVector(dir, -c.dot(dir)).normalize() });
+  showBusHint(why || `到站 · ${stopName(line, pose.state.stop)}`);
+}
+/** per frame while not riding: step into a waiting bus's front-door ring to get on */
+function tryBoard() {
+  if (myRide || travel || !W.lines) return;
+  for (const line of W.lines) for (const stop of line.stops) {
+    if (!stop.ring.visible) continue;
+    const k = stop.ringBus, pose = line.poses[k];
+    if (avatarDir.angleTo(stop.ring.position.clone().normalize()) * R > 0.95) continue;
+    if (pose.state.dwellLeft < 1.2) { showBusHint('车门要关了，等下一班吧'); continue; }
+    if (!hasRoom(ridersNow(), line.name, k, BUS.CAP)) { showBusHint(`这班 ${line.name}路 已经坐满 ${BUS.CAP} 人，等下一班吧`); continue; }
+    board(line, k);
+    return;
+  }
+}
+/** per frame while riding: walk about the deck (keys or stick), carry the view with the bus, get off at the back */
+function rideStep(dt, fw, sd) {
+  const line = W.lines && W.lines.find(l => l.name === myRide.line), pose = line && line.poses[myRide.bus];
+  if (!pose) { myRide = null; syncRide(true); return 0; }
+  const { p, c } = readView();
+  const fwdAt = pose.fwd.clone().addScaledVector(p, -pose.fwd.dot(p)).normalize();
+  // the view keeps its angle to the bus's heading (turned by hand in between, via applyLook)
+  if (myRide.fwd) myRide.yaw = angleRight(myRide.fwd.clone().addScaledVector(p, -myRide.fwd.dot(p)).normalize(), c, p);
+  let amount = 0;
+  const mx = fw || sd ? sd : stickNow && stickNow.amount > 0 ? stickNow.x : 0, my = fw || sd ? fw : stickNow && stickNow.amount > 0 ? stickNow.y : 0;
+  if (mx || my) {
+    amount = fw || sd ? 1 : stickNow.amount;
+    const mv = viewDir(mx, my), du = mv.dot(fwdAt), dv = mv.dot(pose.left);
+    const len = Math.hypot(du, dv) || 1;
+    [myRide.v, myRide.u] = clampDeck(myRide.v + dv / len * 3.0 * amount * dt, myRide.u + du / len * 3.0 * amount * dt);
+    myRide.face = Math.atan2(dv, du);
+  }
+  // overfull (two took the last seat at once): the later one steps off while the doors are open
+  if (pose.state.stop !== null && isBumped(ridersNow(), line.name, myRide.bus, BUS.CAP, visitorId)) { alight(line, pose, '车满了，请等下一班'); return 0; }
+  if (inRearWell(myRide.v, myRide.u)) {
+    if (pose.state.stop !== null && root0Open(line, myRide.bus)) { alight(line, pose); return 0; }
+    showBusHint('车还在开，到站后再从后门下车', 1200);
+  }
+  const { dir, r } = deckPoint(pose, myRide.u, myRide.v);
+  rideR = r;
+  const f2 = pose.fwd.clone().addScaledVector(dir, -pose.fwd.dot(dir)).normalize();
+  writeView({ p: dir, c: turnTangent(dir, f2, myRide.yaw) });
+  // facing: myRide.face is measured from the heading toward the left; turnTangent turns toward the right
+  heading = new THREE.Vector3().copy(turnTangent(dir, f2, -myRide.face));
+  myRide.fwd = pose.fwd.clone();
+  syncRide(false);
+  // the card: where we are, where next, how full
+  const st = pose.state, aboard = ridersOn(ridersNow(), line.name, myRide.bus).length;
+  rideCard.hidden = false;
+  rideCard.innerHTML = `<b style="background:${LINE_HEX[line.name]}">${line.name}路</b>` +
+    (st.stop !== null ? `<span>停靠 ${stopName(line, st.stop)} · ${Math.ceil(st.dwellLeft)} 秒后开</span>` : `<span>下一站 ${stopName(line, st.next)} · ${Math.ceil(st.eta)} 秒</span>`) +
+    `<small>车上 ${aboard}/${BUS.CAP} 人 · 到站后走到车尾后门下车</small>`;
+  return amount * 0.6;
+}
+const root0Open = (line, k) => (line.buses[k].userData.open ?? 0) > 0.6;
 
 // ---------- loop ----------
 const clock = new THREE.Clock();
@@ -3755,15 +4353,19 @@ function frame() {
   const sd = (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0);
   let walking = 0;
   leanTarget = 0;
+  updateTransit(dt);
   applyLook(dt);
   if (overviewOn && (fw || sd || (stickNow && stickNow.amount > 0) || autoWalk || travel)) setOverview(false);
-  if (fw || sd) { walking = moveBody(viewDir(sd, fw), 1, dt); setActive(null); }
+  if (myRide) walking = rideStep(dt, fw, sd);
+  else if (fw || sd) { walking = moveBody(viewDir(sd, fw), 1, dt); setActive(null); }
   else if (stickNow && stickNow.amount > 0) walking = moveBody(viewDir(stickNow.x, stickNow.y), stickNow.amount, dt);
   else if (autoWalk && !travel) walking = followRoute(dt);
+  if (!myRide) rideCard.hidden = true;
+  if (!busHint.hidden && performance.now() > hintUntil) busHint.hidden = true;
   // the view drifts back behind the avatar while it walks, unless it was turned by hand just now.
   // Steering yourself, only when walking roughly away from the camera (following a sideways walk
   // would bend it into a circle); on a clicked route, unless the route heads back at the camera.
-  if (walking > 0.05 && !travel && elapsed - lastLook > FOLLOW_AFTER) {
+  if (walking > 0.05 && !travel && !myRide && elapsed - lastLook > FOLLOW_AFTER) {
     const { p, f, c } = bodyPose(), a = angleRight(c, f, p);
     if (Math.abs(a) < (autoWalk && !(fw || sd || stickNow) ? 1.75 : 0.8)) orbit(Math.max(-FOLLOW_RATE * dt, Math.min(FOLLOW_RATE * dt, a * Math.min(1, dt * 2))));
   }
@@ -3806,7 +4408,8 @@ function frame() {
   // avatar stands on whatever ground is under the north pole right now
   invQ.copy(planet.quaternion).invert();
   avatarDir.set(0, 1, 0).applyQuaternion(invQ);
-  me.root.position.set(0, R + walk.surfaceH(avatarDir), 0);
+  me.root.position.set(0, myRide ? rideR : R + walk.surfaceH(avatarDir), 0);
+  tryBoard();
   camLift += (me.root.position.y - R - camLift) * Math.min(1, dt * 2.5);
   { const { p, f, c } = bodyPose(); me.root.rotation.y = Math.PI - angleRight(c, f, p) + turnLean; }   // modelled facing +z: face f, seen from c
 
@@ -3925,6 +4528,48 @@ function frame() {
       // can the avatar stand at site-local [x, z]? (clearance >= 0 means yes)
       walkable(key, pts) { const st = sites.find(o => o.key === key); return pts.map(([x, z]) => +walk.clearance(L(st, x, z)).toFixed(2)); },
       overview(on) { setOverview(on); },
+      // buses: their state now, and a clock shift (s) to see them anywhere in the timetable
+      buses() { const t = serverNow(); return (W.lines || []).map(l => `${l.name}: period ${l.tt.period.toFixed(1)}s, length ${l.route.length.toFixed(0)} · ` + l.buses.map((_, k) => { const st = l.tt.at(k, t); return st.stop !== null ? `#${k} at ${l.stops[st.stop].name} ${st.dwellLeft.toFixed(1)}s` : `#${k} → ${l.stops[st.next].name} ${st.eta.toFixed(1)}s v${st.v.toFixed(0)}`; }).join(' | ')).join('\n'); },
+      shiftClock(sec) { serverOffset += sec * 1000; },
+      stops() { return (W.lines || []).map(l => `${l.name}: ` + l.stops.map((st, i) => `${i}:${st.name}@${st.s.toFixed(0)}`).join(' ')).join('\n'); },
+      /** jump the clock so bus k of a line has just arrived at stop i, and stand at its front door (or aboard) */
+      freeze(t) { clockFreeze = t === undefined ? serverNow() : t; },
+      // a moment when each [line, stop] has a bus standing there with between lo and hi seconds left; freezes the clock on it
+      meet(specs, lo = 6, hi = 16) {
+        const ls = specs.map(([n, i]) => [W.lines.find(x => x.name === n), i]);
+        for (let t = 0; t < 30000; t += 0.25) if (ls.every(([l, i]) => l.buses.some((_, k) => { const st = l.tt.at(k, t); return st.stop === i && st.dwellLeft > lo && st.dwellLeft < hi; }))) { clockFreeze = t; return t; }
+        return null;
+      },
+      advance(sec) { if (clockFreeze !== null) clockFreeze += sec; else serverOffset += sec * 1000; },
+      cam(zoom, pitch = null) { camZoom = zoom; zoomUser = zoom / 1.35; camReach = 1; if (pitch !== null) camPitch = pitch; renderer.shadowMap.needsUpdate = true; },
+      ride() { return myRide && { ...myRide, fwd: undefined, card: rideCard.innerText }; },
+      deck(u, v) { if (myRide) { myRide.u = u; myRide.v = v; } },
+      // can you stand where you board (front door) and where you are set down (rear door)? clearance >= 0 is yes
+      stopWalk() { return W.lines.map(l => l.stops.map(st => { const t = l.tt.legs[st.i].t0 + 1 - 0 * l.tt.period, k = 0, pose = busPose(l, k, t - k * l.tt.period / l.tt.buses); return `${l.name} ${st.name}: ` + [deckPoint(pose, BUS.FRONT, -BUS.W / 2 - 0.62, 0).dir, deckPoint(pose, BUS.REAR, -BUS.W / 2 - 0.9, 0).dir].map(d => walk.clearance(d).toFixed(2)).join(' '); }).join('\n')).join('\n'); },
+      // stand in the lane at a stop, facing its shelter
+      atShelter(name, i, zoom = 1.3, pitch = 0.3) {
+        const l = W.lines.find(x => x.name === name), st = l.stops[i], { d } = l.route.at(st.s), r = l.route.right(st.s);
+        const p = d.clone().multiplyScalar(R).addScaledVector(r, 0.3).addScaledVector(l.route.at(st.s).t, -1.2).normalize();
+        stopTravel(); heading = null;
+        writeView({ p, c: r.clone().addScaledVector(p, -r.dot(p)).normalize() });
+        camZoom = zoom; zoomUser = zoom / 1.35; camReach = 1; camPitch = pitch; renderer.shadowMap.needsUpdate = true;
+      },
+      // ground height across each stop: road centre, lane, shelter front/back, 3 units beyond
+      stopGround() { return W.lines.map(l => l.stops.map(st => { const { d } = l.route.at(st.s), r = l.route.right(st.s); return `${l.name} ${st.name}: ` + [-1.1, 0, 1.55, 3.35, 6].map(o => terrainH(d.clone().multiplyScalar(R).addScaledVector(r, o).normalize()).toFixed(2)).join(' '); }).join('\n')).join('\n'); },
+      hint() { return busHint.hidden ? '' : busHint.textContent; },
+      atStop(name, k, i, aboard = false, after = 0.5, look = null) {
+        if (myRide) { myRide = null; syncRide(true); }
+        const l = W.lines.find(x => x.name === name), t = serverNow(), want = l.tt.legs[i].t0 + after - k * l.tt.period / l.tt.buses;
+        const shift = ((((want - t) % l.tt.period) + l.tt.period) % l.tt.period);
+        if (clockFreeze !== null) clockFreeze += shift; else serverOffset += shift * 1000;
+        updateTransit(0.016);
+        const pose = l.poses[k], door = deckPoint(pose, BUS.FRONT, -BUS.W / 2 - 1.6, 0).dir;
+        stopTravel(); heading = null;
+        const toBus = pose.d.clone().sub(door).normalize();
+        const toward = look === 'bus' ? toBus : look === 'side' ? toBus.multiplyScalar(0.9).addScaledVector(pose.fwd, -1) : pose.fwd.clone();
+        writeView({ p: door, c: toward.addScaledVector(door, -toward.dot(door)).normalize() });
+        if (aboard) board(l, k);
+      },
       tags() { const v = new THREE.Vector3(); return LANDMARKS.map(m => { v.copy(m.tagLocal).applyMatrix4(planet.matrixWorld); const up = v.y / v.length(); v.project(camera); return `${m.name} up=${up.toFixed(3)} x=${v.x.toFixed(2)} y=${v.y.toFixed(2)} z=${v.z.toFixed(3)}`; }).join('\n') + `\ncamZoom=${camZoom.toFixed(2)} far=${camera.far.toFixed(0)}`; },
       // skip the easing (headless renders run at a few frames a second)
       settle() {
@@ -3935,6 +4580,17 @@ function frame() {
         renderer.shadowMap.needsUpdate = true;
       },
       stats() { const i = renderer.info.render; return { calls: i.calls, tris: i.triangles }; },
+      // meshes in view now, by colour/kind (what the main pass draws, before shadows)
+      inView() {
+        const fr = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+        const by = {};
+        planet.traverseVisible(o => {
+          if (!o.isMesh || !camera.layers.test(o.layers) || (o.frustumCulled && !fr.intersectsObject(o))) return;
+          const m = o.material, k = (m.userData?.kind || m.type) + ' ' + (m.uniforms?.uLit?.value?.getHexString?.() ?? m.color?.getHexString?.() ?? '') + (m.map ? ' tex' : '');
+          by[k] = (by[k] || 0) + 1;
+        });
+        return by;
+      },
       // triangles on the whole planet by kind (instanced sets by their geometry, the rest by material)
       budget() {
         const by = {};

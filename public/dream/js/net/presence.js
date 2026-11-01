@@ -58,7 +58,8 @@ export function createPresence({ connect, me, now = () => Date.now() }) {
     Promise.resolve(r).then(res => { if (res === 'ok') bcastFails = 0; else failed(); }, failed);
   }
 
-  const meta = () => ({ id: profile.id, g: profile.g, look: profile.look, prov: profile.prov, planet, act, p: round(pose?.p), f: round(pose?.f), t: now(), out: fresh() });
+  // ride: the bus I am on, if any ({ line, bus, since, u, v }), so others can count seats and draw me aboard
+  const meta = () => ({ id: profile.id, g: profile.g, look: profile.look, prov: profile.prov, planet, act, p: round(pose?.p), f: round(pose?.f), t: now(), out: fresh(), ride: profile.ride ?? null });
   const retrack = () => { if (joined) { posed = !!pose; channel.track(meta()); } };
 
   function onSync() {
@@ -70,7 +71,7 @@ export function createPresence({ connect, me, now = () => Date.now() }) {
       const m = [...metas].sort((a, b) => (a.act === 'active') - (b.act === 'active') || a.t - b.t).pop();
       seen.add(key);
       const old = peers.get(key);
-      const next = { id: key, g: m.g, look: m.look, prov: m.prov, planet: m.planet, act: m.act, p: m.p, f: m.f, t: m.t };
+      const next = { id: key, g: m.g, look: m.look, prov: m.prov, planet: m.planet, act: m.act, p: m.p, f: m.f, t: m.t, ride: m.ride ?? null };
       if (old && old.t > m.t && old.planet === m.planet) { next.p = old.p; next.f = old.f; next.t = old.t; }   // a newer live pose wins
       peers.set(key, next);
       if (Array.isArray(m.out)) for (const x of m.out) if (x && x.to === profile.id) deliver(key, x);
