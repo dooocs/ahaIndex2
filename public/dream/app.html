@@ -426,6 +426,7 @@ function stoneW(d) {
   let w = arcW(STONES, d), p;
   for (const [s, x0, x1, z0, z1] of STONE_RECTS) if ((p = local(s, d))) w = Math.max(w, 1 - Math.hypot(Math.max(x0 - p.x, 0, p.x - x1), Math.max(z0 - p.z, 0, p.z - z1)) / 0.5);
   for (const [s, x, z, r] of STONE_CIRCS) if ((p = local(s, d))) w = Math.max(w, 1 - Math.max(0, Math.hypot(p.x - x, p.z - z) - r) / 0.5);
+  if (stoneExtra) w = Math.max(w, stoneExtra(d));
   return clamp01(w);
 }
 const pathWeight = d => Math.max(roadW(d), stoneW(d));
@@ -434,6 +435,7 @@ const pathWeight = d => Math.max(roadW(d), stoneW(d));
 let sites = [], zones = [], LANDMARKS = [];
 let ROADS = [], STONES = [], STONE_RECTS = [], STONE_CIRCS = [];
 let terrainH = () => 0, siteKeepout = () => false;
+let stoneExtra = null;   // optional d → [0, 1]: more paving (the 湖滨 city's pavements)
 let walk = null, walker = null;   // the planet's WalkField and the avatar's controller (see beginWalk)
 let W = null;            // the planet being shown: { key, update, extras, ski, lawnEx, startLon, spawn }
 
@@ -1532,7 +1534,7 @@ async function buildHangzhou() {
     { key: 'lake', roadZ: 62, side: 1, lon: lonAt(482.7) },
   ]);
   const [HOME, MALL, SPORTS, XIXI, LAKE] = sites;
-  const LAKE_AREA = { x0: -112, x1: 116, z0: -116, z1: LAKE.roadZ + 16 };   // 西湖 and its hills in the lake site's plane
+  const LAKE_AREA = { x0: -112, x1: 116, z0: -116, z1: LAKE.roadZ + 42 };   // 西湖, its hills and the 湖滨 city in the lake site's plane
   nearLake = d => { const p = local(LAKE, d); return !!p && inRect(p, LAKE_AREA.x0, LAKE_AREA.x1, LAKE_AREA.z0, LAKE_AREA.z1); };
   // mean density over the sphere, which scales the vegetation totals (a Fibonacci sphere: no random numbers used)
   const share = f => { const n = 6000, v = new THREE.Vector3(); let m = 0; for (let i = 0; i < n; i++) { const y = 1 - 2 * (i + 0.5) / n, r = Math.sqrt(1 - y * y), a = i * 2.399963; m += f(v.set(r * Math.cos(a), y, r * Math.sin(a))); } return m / n; };
@@ -1595,6 +1597,7 @@ const YF = (() => {
 })();
 const APPLE = [YF.x, LAKE.roadZ + 3.9];
 const QWC = [-7.6, 47.6];                           // 钱王祠, by 南山路
+const WUSHAN = [-28, LAKE.roadZ + 26];              // 吴山, with 城隍阁 on top, south-east of the lake
 const LK_PEAKS = [[...BAOCHU, 13, 5.4], [...LEIFENG, 5, 2.0], [...mp(1050, 1420), 14, 6.6], ...SHUANGFENG,
   [-50, -80, 14, 6.3], [62, -74, 14, 6], [12, -80, 12, 5.1], [80, -24, 14, 4.8], [-80, -36, 14, 5.4]];   // 宝石山, 夕照山, 南屏山, 双峰, 西山
 // polylines with arc length: where along them a point is, and the point at a given length
@@ -1711,13 +1714,14 @@ function lakeHills(p, sd) {
   return h;
 }
 // 1 where 西湖 shapes the ground alone, 0 beyond it; also faded before local() stops answering (at 0.96 R)
-const lakeReach = p => rectFall(p, -92, 96, -96, LAKE.roadZ + 12, 20) * (1 - sstep(0.8 * R, 0.93 * R, Math.hypot(p.x, p.z)));
+const lakeReach = p => rectFall(p, -92, 96, -96, LAKE.roadZ + 40, 20) * (1 - sstep(0.8 * R, 0.93 * R, Math.hypot(p.x, p.z)));
 const YGD_BOX = YGD.reduce((b, [x, z]) => ({ x0: Math.min(b.x0, x - 4.2), x1: Math.max(b.x1, x + 4.2), z0: Math.min(b.z0, z - 4.2), z1: Math.max(b.z1, z + 4.2) }), { x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity });
 function lakeShape(p, h, w, reg = lakeReach(p)) {
   if (reg <= 0) return h;
   const sd = lakeSd(p) + 0.3 * (vnoise(p.x * 0.35, p.z * 0.35, 3.3) - 0.5);
   const keep = (1 - Math.min(1, w * 1.6)) * (inRect(p, YGD_BOX.x0, YGD_BOX.x1, YGD_BOX.z0, YGD_BOX.z1) ? sstep(1.4, 4.0, polyD(p, YGD)) : 1);   // lanes and 杨公堤 stay level
   h += (0.05 + lakeHills(p, sd) * keep - h) * reg;
+  if (Math.abs(p.x - WUSHAN[0]) < 22 && Math.abs(p.z - WUSHAN[1]) < 22) h += bump(p, WUSHAN, 7.5, 4.2) * reg;   // 吴山
   const wet = 1 - sstep(-0.3, 0.08, sd);
   if (wet > 0) {
     const t = lakeLand(p), isl = WATER + 0.26;
@@ -1815,6 +1819,51 @@ LANDMARKS = [
   { name: '音乐喷泉', s: LAKE, at: [YF.x, YF.z], h: 6.0 },
   { name: '苹果旗舰店', s: LAKE, at: APPLE, h: 3.4 },
 ];
+
+// ---------- 湖滨: the city across 湖滨路 (here the ring road) from the lake, after a map of the 湖滨 商圈 ----------
+// x runs north along 湖滨路, z east. 平海路 meets the lake at the music fountain, with the in77 blocks and the glass
+// store on either side of it; 东坡路 and 延安路 run parallel to 湖滨路 further east; 君悦 is to the north, 解百 at
+// 解放路, 吴山 with 城隍阁 and the old 河坊街 to the south. Buildings keep the scale of the rest of the planet
+// (a floor is 0.46 units, like the home towers), not the map's.
+const CITY = { x0: -44, x1: 78, z0: LAKE.roadZ + 3.2, z1: LAKE.roadZ + 41 };
+const DONGPO = LAKE.roadZ + 14, YANAN = LAKE.roadZ + 26.8;                 // 东坡路, 延安路 (z)
+const CROSS = [[74, 0.03], [48.5, 0.028], [27.2, 0.022], [15.8, 0.03], [3.6, 0.024], [-9.6, 0.02]];   // 庆春路 平海路 邮电路 解放路 开元路 清波街 [x, half-width]
+CROSS.forEach(([x, hw]) => arcsIn(LAKE, [[x, LAKE.roadZ], [x, CITY.z1]], hw, ROADS));
+arcsIn(LAKE, [[-18, DONGPO], [30, DONGPO], [CITY.x1, DONGPO]], 0.03, ROADS);
+arcsIn(LAKE, [[-14, YANAN], [30, YANAN], [CITY.x1, YANAN]], 0.035, ROADS);
+arcsIn(LAKE, [[-44, LAKE.roadZ + 9.6], [-14, LAKE.roadZ + 9.6]], 0.016, STONES);   // 河坊街 (stone, on foot)
+// building plots [kind, x, z, w (along x), d (along z), floors | extra]
+const ROW_A = [LAKE.roadZ + 3.8, DONGPO - 2.9], ROW_B = [DONGPO + 3.0, YANAN - 3.2], ROW_C = [YANAN + 3.4, YANAN + 11];
+const mid = r => (r[0] + r[1]) / 2, dep = r => r[1] - r[0];
+const CITY_LOTS = [
+  ['hotel', 67.5, mid(ROW_A), 9.6, dep(ROW_A), 10],
+  ['mall', 55.4, mid(ROW_A), 10.2, dep(ROW_A), 4, 0xe8e2d6],                   // in77 B区
+  ['mall', 43.2, ROW_A[1] - 2.5, 7.0, 5.0, 3, 0xdcd6ca],                       // in77 A区, behind the glass store
+  ['mall', 33.4, mid(ROW_A), 9.0, dep(ROW_A), 4, 0xe6dccb],                    // in77 A区
+  ['mall', 21.5, mid(ROW_A), 8.2, dep(ROW_A), 3, 0xd2d6d8],                    // in77 C区
+  ['tower', 9.7, mid(ROW_A), 8.0, dep(ROW_A) - 1, 6, 0xdcd6ca],
+  ['campus', -3, mid(ROW_A), 9.4, dep(ROW_A), 2],                              // 中国美术学院
+  ['tower', 67, mid(ROW_B), 8.6, dep(ROW_B), 8, 0xd2d6d8],
+  ['tower', 55.4, mid(ROW_B), 9.0, dep(ROW_B), 6, 0xe6dccb],
+  ['mall', 43.2, mid(ROW_B), 7.6, dep(ROW_B), 3, 0xe8e2d6],                   // 星远里 / in77 D区
+  ['theatre', 33.4, mid(ROW_B), 7.6, dep(ROW_B)],                              // 东坡大剧院
+  ['dept', 21.5, mid(ROW_B), 8.2, dep(ROW_B), 6],                              // 杭州解百
+  ['tower', 9.7, mid(ROW_B), 8.0, dep(ROW_B), 9, 0xe8e2d6],
+  ['tower', -3, mid(ROW_B), 8.6, dep(ROW_B), 7, 0xd2d6d8],
+  // the skyline beyond 延安路 [x, floors, width], clear of the cross streets
+  ...[[69, 14, 6.4], [60, 18, 6.4], [53.6, 12, 5.4], [42.8, 20, 6.4], [33.6, 15, 6.4], [21.5, 17, 6.4], [9.7, 13, 6.4], [-3, 16, 6.4]].map(([x, f, w], i) => ['tower', x, mid(ROW_C), w, dep(ROW_C) - 1.2, f, [0xe8e2d6, 0xd2d6d8, 0xdcd6ca][i % 3]]),
+  // 河坊街: old two-storey houses at the foot of 吴山
+  ...[-41, -36.5, -32, -27.5, -23, -18.5].flatMap(x => [['old', x, LAKE.roadZ + 6.3, 3.6, 2.6, 1.3], ['old', x, LAKE.roadZ + 12.9, 3.6, 2.6, x % 2 ? 1.9 : 1.3]]),
+];
+// pavements: every plot and a margin round it, found through one local() call and a bounding test
+const CITY_PAVE = CITY_LOTS.map(([, x, z, w, d]) => [x - w / 2 - 1.3, x + w / 2 + 1.3, z - d / 2 - 1.3, z + d / 2 + 1.3]);
+stoneExtra = d => {
+  const p = local(LAKE, d);
+  if (!p || p.x < CITY.x0 - 2 || p.x > CITY.x1 + 2 || p.z < CITY.z0 - 2 || p.z > CITY.z1 + 2) return 0;
+  let w = 0;
+  for (const [x0, x1, z0, z1] of CITY_PAVE) if (p.x > x0 - 0.5 && p.x < x1 + 0.5 && p.z > z0 - 0.5 && p.z < z1 + 0.5) w = Math.max(w, 1 - Math.hypot(Math.max(x0 - p.x, 0, p.x - x1), Math.max(z0 - p.z, 0, p.z - z1)) / 0.5);
+  return w;
+};
 
 // ground spacing: 0.4 units along the ring, 1.6 from 44 units out, 2.4 from ~110 (only far hills and poles), 3.4 near the poles;
 // 西湖 keeps a 0.55-unit patch over the water and its near hills
@@ -1997,8 +2046,8 @@ function buildSports() {
 }
 
 // ---------- 西溪湿地: channels, boardwalk, 粉墙黛瓦 houses, a stone bridge ----------
-function buildJiangnan(x, z, w, d, h) {
-  const k = kit(XIXI, x, z);
+function buildJiangnan(x, z, w, d, h, site = XIXI, steps = true) {
+  const k = kit(site, x, z);
   const WALL = 0xf5f2ea, TILE = 0x4b5159, CAP = 0x3a3f46, WOOD = 0x5a4234;
   k.box(w, h + 1, d, WALL, 0, (h - 1) / 2, 0);
   k.box(w + 0.04, 0.16, d + 0.04, 0xa3a8ad, 0, 0.08, 0);
@@ -2026,7 +2075,7 @@ function buildJiangnan(x, z, w, d, h) {
   if (h > 1.6) [-0.28, 0, 0.28].forEach(f => win(f * w, h - 0.45));
   k.box(0.44, 0.78, 0.05, WOOD, 0, 0.42, d / 2 + 0.02);
   // stone steps down to the water (河埠头)
-  for (let i = 0; i < 3; i++) kit(XIXI, x + w * 0.3, z + d / 2 + 0.55 + i * 0.22, 0, 1, { h: WATER + 0.36 - i * 0.12 }).box(0.6, 0.12, 0.24, 0xb9b3a7, 0, -0.06, 0);
+  if (steps) for (let i = 0; i < 3; i++) kit(site, x + w * 0.3, z + d / 2 + 0.55 + i * 0.22, 0, 1, { h: WATER + 0.36 - i * 0.12 }).box(0.6, 0.12, 0.24, 0xb9b3a7, 0, -0.06, 0);
 }
 function buildXixi() {
   // boardwalk on posts, ending in a viewing deck
@@ -2176,6 +2225,134 @@ function buildGlassStore(x, z) {
   k.box(1.6, 0.06, 0.8, 0xd9d4c8, 0, 0.17, 2.4);
   walk.footprint(LAKE, shapes.box(x - 3.2, x + 3.2, z - 2.1, z + 2.1), { h: 2.9 });
 }
+// ---------- 湖滨 city buildings (kit faces −z: the street side toward the lake) ----------
+const C_TRIM = 0xf2efe8, C_BAND = 0x56707e, C_ROOF = 0xc9ccd0;
+// a dark window band round all four faces at height y
+function cityBand(k, w, d, y, hgt = 0.2, hex = C_BAND) {
+  k.box(w + 0.03, hgt, 0.04, hex, 0, y, d / 2 + 0.01); k.box(w + 0.03, hgt, 0.04, hex, 0, y, -d / 2 - 0.01);
+  k.box(0.04, hgt, d + 0.03, hex, w / 2 + 0.01, y, 0); k.box(0.04, hgt, d + 0.03, hex, -w / 2 - 0.01, y, 0);
+}
+const cityFoot = (x, z, w, d, h) => walk.footprint(LAKE, shapes.box(x - w / 2, x + w / 2, z - d / 2, z + d / 2), { h });
+// shops: a glass ground floor under a canopy, stone floors with window bands and fins above, a roof plant
+function cityMall(x, z, w, d, floors, tone) {
+  const k = kit(LAKE, x, z, 0, -1), H = 1.0 + (floors - 1) * 0.5;
+  k.box(w - 0.3, 0.95, d - 0.3, 0x86b0bf, 0, 0.47, 0, G_OPTS);
+  k.box(w + 0.5, 0.08, d + 0.5, C_TRIM, 0, 1.0, 0);
+  k.box(w, H - 1.04, d, tone, 0, 1.04 + (H - 1.04) / 2, 0);
+  for (let f = 1; f < floors; f++) cityBand(k, w, d, 1.04 + (f - 0.45) * 0.5, 0.22);
+  const n = Math.max(2, Math.round(w / 1.3));
+  for (let i = 0; i <= n; i++) k.box(0.07, H - 1.04, 0.09, C_TRIM, -w / 2 + 0.25 + i * (w - 0.5) / n, 1.04 + (H - 1.04) / 2, d / 2 + 0.06);
+  k.box(w + 0.1, 0.14, d + 0.1, C_TRIM, 0, H + 0.07, 0);
+  k.box(w * 0.32, 0.45, d * 0.3, C_ROOF, w * 0.18, H + 0.36, -d * 0.12);
+  cityFoot(x, z, w, d, H + 0.6);
+}
+// offices and flats: a glass core behind stone corners and a slab every other floor, a plant room on the roof
+function cityTower(x, z, w, d, floors, tone) {
+  const k = kit(LAKE, x, z, 0, -1), fh = 0.46, H = floors * fh;
+  k.box(w - 0.36, H, d - 0.36, 0x86b0bf, 0, H / 2, 0, G_OPTS);
+  [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([a, b]) => k.box(0.36, H + 0.2, 0.36, tone, a * (w / 2 - 0.18), (H + 0.2) / 2, b * (d / 2 - 0.18)));
+  k.box(w, 0.5, d, tone, 0, 0.25, 0);
+  for (let f = 2; f <= floors; f += 2) k.box(w, 0.08, d, tone, 0, f * fh, 0);
+  k.box(w + 0.06, 0.16, d + 0.06, tone, 0, H + 0.08, 0);
+  k.box(w * 0.45, 0.55, d * 0.4, C_ROOF, 0, H + 0.43, 0);
+  cityFoot(x, z, w, d, H + 0.7);
+}
+// 君悦: a two-storey podium under two slab wings
+function cityHotel(x, z, w, d, floors) {
+  const k = kit(LAKE, x, z, 0, -1), fh = 0.46, STONE = 0xe3d5bd;
+  k.box(w, 1.0, d, STONE, 0, 0.5, 0); cityBand(k, w, d, 0.55, 0.45, 0x86b0bf);
+  k.box(w + 0.4, 0.1, d + 0.4, C_TRIM, 0, 1.05, 0);
+  [[-1, 0], [1, 2]].forEach(([s, less]) => {
+    const fl = floors - less, H = fl * fh, wk = kit(LAKE, x - s * w * 0.27, z, 0, -1, { h: terrainH(L(LAKE, x, z)) + 1.05 });
+    const ww = w * 0.36, dd = d * 0.78;
+    wk.box(ww, H, dd, STONE, 0, H / 2, 0);
+    for (let i = 0; i < fl; i++) cityBand(wk, ww, dd, (i + 0.55) * fh, 0.2);
+    wk.box(ww + 0.12, 0.14, dd + 0.12, C_TRIM, 0, H + 0.07, 0);
+    wk.box(ww * 0.5, 0.5, dd * 0.4, C_ROOF, 0, H + 0.39, 0);
+  });
+  cityFoot(x, z, w, d, 1.1 + floors * fh);
+}
+// 杭州解百: a stone department store, six floors, a coloured band under the roof (no lettering)
+function cityDept(x, z, w, d, floors) {
+  const k = kit(LAKE, x, z, 0, -1), fh = 0.5, H = 0.4 + floors * fh, STONE = 0xd9cdb6;
+  k.box(w, H, d, STONE, 0, H / 2, 0);
+  for (let f = 0; f < floors; f++) cityBand(k, w, d, 0.4 + (f + 0.5) * fh, 0.24);
+  k.box(w + 0.08, 0.42, d + 0.08, 0xb04a3a, 0, H - 0.25, 0);
+  k.box(w + 0.2, 0.12, d + 0.2, C_TRIM, 0, H + 0.06, 0);
+  cityFoot(x, z, w, d, H + 0.3);
+}
+// 东坡大剧院: a stone drum with a glass ring and a low dome
+function cityTheatre(x, z, w, d) {
+  const k = kit(LAKE, x, z, 0, -1), r = Math.min(w, d) / 2 - 0.2;
+  k.cyl(r, r + 0.15, 1.1, 0xe6ded0, 0, 0.55, 0, 28);
+  k.cyl(r - 0.12, r - 0.12, 0.7, 0x86b0bf, 0, 1.45, 0, 28, G_OPTS);
+  k.cyl(r + 0.25, r + 0.25, 0.12, C_TRIM, 0, 1.86, 0, 28);
+  const dome = new THREE.SphereGeometry(r, 28, 8, 0, Math.PI * 2, 0, Math.PI / 2); dome.scale(1, 0.38, 1); dome.translate(0, 1.92, 0);
+  k.add(dome, 0xd6d0c4, { shade: 0x9aa0a8 });
+  k.box(2.6, 0.9, 0.9, 0x86b0bf, 0, 0.45, r + 0.2, G_OPTS);
+  k.box(3.0, 0.1, 1.3, C_TRIM, 0, 0.95, r + 0.3);
+  walk.footprint(LAKE, shapes.circle(x, z, r + 0.3), { h: 2.4 });
+}
+// 中国美术学院: white walls and dark slate roofs round a court, the 江南 look in a modern hand
+function cityCampus(x, z, w, d) {
+  const k = kit(LAKE, x, z, 0, -1), WALL = 0xf4f1ea, TILE = 0x464c53;
+  [[-w * 0.3, 0, w * 0.36, d * 0.9, 2.0], [w * 0.22, -d * 0.22, w * 0.5, d * 0.42, 1.5], [w * 0.22, d * 0.26, w * 0.5, d * 0.36, 1.1]].forEach(([bx, bz, bw, bd, h]) => {
+    k.box(bw, h, bd, WALL, bx, h / 2, bz);
+    k.box(bw - 0.3, 0.32, 0.04, 0x5a6670, bx, h * 0.55, bz + bd / 2 + 0.01);
+    const roof = new THREE.ConeGeometry(Math.SQRT1_2, 0.5, 4, 1); roof.rotateY(Math.PI / 4); roof.scale(bw + 0.5, 1, bd + 0.5); roof.translate(bx, h + 0.25, bz);
+    k.add(roof, TILE, { shade: 0x2f343a });
+  });
+  cityFoot(x, z, w, d, 2.6);
+}
+// 城隍阁 on 吴山: five eaves over a red-pillared body on a stone platform
+function cityPavilionTower(x, z) {
+  const k = kit(LAKE, x, z, 0, -1, { sink: 0.3, scale: 1.25 }), BODY = 0x9a3b2e, WALL = 0xe9dcc0, ROOF = 0x3f4a4f;
+  k.box(4.6, 0.8, 4.6, 0xcfc7b6, 0, 0.1, 0);
+  let y = 0.5, sz = 3.0;
+  for (let i = 0; i < 5; i++) {
+    const hb = 0.78 - i * 0.06;
+    k.box(sz, hb, sz, WALL, 0, y + hb / 2, 0);
+    [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([a, b]) => k.box(0.12, hb, 0.12, BODY, a * (sz / 2 - 0.02), y + hb / 2, b * (sz / 2 - 0.02)));
+    k.box(sz + 0.05, 0.1, sz + 0.05, BODY, 0, y + hb - 0.05, 0);
+    hipRoof(k, sz + 1.0, sz + 1.0, 0.42, y + hb, ROOF, 0x2a3236);
+    y += hb + 0.32; sz *= 0.8;
+  }
+  k.cyl(0.03, 0.03, 0.8, 0xd8b65e, 0, y + 0.2, 0, 6);
+  walk.footprint(LAKE, shapes.circle(x, z, 3.1), { h: 7 });
+}
+function buildCity() {
+  for (const [kind, x, z, w, d, a, b] of CITY_LOTS) {
+    if (kind === 'mall') cityMall(x, z, w, d, a, b);
+    else if (kind === 'tower') cityTower(x, z, w, d, a, b);
+    else if (kind === 'hotel') cityHotel(x, z, w, d, a);
+    else if (kind === 'dept') cityDept(x, z, w, d, a);
+    else if (kind === 'theatre') cityTheatre(x, z, w, d);
+    else if (kind === 'campus') cityCampus(x, z, w, d);
+    else if (kind === 'old') { buildJiangnan(x, z, w, d, a, LAKE, false); cityFoot(x, z, w + 0.5, d + 0.3, a + 1); }
+  }
+  cityPavilionTower(WUSHAN[0], WUSHAN[1]);
+  // plane trees along 东坡路 and 延安路, clear of the cross streets
+  for (const [zr, off] of [[DONGPO, 2.25], [YANAN, 2.6]]) {
+    for (let x = -12; x < CITY.x1 - 1; x += 4.3) {
+      if (CROSS.some(([cx]) => Math.abs(x - cx) < 2.4)) continue;
+      [-1, 1].forEach(sd => heroTrees.push([LAKE, x, zr + sd * off]));
+    }
+  }
+  // trees on 吴山's slopes
+  for (let i = 0; i < 26; i++) {
+    const a = i * 2.39996, r = 3.6 + (i % 5) * 0.9;
+    heroTrees.push([LAKE, WUSHAN[0] + Math.cos(a) * r, WUSHAN[1] + Math.sin(a) * r, i % 3 ? undefined : 'small']);
+  }
+  LANDMARKS.push(
+    { name: '湖滨银泰 in77', s: LAKE, at: [33.4, mid(ROW_A)], h: 3.2 },
+    { name: '君悦酒店', s: LAKE, at: [67.5, mid(ROW_A)], h: 5.8 },
+    { name: '东坡大剧院', s: LAKE, at: [33.4, mid(ROW_B)], h: 2.9 },
+    { name: '杭州解百', s: LAKE, at: [21.5, mid(ROW_B)], h: 3.9 },
+    { name: '中国美术学院', s: LAKE, at: [-3, mid(ROW_A)], h: 2.8 },
+    { name: '城隍阁', s: LAKE, at: WUSHAN, h: 9.4 },
+    { name: '河坊街', s: LAKE, at: [-30, LAKE.roadZ + 9.6], h: 2.6 },
+  );
+}
 function buildLake() {
   buildLeifeng();
   buildBaochu();
@@ -2230,6 +2407,7 @@ function buildLake() {
   walk.footprint(LAKE, shapes.box(JINGCI[0] - 3.4, JINGCI[0] + 3.4, JINGCI[1] - 3.9, JINGCI[1] + 3.9), { h: 3.2 });
   buildFountain();
   buildGlassStore(APPLE[0], APPLE[1]);
+  buildCity();
   // islands: trees round 小瀛洲's ring and on 孤山, 湖心亭, 阮公墩
   for (let a = 0; a < 24; a++) { if (a % 6 === 0) continue; const t = (a + 0.5) / 24 * Math.PI * 2, r = (XYZ.r0 + XYZ.r1) / 2; heroTrees.push([LAKE, XYZ.x + Math.cos(t) * r, XYZ.z + Math.sin(t) * r, 'small']); }
   [[1.1, 0.5], [-1.0, -0.6], [0.2, -1.1]].forEach(([dx, dz]) => heroTrees.push([LAKE, RGD.x + dx, RGD.z + dz, 'small']));
@@ -2311,6 +2489,7 @@ siteKeepout = function (d, m = 0) {
     const sd = lakeSd(p);
     if (sd < 0.4 + m * 2 || polyD(p, YGD) < 1.3 + m) return true;
     if (m >= 0.45 ? laneD(p) < 3.6 : m > 0 && laneD(p) < 1.6) return true;   // trees / bushes and rocks
+    if (inRect(p, CITY.x0, CITY.x1, CITY.z0, CITY.z1) && Math.hypot(p.x - WUSHAN[0], p.z - WUSHAN[1]) > 8) return true;   // the city (吴山 keeps its trees)
     if (m > 0 && p.z > 18 && sd < 30 && p.x > LK_BOX.x0 && p.x < LK_BOX.x1 + 12) return true;   // the city side of the shore: planted by hand
     if (p.z > LAKE.roadZ - 1 && Math.abs(p.x - APPLE[0]) < 5) return true;
   }
@@ -3236,7 +3415,7 @@ async function loadWorld(key) {
   disposeWorld();
   sites = []; zones = []; LANDMARKS = [];
   ROADS = []; STONES = []; STONE_RECTS = []; STONE_CIRCS = []; walk = walker = null;
-  terrainH = () => 0; siteKeepout = () => false;
+  terrainH = () => 0; siteKeepout = () => false; stoneExtra = null;
   blobGeos.length = 0; batches.clear();
   planet = new THREE.Group();
   scene.add(planet);
