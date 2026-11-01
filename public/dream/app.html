@@ -160,6 +160,18 @@
   .who button:hover { background: rgba(31, 111, 120, 0.1); }
   .who button[aria-pressed="true"] { background: var(--accent); color: #f4f7f2; }
   .who button:focus-visible { outline: 2px solid var(--sun); outline-offset: 1px; }
+  /* the overview toggle: shown while the avatar is somewhere that has one (西湖) */
+  .overview-btn {
+    position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%);
+    display: flex; align-items: center; gap: 7px; padding: 9px 16px; cursor: pointer;
+    font: 400 15px/1 var(--display); letter-spacing: 0.08em; color: var(--ink);
+    background: var(--card); border: 1px solid var(--line); border-radius: 999px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    transition: background .15s, color .15s;
+  }
+  .overview-btn[hidden] { display: none; }
+  .overview-btn svg { width: 16px; height: 16px; flex: none; }
+  .overview-btn:hover, .overview-btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #f4f7f2; }
+  .overview-btn:focus-visible { outline: 2px solid var(--sun); outline-offset: 2px; }
   .veil {
     position: fixed; inset: 0; display: grid; place-items: center; pointer-events: none;
     background: var(--sky); color: var(--ink); font: 400 22px/1 var(--display); letter-spacing: 0.12em;
@@ -226,6 +238,7 @@
   </div>
   <div class="who" id="who" role="group" aria-label="我的形象" hidden><span>我是</span><button type="button" data-kind="m">男生</button><button type="button" data-kind="f">女生</button><button type="button" id="reroll" title="随机换一套发型和衣服" aria-label="换一套">换一套</button></div>
 </aside>
+<button type="button" class="overview-btn" id="overview-btn" aria-pressed="false" hidden><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z"/><circle cx="8" cy="8" r="2"/></svg><span>俯瞰</span></button>
 <div class="veil on" id="veil">正在生成星球…</div>
 
 <p class="hint">拖动转动星球 · WASD / 方向键或点击地面行走 · 点标签前往</p>
@@ -280,11 +293,22 @@ let camZoom = 1.35, camLift = 0;      // camLift: the avatar's ground height, sm
 let camPitch = Math.atan2(camBase.y, camBase.z);   // camera elevation above the ground behind the avatar
 const PITCH_MIN = 0.2, PITCH_MAX = 0.95;
 let camReach = 1;          // share of the camera's distance behind the avatar kept clear of tall things (1 = nothing in the way)
+let ov = 0, ovAhead = 0;  // how far into a place's overview the camera is (0 = behind the avatar, 1 = overview), and how far out it aims
+let postU = null;         // the line pass's uniforms, once it exists (it is made further down)
 function placeCamera() {
   // in front of an obstacle the camera keeps its height and comes forward, looking down more steeply
   const D = Math.hypot(camBase.y, camBase.z) * camZoom;
   camera.position.set(0, R + camLift + D * Math.sin(camPitch), D * Math.cos(camPitch) * camReach);
-  camera.lookAt(0, R + camLift + 0.4 + (camZoom - 1) * 1.1, (-7 - (camZoom - 1) * 3) * Math.max(0.15, camReach));   // pulled in: aim nearer, keep the avatar in frame
+  // pulled in: aim nearer, keep the avatar in frame; in an overview: aim out over the place instead
+  const ahead = (-7 - (camZoom - 1) * 3) * (1 - ov) - ovAhead * ov;
+  camera.lookAt(0, R + camLift + (0.4 + (camZoom - 1) * 1.1) * (1 - ov), ahead * Math.max(0.15, camReach));
+  // clip planes follow the distance, so a high view sees across a big place without losing depth precision
+  const far = Math.max(160, D * 2.4 + 140), near = Math.max(0.1, D / 70);
+  if (Math.abs(far - camera.far) > 2 || Math.abs(near - camera.near) > 0.02) {
+    camera.far = far; camera.near = near; camera.updateProjectionMatrix();
+    if (postU) { postU.uNear.value = near; postU.uFar.value = far; }
+  }
+  if (postU) postU.uLineFar.value = 30 + Math.max(0, D - 10);
 }
 placeCamera();
 camera.layers.enable(1);
@@ -755,10 +779,11 @@ function buildCar() {
 
 // ---------- culling: big meshes and instance sets are split into patches of the sphere ----------
 // so the GPU only draws the patches in front of the camera (and in the sun's shadow frustum).
-// 6 × N² patches, N growing with the radius (54 at R ≤ 62, 96 at R = 100). Finer patches cut triangles but add
-// draw calls; at R = 100, N = 4 keeps both at or below what R = 50 had (measured: ~630 calls, ~1.3M triangles).
+// 6 × N² patches, N growing with the radius (54 at R ≤ 62, 96 at R = 100, capped at 216 from R = 138). Finer
+// patches cut triangles but add draw calls; at R = 100, N = 4 kept both at or below what R = 50 had (~630 calls,
+// ~1.3M triangles); at R = 200, N = 8 added ~240 calls a view for little, so N stops at 6.
 function binKey(x, y, z) {
-  const ax = Math.abs(x), ay = Math.abs(y), az = Math.abs(z), N = Math.max(3, Math.round(R / 25));
+  const ax = Math.abs(x), ay = Math.abs(y), az = Math.abs(z), N = Math.min(6, Math.max(3, Math.round(R / 25)));
   let f, u, v;
   if (ax >= ay && ax >= az) { f = x > 0 ? 0 : 1; u = y / ax; v = z / ax; }
   else if (ay >= az) { f = y > 0 ? 2 : 3; u = x / ay; v = z / ay; }
@@ -1314,7 +1339,7 @@ const normalProbe = new THREE.Scene();
 const post = new THREE.ShaderMaterial({
   uniforms: {
     tColor: { value: rtColor.texture }, tNormal: { value: rtNormal.texture }, tDepth: { value: rtNormal.depthTexture },
-    uRes: { value: new THREE.Vector2(1, 1) }, uNear: { value: camera.near }, uFar: { value: camera.far },
+    uRes: { value: new THREE.Vector2(1, 1) }, uNear: { value: camera.near }, uFar: { value: camera.far }, uLineFar: { value: 30 },
     uInvProj: { value: new THREE.Matrix4() }, uCamWorld: { value: new THREE.Matrix4() },
     uTime: { value: 0 }, uLine: { value: 1 }, uLineW: { value: 1.2 }, uSky: { value: 1 }, uGrain: { value: 1 },
     uSkyYaw: { value: 0 }, uSkyDrift: { value: 0 }, uInk: G.uInk,
@@ -1322,7 +1347,7 @@ const post = new THREE.ShaderMaterial({
   vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
   fragmentShader: /* glsl */`
     uniform sampler2D tColor, tNormal, tDepth;
-    uniform vec2 uRes; uniform float uNear, uFar, uTime, uLine, uLineW, uSky, uGrain, uSkyYaw, uSkyDrift;
+    uniform vec2 uRes; uniform float uNear, uFar, uTime, uLine, uLineW, uSky, uGrain, uSkyYaw, uSkyDrift, uLineFar;
     uniform mat4 uInvProj, uCamWorld; uniform vec3 uInk;
     varying vec2 vUv;
     ${NOISE_GLSL}
@@ -1362,7 +1387,7 @@ const post = new THREE.ShaderMaterial({
         vec3 nd = texture2D(tNormal, vUv - vec2(0, px.y)).xyz * 2.0 - 1.0, nu = texture2D(tNormal, vUv + vec2(0, px.y)).xyz * 2.0 - 1.0;
         float nn = (1.0 - dot(n0, nl)) + (1.0 - dot(n0, nr)) + (1.0 - dot(n0, nd)) + (1.0 - dot(n0, nu));
         float eN = smoothstep(0.55, 1.0, nn) * step(d0, uFar * 0.98);
-        float fade = 1.0 - smoothstep(30.0, 60.0, d0);
+        float fade = 1.0 - smoothstep(uLineFar, uLineFar * 2.0, d0);
         float e = max(eD, eN) * fade;
         c = mix(c, uInk, e * 0.88);
       }
@@ -1375,6 +1400,7 @@ const post = new THREE.ShaderMaterial({
     }`,
   depthTest: false, depthWrite: false,
 });
+postU = post.uniforms;
 const postScene = new THREE.Scene();
 const postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), post);
@@ -1421,10 +1447,12 @@ resize();
 
 // ======================= 杭州星球 =======================
 async function buildHangzhou() {
-  // R = 100 (was 50): room round the ring for new places. Everything sits within ~25 units of the ring
-  // road (the equator), so ground detail and vegetation are full in that band and thin toward the poles.
-  R = 100; AW = 26 / R;
+  // R = 200 (was 100, before that 50): room for 西湖 at eight times its first size and for new places. The
+  // places sit within ~25 units of the ring road (the equator), except 西湖, which reaches ~165 units north;
+  // ground detail and vegetation are full in that band and over the lake, and thin toward the poles.
+  R = 200; AW = 26 / R;
   const AREA = (R / 26) ** 2;   // vegetation counts were tuned at R = 26
+  const TRIES = AREA / (100 / 26) ** 2;   // scatter attempts were tuned at R = 100
   WATER = -0.55;
   beginWalk();
   const BAND = 24, FADE = 44;   // units from the equator: full detail inside BAND, coarse beyond FADE
@@ -1432,21 +1460,24 @@ async function buildHangzhou() {
   const fromRing = d => R * Math.abs(Math.asin(Math.max(-1, Math.min(1, d.y))));
   let nearLake = () => false;   // 西湖 reaches far north of the ring: its area keeps its own density (set below)
   const fill = (floor, lake) => d => (nearLake(d) ? lake : 1 - (1 - floor) * bandFade(fromRing(d)));
-  const treeFill = fill(0.3, 0.15), grassFill = fill(0.08, 0.35);   // the lake's hills get their own forest
+  const treeFill = fill(0.3, 0.12), grassFill = fill(0.08, 0.25);   // the lake's hills get their own forest
   W.walkSpeed = 10; W.travelSpeed = 26;                       // units/s: keyboard walk, autopilot cruise
   W.tagCos = [Math.cos(26.8 / R), Math.cos(22.5 / R)];        // stop and landmark labels show within ~27 / 22 units
   const MALL_NAME = '向上天街';      // fictional mall name
   // roadZ: how far the place's centre sits from the ring road; side: north (+1) or south (-1) of it.
-  // The ring has room left between 天街 and 文体中心 and between 西湖 and home for new places.
+  // Places are spaced in units along the ring (as they were at R = 100: 66, 117 and 127 units apart); 西湖 is
+  // ~172 units past 西溪 so its hills stay clear of it. From 西湖 on to home the ring is free (~780 units)
+  // for new places.
+  const lonAt = units => units / (R * D2R);
   sites = makeSites([
     { key: 'home', roadZ: 6.9, side: 1, lon: 0 },
-    { key: 'mall', roadZ: 4.58, side: -1, lon: 38 },
-    { key: 'sports', roadZ: 6.0, side: 1, lon: 105 },
-    { key: 'xixi', roadZ: 7.46, side: -1, lon: 178 },
-    { key: 'lake', roadZ: 31, side: 1, lon: 262 },
+    { key: 'mall', roadZ: 4.58, side: -1, lon: lonAt(66.3) },
+    { key: 'sports', roadZ: 6.0, side: 1, lon: lonAt(183.3) },
+    { key: 'xixi', roadZ: 7.46, side: -1, lon: lonAt(310.7) },
+    { key: 'lake', roadZ: 62, side: 1, lon: lonAt(482.7) },
   ]);
   const [HOME, MALL, SPORTS, XIXI, LAKE] = sites;
-  const LAKE_AREA = { x0: -56, x1: 58, z0: -58, z1: LAKE.roadZ + 8 };   // 西湖 and its hills in the lake site's plane
+  const LAKE_AREA = { x0: -112, x1: 116, z0: -116, z1: LAKE.roadZ + 16 };   // 西湖 and its hills in the lake site's plane
   nearLake = d => { const p = local(LAKE, d); return !!p && inRect(p, LAKE_AREA.x0, LAKE_AREA.x1, LAKE_AREA.z0, LAKE_AREA.z1); };
   // mean density over the sphere, which scales the vegetation totals (a Fibonacci sphere: no random numbers used)
   const share = f => { const n = 6000, v = new THREE.Vector3(); let m = 0; for (let i = 0; i < n; i++) { const y = 1 - 2 * (i + 0.5) / n, r = Math.sqrt(1 - y * y), a = i * 2.399963; m += f(v.set(r * Math.cos(a), y, r * Math.sin(a))); } return m / n; };
@@ -1473,9 +1504,11 @@ const XIXI_PONDS = [[2.9, 3.2, 1.6], [-4.3, 2.9, 1.9], [-7.4, -2.8, 1.0]];
 const BOARDWALK = [[0.4, 6.0], [2.2, 4.2], [1.2, 2.4], [1.0, 1.05]];
 const XIXI_HOUSES = [[-2.6, -3.1, 1.9, 1.3, 1.25], [0.1, -3.4, 1.6, 1.2, 1.9], [-5.2, -3.0, 1.7, 1.2, 1.2]];
 // 西湖, traced from a north-up map of the lake. mp(px, py) turns the map's pixels into the site's plane:
-// x runs north, z east (toward the ring road, which here is 湖滨路 / 南山路), 1 unit ≈ 50 m. The water is
-// about 67 × 52 units, four times the old pond; landmarks keep a readable size rather than true scale.
-const mp = (px, py) => [(715 - py) / 17, (px - 970) / 17];
+// x runs north, z east (toward the ring road, which here is 湖滨路 / 南山路), 1 unit ≈ 25 m. The water is
+// about 134 × 104 units, eight times the first pond. Geography (outline, islands, ponds, hills) scales with
+// the map; what people walk on and buildings keep a human size, and the pagodas are drawn larger than true.
+const LK_PX = 8.5;    // map pixels per unit (17 for the 4× lake)
+const mp = (px, py) => [(715 - py) / LK_PX, (px - 970) / LK_PX];
 const mpl = pts => pts.map(q => mp(q[0], q[1]));
 // the water's edge: 外湖, 北里湖, 西里湖 and 岳湖 as one outline (west → north → east → south)
 const LK_SHORE = mpl([[560, 470], [620, 452], [690, 440], [740, 398], [780, 378], [860, 328], [930, 270], [1000, 222], [1060, 198], [1110, 190],
@@ -1484,31 +1517,31 @@ const LK_SHORE = mpl([[560, 470], [620, 452], [690, 440], [740, 398], [780, 378]
   [872, 1282], [840, 1232], [790, 1172], [700, 1122], [640, 1060], [605, 975], [585, 880], [565, 760], [555, 600]]);
 const LK_GUSHAN = mpl([[718, 470], [710, 503], [735, 518], [830, 522], [912, 497], [955, 428], [930, 408], [830, 392], [765, 405], [735, 440]]);   // 孤山
 const SUDI = mpl([[620, 452], [630, 580], [675, 700], [715, 850], [750, 1000], [790, 1100], [850, 1220], [872, 1282]]).reverse();   // 苏堤, south → north
-const BAIDI = mpl([[950, 428], [1000, 362], [1060, 282], [1095, 228]]);   // 白堤, 孤山 → 断桥
+const BAIDI = mpl([[950, 428], [1000, 362], [1060, 282], [1097, 220]]);   // 白堤, 孤山 → 断桥
 const YGD = mpl([[470, 430], [463, 600], [478, 760], [498, 880], [480, 990], [500, 1080], [560, 1160], [640, 1260]]);   // 杨公堤: a lane on land
 // [x, z, rx, rz]: 茅家埠, 乌龟潭, 金沙港 and 浴鹄湾 west of 杨公堤, and 花港观鱼's fish pond
-const LK_PONDS = [[...mp(415, 852), 2.6, 4.4], [...mp(432, 1036), 1.6, 3.0], [...mp(420, 560), 3.4, 2.2], [...mp(525, 1172), 1.3, 1.8], [...mp(760, 1230), 1.25, 1.6]];
+const LK_PONDS = [[...mp(415, 852), 5.2, 8.8], [...mp(432, 1036), 3.2, 6.0], [...mp(420, 560), 6.8, 4.4], [...mp(525, 1172), 2.6, 3.6], [...mp(760, 1230), 2.5, 3.2]];
 const LK_CHANNELS = [[mp(415, 852), mp(600, 862)], [mp(432, 1036), mp(625, 1040)], [mp(420, 560), mp(578, 560)], [mp(525, 1172), mp(690, 1132)]];   // ponds → 西里湖, under 杨公堤
-const XYZ = { x: mp(912, 915)[0], z: mp(912, 915)[1], r0: 2.0, r1: 2.95 };   // 小瀛洲: a ring island quartered by dikes (田字)
-const HXT = { x: mp(885, 658)[0], z: mp(885, 658)[1], r: 0.85 };             // 湖心亭
-const RGD = { x: mp(792, 648)[0], z: mp(792, 648)[1], r: 0.9 };              // 阮公墩
+const XYZ = { x: mp(912, 915)[0], z: mp(912, 915)[1], r0: 4.0, r1: 5.9 };   // 小瀛洲: a ring island quartered by dikes (田字)
+const HXT = { x: mp(885, 658)[0], z: mp(885, 658)[1], r: 1.7 };             // 湖心亭
+const RGD = { x: mp(792, 648)[0], z: mp(792, 648)[1], r: 1.8 };              // 阮公墩
 const SANTAN = mpl([[882, 1000], [913, 1011], [944, 999]]);                   // 三潭印月's three stone lanterns
 const LEIFENG = mp(1065, 1132), BAOCHU = mp(1015, 60), JINGCI = mp(1060, 1308);   // 雷峰塔, 保俶塔, 净慈寺 (南屏晚钟)
 const PHQY = mp(918, 490), QYFH = mp(588, 515), HGGY = mp(760, 1230);            // 平湖秋月, 曲院风荷 (lotus), 花港观鱼
 const STELES = { sudi: mp(886, 1302), duanqiao: mp(1140, 160), shuangfeng: mp(398, 470) };   // 碑亭 of 苏堤春晓, 断桥残雪, 双峰插云
-const SHUANGFENG = [[17, -44, 4.6, 8.6], [-7, -43, 4.6, 7.8]];                  // 北高峰, 南高峰 [x, z, r, h]
-const LWYY = { x0: -15.5, x1: -7.6, z0: 16.4, z1: 27.5 };                         // 柳浪闻莺's willow grove
+const SHUANGFENG = [[34, -88, 9.2, 12.9], [-14, -86, 9.2, 11.7]];                  // 北高峰, 南高峰 [x, z, r, h]
+const LWYY = { x0: -31, x1: -15.2, z0: 32.8, z1: 55 };                         // 柳浪闻莺's willow grove
 // the music fountain runs along the shore off 湖滨; the glass store faces it across the road
 const YF = (() => {
   const a = mp(1340, 240), b = mp(1440, 435), len = Math.hypot(b[0] - a[0], b[1] - a[1]);
   const t = [(b[0] - a[0]) / len, (b[1] - a[1]) / len], n = [-t[1], t[0]];   // n points away from the land
   const o = mp(1392, 334), out = n[1] < 0 ? n : [-n[0], -n[1]];
-  return { x: o[0] + out[0] * 1.7, z: o[1] + out[1] * 1.7, t, n: out, shore: o };
+  return { x: o[0] + out[0] * 2.8, z: o[1] + out[1] * 2.8, t, n: out, shore: o };
 })();
 const APPLE = [YF.x, LAKE.roadZ + 3.9];
-const QWC = [-3.8, 23.8];                           // 钱王祠, by 南山路
-const LK_PEAKS = [[...BAOCHU, 6.5, 3.6], [...LEIFENG, 2.5, 1.35], [...mp(1050, 1420), 7, 4.4], ...SHUANGFENG,
-  [-25, -40, 7, 4.2], [31, -37, 7, 4], [6, -40, 6, 3.4], [40, -12, 7, 3.2], [-40, -18, 7, 3.6]];   // 宝石山, 夕照山, 南屏山, 双峰, 西山
+const QWC = [-7.6, 47.6];                           // 钱王祠, by 南山路
+const LK_PEAKS = [[...BAOCHU, 13, 5.4], [...LEIFENG, 5, 2.0], [...mp(1050, 1420), 14, 6.6], ...SHUANGFENG,
+  [-50, -80, 14, 6.3], [62, -74, 14, 6], [12, -80, 12, 5.1], [80, -24, 14, 4.8], [-80, -36, 14, 5.4]];   // 宝石山, 夕照山, 南屏山, 双峰, 西山
 // polylines with arc length: where along them a point is, and the point at a given length
 const polyLen = pts => pts.reduce((c, q, i) => (i ? [...c, c[i - 1] + Math.hypot(q[0] - pts[i - 1][0], q[1] - pts[i - 1][1])] : [0]), []);
 function polyNear(p, pts, cum) {
@@ -1546,7 +1579,11 @@ const YGD_BR = LK_CHANNELS.map(([a, b]) => {                                    
 await slice();
 // ---------- ground paint: asphalt roads, stone lanes and plazas ----------
 const ringKind = ['road', 'road', 'stone', 'stone', 'road'];   // segment from place i to i+1
-sites.forEach((s, i) => (ringKind[i] === 'road' ? ROADS : STONES).push([s.node, sites[(i + 1) % 5].node, ringKind[i] === 'road' ? 0.05 : 0.03]));
+// in pieces of at most 60°: an arc between two points always takes the short way, and 西湖 → home is 223°
+sites.forEach((s, i) => {
+  const gap = ((sites[(i + 1) % 5].lon - s.lon) % 360 + 360) % 360, n = Math.ceil(gap / 60);
+  for (let k = 0; k < n; k++) (ringKind[i] === 'road' ? ROADS : STONES).push([sph(0, s.lon + gap * k / n), sph(0, s.lon + gap * (k + 1) / n), ringKind[i] === 'road' ? 0.05 : 0.03]);
+});
 arcsIn(HOME, [[0, HOME.roadZ], [0, HOME_FENCE.z1 + 0.2]], 0.03, ROADS);
 arcsIn(HOME, [[0.9, 4.3], [4.3, 3.5]], 0.022, ROADS);
 arcsIn(HOME, [[0, 4.4], [0, 1.9]], 0.02, STONES);
@@ -1562,59 +1599,61 @@ arcsIn(XIXI, [[-6.8, -1.95], [-2.0, -1.9], [3.0, -2.1], [5.2, -2.05]], 0.013, ST
 arcsIn(LAKE, mpl([[1287, 140], [1312, 175], [1362, 240], [1412, 330], [1462, 435], [1427, 520], [1362, 620], [1292, 720], [1227, 815], [1212, 900], [1210, 1030], [1225, 1175]]), 0.022, STONES);
 arcsIn(LAKE, mpl([[560, 445], [620, 428], [690, 416], [740, 374], [780, 354], [860, 304], [930, 246], [1000, 198], [1060, 174], [1110, 166], [1180, 139], [1265, 114]]), 0.02, STONES);
 arcsIn(LAKE, mpl([[1225, 1185], [1110, 1192], [1010, 1225], [930, 1282], [880, 1310], [760, 1295], [650, 1272]]), 0.02, STONES);
-arcsIn(LAKE, SUDI, 0.011, STONES); arcsIn(LAKE, BAIDI, 0.011, STONES); arcsIn(LAKE, YGD, 0.016, STONES);
-[[YF.shore[0], 27.6], [QWC[0] + 4.6, 17.0], [33.2, 17.0], [-27.0, 14.6], [6.0, 18.9], [-15.5, 16.5]].forEach(([x, z]) => arcsIn(LAKE, [[x, LAKE.roadZ], [x, z]], 0.02, STONES));
-arcsIn(LAKE, [[QWC[0], QWC[1] - 3.1], [QWC[0], QWC[1] - 6]], 0.02, STONES);
+arcsIn(LAKE, SUDI, 0.015, STONES); arcsIn(LAKE, BAIDI, 0.015, STONES); arcsIn(LAKE, YGD, 0.02, STONES);
+[[YF.shore[0], 55.2], [QWC[0] + 5, 34], [66.4, 34], [-54, 29.2], [12, 37.8], [-31, 33]].forEach(([x, z]) => arcsIn(LAKE, [[x, LAKE.roadZ], [x, z]], 0.02, STONES));
+arcsIn(LAKE, [[QWC[0], QWC[1] - 3.1], [QWC[0], QWC[1] - 13]], 0.02, STONES);
 arcsIn(LAKE, [[JINGCI[0] + 3.4, JINGCI[1]], [JINGCI[0] + 5.1, JINGCI[1]]], 0.02, STONES);
-STONE_CIRCS.push([LAKE, YF.shore[0] + YF.n[0] * -1.4, YF.shore[1] + YF.n[1] * -1.4, 2.0]);
+STONE_CIRCS.push([LAKE, YF.shore[0] + YF.n[0] * -2.6, YF.shore[1] + YF.n[1] * -2.6, 3.4]);
 STONE_RECTS.push([LAKE, APPLE[0] - 3.6, APPLE[0] + 3.6, LAKE.roadZ + 0.8, APPLE[1] + 2.4]);
 STONE_RECTS.push([LAKE, QWC[0] - 3.4, QWC[0] + 3.4, QWC[1] - 2.9, QWC[1] + 2.9], [LAKE, JINGCI[0] - 3.2, JINGCI[0] + 3.2, JINGCI[1] - 3.6, JINGCI[1] + 3.6]);
 await slice();
 // ---------- terrain ----------
 const hillsBase = d => { const f = 2.6 / AW, g = 7.5 / AW; return 0.75 * fbm3(d.x * f + 5, d.y * f, d.z * f) + 0.25 * fbm3(d.x * g, d.y * g + 2, d.z * g); };
 // 西湖: open water (lake, ponds, channels) as a signed distance, causeways and islands inside it, hills round it
-const LK_BOX = LK_SHORE.reduce((b, [x, z]) => ({ x0: Math.min(b.x0, x), x1: Math.max(b.x1, x), z0: Math.min(b.z0, z), z1: Math.max(b.z1, z) }), { x0: Infinity, x1: -Infinity, z0: -40, z1: -Infinity });
+const LK_BOX = LK_SHORE.reduce((b, [x, z]) => ({ x0: Math.min(b.x0, x), x1: Math.max(b.x1, x), z0: Math.min(b.z0, z), z1: Math.max(b.z1, z) }), { x0: Infinity, x1: -Infinity, z0: -80, z1: -Infinity });   // z0 reaches the ponds west of 杨公堤
+const LK_GUSHAN_BOX = LK_GUSHAN.reduce((b, [x, z]) => ({ x0: Math.min(b.x0, x), x1: Math.max(b.x1, x), z0: Math.min(b.z0, z), z1: Math.max(b.z1, z) }), { x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity });
 function lakeSd(p) {           // < 0 in open water
   const out = Math.max(LK_BOX.x0 - p.x, p.x - LK_BOX.x1, LK_BOX.z0 - p.z, p.z - LK_BOX.z1);
-  if (out > 12) return out;
+  if (out > 24) return out;
   let d = polySd(p, LK_SHORE);
   for (const [x, z, rx, rz] of LK_PONDS) d = Math.min(d, (Math.hypot((p.x - x) / rx, (p.z - z) / rz) - 1) * Math.min(rx, rz));
-  for (const [a, b] of LK_CHANNELS) d = Math.min(d, segD(p, a, b) - 0.45);
+  for (const [a, b] of LK_CHANNELS) d = Math.min(d, segD(p, a, b) - 0.8);
   return d;
 }
 function lakeLand(p) {         // causeways and islands inside the water (1 = land)
   let l = 0, n;
-  if ((n = polyNear(p, SUDI, SUDI_S)).d < 0.6) {
-    let c = 1 - sstep(0.34, 0.46, n.d);
-    for (const s of SUDI_BR) c *= sstep(0.3, 0.55, Math.abs(n.s - s));
+  if ((n = polyNear(p, SUDI, SUDI_S)).d < 1.0) {
+    let c = 1 - sstep(0.62, 0.78, n.d);
+    for (const s of SUDI_BR) c *= sstep(0.55, 0.95, Math.abs(n.s - s));
     l = Math.max(l, c);
   }
-  if ((n = polyNear(p, BAIDI, BAIDI_S)).d < 0.6) {
-    let c = 1 - sstep(0.32, 0.44, n.d);
-    for (const s of BAIDI_BR) c *= sstep(0.3, 0.55, Math.abs(n.s - s));
+  if ((n = polyNear(p, BAIDI, BAIDI_S)).d < 1.0) {
+    let c = 1 - sstep(0.56, 0.72, n.d);
+    for (const s of BAIDI_BR) c *= sstep(0.55, 0.95, Math.abs(n.s - s));
     l = Math.max(l, c);
   }
-  if (p.x > 9 && p.x < 20 && p.z > -17 && p.z < 0) l = Math.max(l, 1 - sstep(-0.12, 0.06, polySd(p, LK_GUSHAN)));
+  if (inRect(p, LK_GUSHAN_BOX.x0 - 1, LK_GUSHAN_BOX.x1 + 1, LK_GUSHAN_BOX.z0 - 1, LK_GUSHAN_BOX.z1 + 1)) l = Math.max(l, 1 - sstep(-0.12, 0.06, polySd(p, LK_GUSHAN)));
   const rx = Math.hypot(p.x - XYZ.x, p.z - XYZ.z);
   if (rx < XYZ.r1 + 0.2) {
     l = Math.max(l, sstep(XYZ.r0 - 0.08, XYZ.r0 + 0.08, rx) * (1 - sstep(XYZ.r1 - 0.1, XYZ.r1 + 0.08, rx)));
-    if (rx < XYZ.r0 + 0.1) l = Math.max(l, 1 - sstep(0.18, 0.3, Math.min(Math.abs(p.x - XYZ.x), Math.abs(p.z - XYZ.z))));   // the 田 dikes
+    if (rx < XYZ.r0 + 0.1) l = Math.max(l, 1 - sstep(0.3, 0.46, Math.min(Math.abs(p.x - XYZ.x), Math.abs(p.z - XYZ.z))));   // the 田 dikes
   }
   for (const c of [HXT, RGD]) l = Math.max(l, 1 - sstep(c.r - 0.1, c.r + 0.06, Math.hypot(p.x - c.x, p.z - c.z)));
   return l;
 }
 function lakeHills(p, sd) {
-  const away = sstep(1.5, 7, sd) * (1 - sstep(8, 14, p.z));    // rising away from the water, never in the city on the east shore
-  let h = away > 0 ? away * (0.7 + 2.4 * fbm3(p.x * 0.09 + 3, p.z * 0.09, 9.1)) : 0;
-  if (sd > 0.6) for (const [x, z, r, a] of LK_PEAKS) if (Math.abs(p.x - x) < 3 * r && Math.abs(p.z - z) < 3 * r) h += bump(p, [x, z], r, a) * sstep(0.6, 2.5, sd);
+  const away = sstep(3, 14, sd) * (1 - sstep(16, 28, p.z));    // rising away from the water, never in the city on the east shore
+  let h = away > 0 ? away * (1.0 + 3.6 * fbm3(p.x * 0.045 + 3, p.z * 0.045, 9.1)) : 0;
+  if (sd > 1.2) for (const [x, z, r, a] of LK_PEAKS) if (Math.abs(p.x - x) < 3 * r && Math.abs(p.z - z) < 3 * r) h += bump(p, [x, z], r, a) * sstep(1.2, 5, sd);
   return h;
 }
-const lakeReach = p => rectFall(p, -46, 48, -48, LAKE.roadZ + 6, 10);   // 1 where 西湖 shapes the ground alone, 0 beyond it
-const YGD_BOX = YGD.reduce((b, [x, z]) => ({ x0: Math.min(b.x0, x - 3.2), x1: Math.max(b.x1, x + 3.2), z0: Math.min(b.z0, z - 3.2), z1: Math.max(b.z1, z + 3.2) }), { x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity });
+// 1 where 西湖 shapes the ground alone, 0 beyond it; also faded before local() stops answering (at 0.96 R)
+const lakeReach = p => rectFall(p, -92, 96, -96, LAKE.roadZ + 12, 20) * (1 - sstep(0.8 * R, 0.93 * R, Math.hypot(p.x, p.z)));
+const YGD_BOX = YGD.reduce((b, [x, z]) => ({ x0: Math.min(b.x0, x - 4.2), x1: Math.max(b.x1, x + 4.2), z0: Math.min(b.z0, z - 4.2), z1: Math.max(b.z1, z + 4.2) }), { x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity });
 function lakeShape(p, h, w, reg = lakeReach(p)) {
   if (reg <= 0) return h;
-  const sd = lakeSd(p) + 0.22 * (vnoise(p.x * 0.5, p.z * 0.5, 3.3) - 0.5);
-  const keep = (1 - Math.min(1, w * 1.6)) * (inRect(p, YGD_BOX.x0, YGD_BOX.x1, YGD_BOX.z0, YGD_BOX.z1) ? sstep(1.0, 3.2, polyD(p, YGD)) : 1);   // lanes and 杨公堤 stay level
+  const sd = lakeSd(p) + 0.3 * (vnoise(p.x * 0.35, p.z * 0.35, 3.3) - 0.5);
+  const keep = (1 - Math.min(1, w * 1.6)) * (inRect(p, YGD_BOX.x0, YGD_BOX.x1, YGD_BOX.z0, YGD_BOX.z1) ? sstep(1.4, 4.0, polyD(p, YGD)) : 1);   // lanes and 杨公堤 stay level
   h += (0.05 + lakeHills(p, sd) * keep - h) * reg;
   const wet = 1 - sstep(-0.3, 0.08, sd);
   if (wet > 0) {
@@ -1654,11 +1693,11 @@ const XIXI_BRIDGE = walk.deck(XIXI, [3.4, 0.5], [3.4, -2.0], 0.4, 0.7);
 // 西湖's bridges: 苏堤's six, 锦带桥 on 白堤, 断桥, 西泠桥 to 孤山, and 杨公堤's over the channels to its ponds
 const deckOn = (pts, cum, s, half, hw, rise) => { const { p, dir } = polyAtS(pts, cum, s); return walk.deck(LAKE, [p[0] - dir[0] * half, p[1] - dir[1] * half], [p[0] + dir[0] * half, p[1] + dir[1] * half], hw, rise); };
 const LAKE_BRIDGES = [
-  ...SUDI_BR.map(s => [deckOn(SUDI, SUDI_S, s, 0.95, 0.36, 0.42), 0.72]),
-  ...BAIDI_BR.map(s => [deckOn(BAIDI, BAIDI_S, s, 0.95, 0.34, 0.4), 0.7]),
-  [walk.deck(LAKE, BAIDI.at(-1), mp(1117, 180), 0.45, 0.45), 0.95],
-  [walk.deck(LAKE, mp(740, 448), mp(708, 418), 0.38, 0.4), 0.78],
-  ...YGD_BR.map(s => [deckOn(YGD, YGD_S, s, 1.05, 0.42, 0.3), 0.9]),
+  ...SUDI_BR.map(s => [deckOn(SUDI, SUDI_S, s, 1.5, 0.58, 0.6), 1.16]),
+  ...BAIDI_BR.map(s => [deckOn(BAIDI, BAIDI_S, s, 1.5, 0.55, 0.58), 1.1]),
+  [walk.deck(LAKE, BAIDI.at(-1), mp(1112, 182), 0.62, 0.6), 1.25],
+  [walk.deck(LAKE, mp(740, 448), mp(708, 418), 0.55, 0.55), 1.1],
+  ...YGD_BR.map(s => [deckOn(YGD, YGD_S, s, 1.6, 0.6, 0.45), 1.2]),
 ];
 await slice();
 // ---------- what blocks walking: building footprints (also keep grass off floors), the railing ----------
@@ -1688,14 +1727,14 @@ zones = [
   { name: '天街', s: MALL, via: [], stand: [0.9, 3.0], look: [0, -1.8], zoom: 1.75, label: [0, -0.6], h: 5.9 },
   { name: '文体中心', s: SPORTS, via: [], stand: [0.9, 4.4], look: [0, -1], zoom: 1.85, label: [0, -1], h: 5.9 },
   { name: '西溪湿地', s: XIXI, via: [[0.4, 6.0], [2.2, 4.2], [1.2, 2.4]], stand: [1.0, 1.25], look: [-1.2, -3.2], zoom: 1.35, label: [0.1, -3.4], h: 3.2 },
-  { name: '西湖', s: LAKE, via: [[1.5, LAKE.roadZ - 1.6]], stand: mp(1325, 690), look: mp(1000, 330), zoom: 2.3, label: mp(1060, 520), h: 1.2 },
+  { name: '西湖', s: LAKE, via: [[mp(1312, 690)[0], LAKE.roadZ - 1.6]], stand: mp(1312, 690), look: mp(1000, 330), zoom: 2.3, label: mp(1060, 520), h: 1.2 },
 ];
 LANDMARKS = [
-  { name: '雷峰夕照', s: LAKE, at: LEIFENG, h: 8.3 },
-  { name: '保俶塔', s: LAKE, at: BAOCHU, h: 6.8 },
+  { name: '雷峰夕照', s: LAKE, at: LEIFENG, h: 11.6 },
+  { name: '保俶塔', s: LAKE, at: BAOCHU, h: 9.6 },
   { name: '断桥残雪', s: LAKE, at: mp(1106, 204), h: 1.7 },
-  { name: '三潭印月', s: LAKE, at: SANTAN[1], h: 2.3 },
-  { name: '小瀛洲', s: LAKE, at: [XYZ.x + 2.45, XYZ.z], h: 2.2 },
+  { name: '三潭印月', s: LAKE, at: SANTAN[1], h: 3.0 },
+  { name: '小瀛洲', s: LAKE, at: [XYZ.x + (XYZ.r0 + XYZ.r1) / 2, XYZ.z], h: 2.5 },
   { name: '苏堤春晓', s: LAKE, at: STELES.sudi, h: 1.9 },
   { name: '苏堤', s: LAKE, at: polyAtS(SUDI, SUDI_S, SUDI_S.at(-1) * 0.52).p, h: 2.4 },
   { name: '白堤', s: LAKE, at: polyAtS(BAIDI, BAIDI_S, BAIDI_S.at(-1) * 0.3).p, h: 2.2 },
@@ -1710,11 +1749,13 @@ LANDMARKS = [
   { name: '钱王祠', s: LAKE, at: QWC, h: 3.6 },
   { name: '南屏晚钟', s: LAKE, at: JINGCI, h: 3.6 },
   { name: '双峰插云', s: LAKE, at: STELES.shuangfeng, h: 1.9 },
-  { name: '音乐喷泉', s: LAKE, at: [YF.x, YF.z], h: 3.6 },
+  { name: '音乐喷泉', s: LAKE, at: [YF.x, YF.z], h: 6.0 },
   { name: '苹果旗舰店', s: LAKE, at: APPLE, h: 3.4 },
 ];
 
-await buildGround({ step: z => 0.4 + 1.2 * bandFade(z), win: { lon: LAKE.lon * D2R, H: 52 / (R * Math.cos(0.35)), z1: LAKE.roadZ + 38, s: 0.45 }, lit: 0x8cc46a, shade: 0x4f8a6c, lawn: d => (inFence(local(HOME, d)) ? 1 : 0), water: true });
+// ground spacing: 0.4 units along the ring, 1.6 from 44 units out, 2.4 from ~110 (only far hills and poles), 3.4 near the poles;
+// 西湖 keeps a 0.55-unit patch over the water and its near hills
+await buildGround({ step: z => 0.4 + 1.2 * bandFade(z) + 0.8 * sstep(70, 110, z) + 1.0 * sstep(180, 280, z), win: { lon: LAKE.lon * D2R, H: 88 / (R * Math.cos(LAKE.lat * D2R)), z1: LAKE.roadZ + 62, s: 0.55 }, lit: 0x8cc46a, shade: 0x4f8a6c, lawn: d => (inFence(local(HOME, d)) ? 1 : 0), water: true });
 // trees planted by the builders below (place, x, z, kind)
 const heroTrees = [];
 
@@ -1948,7 +1989,7 @@ function buildXixi() {
 }
 
 function buildLeifeng() {
-  const k = kit(LAKE, LEIFENG[0], LEIFENG[1], 0, 1, { sink: 0.15, scale: 1.5 });
+  const k = kit(LAKE, LEIFENG[0], LEIFENG[1], 0, 1, { sink: 0.2, scale: 2.1 });
   const BODY = 0xa85a42, ROOF = 0xcaa45c, ROOF_SH = 0x8a6a4a, STONE = 0xd6cebd;
   octo(k, 1.15, 1.25, 1.2, STONE, -0.25);
   octo(k, 0.95, 1.0, 0.2, STONE, 0.42);
@@ -1964,10 +2005,10 @@ function buildLeifeng() {
   octo(k, 0.06, 0.52, 0.52, ROOF, y + 0.26, { shade: ROOF_SH });
   k.cyl(0.035, 0.035, 0.95, 0xd8b65e, 0, y + 0.95, 0, 6);
   [0.62, 0.78, 0.94, 1.1].forEach((o, i) => k.cyl(0.1 - i * 0.015, 0.1 - i * 0.015, 0.04, 0xd8b65e, 0, y + o, 0, 10));
-  walk.footprint(LAKE, shapes.circle(LEIFENG[0], LEIFENG[1], 1.95), { h: 7.6 });
+  walk.footprint(LAKE, shapes.circle(LEIFENG[0], LEIFENG[1], 2.7), { h: 10.6 });
 }
 function buildBaochu() {
-  const k = kit(LAKE, BAOCHU[0], BAOCHU[1], 0, 1, { sink: 0.1, scale: 1.5 });
+  const k = kit(LAKE, BAOCHU[0], BAOCHU[1], 0, 1, { sink: 0.15, scale: 2.1 });
   const BRICK = 0x9d8b74, LEDGE = 0x7d705f;
   octo(k, 0.5, 0.58, 1.0, 0xcfc7b6, -0.3);
   let y = 0.2;
@@ -1979,7 +2020,7 @@ function buildBaochu() {
   }
   k.cyl(0.03, 0.03, 0.9, 0x474b4f, 0, y + 0.45, 0, 6);
   [0.15, 0.32, 0.5].forEach(o => k.cyl(0.08 - o * 0.06, 0.08 - o * 0.06, 0.03, 0x474b4f, 0, y + o, 0, 8));
-  walk.footprint(LAKE, shapes.circle(BAOCHU[0], BAOCHU[1], 0.85), { h: 6 });
+  walk.footprint(LAKE, shapes.circle(BAOCHU[0], BAOCHU[1], 1.2), { h: 8.4 });
 }
 // a hipped roof over a w × d plan (a square pyramid stretched to the plan), with the four corners swept up
 function hipRoof(k, w, d, h, y, hex, shade, z = 0, x = 0) {
@@ -2034,13 +2075,13 @@ function buildStele(x, z) {      // a little stele pavilion (碑亭) with the st
 // 音乐喷泉: a row of jets in the water off 湖滨 that rise and fall in waves (moved every frame)
 const fountain = { mesh: null, base: [], tmp: new THREE.Matrix4() };
 function buildFountain() {
-  const N = 45, col = new THREE.CylinderGeometry(0.1, 0.045, 1, 6, 1, true); col.translate(0, 0.5, 0);
-  const head = new THREE.SphereGeometry(0.3, 8, 5); head.scale(1, 0.1, 1); head.translate(0, 1, 0);   // the spray at the top, flattened so it doesn't stretch with the jet
+  const N = 61, col = new THREE.CylinderGeometry(0.12, 0.05, 1, 6, 1, true); col.translate(0, 0.5, 0);
+  const head = new THREE.SphereGeometry(0.38, 8, 5); head.scale(1, 0.1, 1); head.translate(0, 1, 0);   // the spray at the top, flattened so it doesn't stretch with the jet
   const g = mergeGeometries([prep(col), prep(head)]);
   const m = new THREE.InstancedMesh(g, toon(0xf2fbfd, { shade: 0xb5dbe6, breakMul: 0 }), N);
   m.layers.set(1);
   for (let i = 0; i < N; i++) {
-    const u = (i / (N - 1) - 0.5) * 8.4, bow = 0.9 * (1 - (2 * u / 8.4) ** 2);
+    const u = (i / (N - 1) - 0.5) * 14, bow = 1.4 * (1 - (2 * u / 14) ** 2);
     const x = YF.x + YF.t[0] * u - YF.n[0] * bow, z = YF.z + YF.t[1] * u - YF.n[1] * bow;
     fountain.base.push(frameMatrix(L(LAKE, x, z), LT(LAKE, YF.t[0], YF.t[1]), 1, 0, WATER));
   }
@@ -2055,7 +2096,7 @@ function updateFountain(t) {
   for (let i = 0; i < N; i++) {
     const c = Math.abs(i - (N - 1) / 2) / ((N - 1) / 2);
     const wave = Math.max(0, Math.sin(t * 1.4 - i * 0.42)) * 0.55 + Math.max(0, Math.sin(t * 0.8 + c * 3.2)) * 0.45;
-    const h = 0.25 + (1.2 + 2.6 * (1 - c * 0.6)) * wave * show + (i === (N - 1) / 2 ? 2.2 * show : 0);
+    const h = 0.3 + (1.8 + 3.9 * (1 - c * 0.6)) * wave * show + (i === (N - 1) / 2 ? 3.3 * show : 0);
     m.setMatrixAt(i, fountain.tmp.copy(fountain.base[i]).multiply(new THREE.Matrix4().makeScale(1, h, 1)));
   }
   m.instanceMatrix.needsUpdate = true;
@@ -2078,7 +2119,7 @@ function buildLake() {
   LAKE_BRIDGES.forEach(([w, width]) => buildArchBridge(w, width, 0xd8d3c8));
   // 三潭印月: three stone lanterns standing in the water south of 小瀛洲
   SANTAN.forEach(([x, z]) => {
-    const k = kit(LAKE, x, z, 0, 1, { h: WATER, scale: 1.5 });
+    const k = kit(LAKE, x, z, 0, 1, { h: WATER, scale: 2.0 });
     const ST = 0xbdb6a8;
     k.cyl(0.1, 0.13, 0.6, ST, 0, 0.0, 0, 10);
     k.ball(0.25, ST, 0, 0.5, 0);
@@ -2092,23 +2133,23 @@ function buildLake() {
     k.cyl(0.0, 0.04, 0.12, ST, 0, 1.11, 0, 8);
   });
   // pavilions: 小瀛洲, 湖心亭, 阮公墩, 平湖秋月, 曲院风荷, 花港观鱼, 柳浪闻莺
-  buildPavilion(LAKE, XYZ.x + 2.45, XYZ.z, 0.5);
-  buildPavilion(LAKE, XYZ.x, XYZ.z, 0.34);
-  buildPavilion(LAKE, HXT.x, HXT.z, 0.4);
-  buildPavilion(LAKE, RGD.x + 0.2, RGD.z, 0.32);
+  buildPavilion(LAKE, XYZ.x + (XYZ.r0 + XYZ.r1) / 2, XYZ.z, 0.62);
+  buildPavilion(LAKE, XYZ.x, XYZ.z, 0.45);
+  buildPavilion(LAKE, HXT.x, HXT.z, 0.55);
+  buildPavilion(LAKE, RGD.x + 0.4, RGD.z, 0.45);
   {
     const k = kit(LAKE, PHQY[0], PHQY[1], -0.5, -0.86, { h: WATER + 0.3 });   // a platform over the water
     k.box(2.4, 0.12, 1.6, 0xd6cebd, 0, 0, 0.6);
     for (let i = 0; i < 5; i++) k.cyl(0.05, 0.05, 0.5, 0xd6cebd, -1.0 + i * 0.5, -0.25, 1.3, 6);
     buildPavilion(LAKE, PHQY[0] + 0.7, PHQY[1] + 0.25, 0.5);
   }
-  buildPavilion(LAKE, QYFH[0] + 3.7, QYFH[1] - 0.6, 0.5);
-  buildPavilion(LAKE, HGGY[0] + 1.0, HGGY[1] + 2.1, 0.5);
-  buildPavilion(LAKE, (LWYY.x0 + LWYY.x1) / 2, LWYY.z0 + 1.6, 0.55);
+  buildPavilion(LAKE, QYFH[0] + 7.4, QYFH[1] - 1.2, 0.55);
+  buildPavilion(LAKE, HGGY[0] + 2.0, HGGY[1] + 4.2, 0.55);
+  buildPavilion(LAKE, (LWYY.x0 + LWYY.x1) / 2, LWYY.z0 + 3, 0.6);
   Object.values(STELES).forEach(([x, z]) => buildStele(x, z));
   // 双峰插云: a small pagoda on each of the two peaks
   SHUANGFENG.forEach(([x, z]) => {
-    const k = kit(LAKE, x, z, 0, 1, { sink: 0.1, scale: 1.2 });
+    const k = kit(LAKE, x, z, 0, 1, { sink: 0.12, scale: 1.6 });
     octo(k, 0.42, 0.5, 0.6, 0xcfc7b6, 0.1);
     let y = 0.4;
     for (let i = 0; i < 5; i++) { const r = 0.28 - i * 0.03; octo(k, r, r, 0.36, 0xb9a88f, y + 0.18); octo(k, r * 0.5, r + 0.2, 0.1, 0x4b5159, y + 0.41); y += 0.46; }
@@ -2127,27 +2168,27 @@ function buildLake() {
   buildFountain();
   buildGlassStore(APPLE[0], APPLE[1]);
   // islands: trees round 小瀛洲's ring and on 孤山, 湖心亭, 阮公墩
-  for (let a = 0; a < 12; a++) { if (a % 3 === 0) continue; const t = a / 12 * Math.PI * 2; heroTrees.push([LAKE, XYZ.x + Math.cos(t) * 2.5, XYZ.z + Math.sin(t) * 2.5, 'small']); }
-  [[0.6, 0.3], [-0.5, -0.3]].forEach(([dx, dz]) => heroTrees.push([LAKE, RGD.x + dx, RGD.z + dz, 'small']));
-  for (let i = 0, n = 0; i < 400 && n < 26; i++) {
-    const x = 11.5 + rand() * 7.5, z = -15.3 + rand() * 14.2;
-    if (polySd({ x, z }, LK_GUSHAN) < -0.6 && Math.hypot(x - PHQY[0], z - PHQY[1]) > 1.8) { heroTrees.push([LAKE, x, z, n % 3 ? 'small' : undefined]); n++; }
+  for (let a = 0; a < 24; a++) { if (a % 6 === 0) continue; const t = (a + 0.5) / 24 * Math.PI * 2, r = (XYZ.r0 + XYZ.r1) / 2; heroTrees.push([LAKE, XYZ.x + Math.cos(t) * r, XYZ.z + Math.sin(t) * r, 'small']); }
+  [[1.1, 0.5], [-1.0, -0.6], [0.2, -1.1]].forEach(([dx, dz]) => heroTrees.push([LAKE, RGD.x + dx, RGD.z + dz, 'small']));
+  for (let i = 0, n = 0; i < 1200 && n < 70; i++) {
+    const { x0, x1, z0, z1 } = LK_GUSHAN_BOX, x = x0 + rand() * (x1 - x0), z = z0 + rand() * (z1 - z0);
+    if (polySd({ x, z }, LK_GUSHAN) < -1.0 && Math.hypot(x - PHQY[0], z - PHQY[1]) > 2.6) { heroTrees.push([LAKE, x, z, n % 3 ? 'small' : undefined]); n++; }
   }
   // 一株杨柳一株桃 along 苏堤 and 白堤; willows along 杨公堤 and the east shore; 柳浪闻莺's grove
   const along = (pts, cum, br, every, side, kinds) => {
     for (let s = 0.6, k = 0; s < cum.at(-1) - 0.5; s += every, k++) {
-      if (br.some(b => Math.abs(s - b) < 1.15)) continue;
+      if (br.some(b => Math.abs(s - b) < 1.8)) continue;
       const { p, dir } = polyAtS(pts, cum, s), sd = (k % 2 ? 1 : -1) * side;
       lakeTrees.push([p[0] - dir[1] * sd, p[1] + dir[0] * sd, kinds[k % kinds.length]]);
     }
   };
-  along(SUDI, SUDI_S, SUDI_BR, 1.05, 0.26, ['willow', 'peach']);
-  along(BAIDI, BAIDI_S, BAIDI_BR, 1.05, 0.24, ['willow', 'peach']);
-  along(YGD, YGD_S, YGD_BR, 1.6, 0.95, ['willow', 'willow', 'peach']);
+  along(SUDI, SUDI_S, SUDI_BR, 1.3, 0.42, ['willow', 'peach']);
+  along(BAIDI, BAIDI_S, BAIDI_BR, 1.3, 0.4, ['willow', 'peach']);
+  along(YGD, YGD_S, YGD_BR, 2.0, 1.25, ['willow', 'willow', 'peach']);
   const e0 = lakeTrees.length, EAST = mpl([[1265, 138], [1290, 175], [1340, 240], [1390, 330], [1440, 435], [1405, 520], [1340, 620], [1270, 720], [1205, 815], [1190, 900], [1188, 1030], [1205, 1160]]);
-  along(EAST, polyLen(EAST), [], 2.7, 0, ['willow']);
-  for (let i = e0; i < lakeTrees.length; i++) lakeTrees[i][1] += 0.9;   // the east-shore row, just inland
-  for (let x = LWYY.x0; x <= LWYY.x1; x += 1.7) for (let z = LWYY.z0 + 3.0; z <= LWYY.z1; z += 1.8) lakeTrees.push([x + (rand() - 0.5) * 0.8, z + (rand() - 0.5) * 0.8, 'willow']);
+  along(EAST, polyLen(EAST), [], 3.2, 0, ['willow']);
+  for (let i = e0; i < lakeTrees.length; i++) lakeTrees[i][1] += 1.3;   // the east-shore row, just inland
+  for (let x = LWYY.x0; x <= LWYY.x1; x += 2.4) for (let z = LWYY.z0 + 5.0; z <= LWYY.z1; z += 2.4) if (rand() < 0.8) lakeTrees.push([x + (rand() - 0.5) * 2.0, z + (rand() - 0.5) * 2.0, rand() < 0.15 ? 'peach' : 'willow']);
 }
 const lakeTrees = [];
 
@@ -2170,11 +2211,13 @@ const boats = [];
 {
   const ch = XIXI_CH[0][0];
   boats.push({ g: makeBoat(0x2f3236, 1.5, 0.48), s: XIXI, at: t => { const x = 5.6 * Math.sin(t * 0.07); return [x, polyAt(ch, x) + 0.1]; } });
-  boats.push({ g: makeBoat(0x3f6f9a), s: LAKE, at: t => [XYZ.x + 4.3 * Math.cos(t * 0.05), XYZ.z + 4.3 * Math.sin(t * 0.05)] });
-  boats.push({ g: makeBoat(0x9c4a3c), s: LAKE, at: t => [6.8 + 7 * Math.cos(-t * 0.03 + 2), 7.6 + 6 * Math.sin(-t * 0.03 + 2)] });
-  boats.push({ g: makeBoat(0x4a7a4f), s: LAKE, at: t => [17.4 + 4 * Math.cos(t * 0.045 + 1), 10.6 + 4 * Math.sin(t * 0.045 + 1)] });
-  boats.push({ g: makeBoat(0x2f3236), s: LAKE, at: t => [-6 + 4.5 * Math.cos(t * 0.04), -19.5 + 1.3 * Math.sin(t * 0.04)] });
-  boats.push({ g: makeBoat(0x8a3d32, 3.2, 1.0), s: LAKE, at: t => [-3.8 + 6 * Math.cos(t * 0.022 + 4), 4.7 + 6 * Math.sin(t * 0.022 + 4)] });   // a 画舫
+  boats.push({ g: makeBoat(0x3f6f9a), s: LAKE, at: t => [XYZ.x + 8.6 * Math.cos(t * 0.03), XYZ.z + 8.6 * Math.sin(t * 0.03)] });
+  boats.push({ g: makeBoat(0x9c4a3c), s: LAKE, at: t => [13.6 + 14 * Math.cos(-t * 0.018 + 2), 15.2 + 12 * Math.sin(-t * 0.018 + 2)] });
+  boats.push({ g: makeBoat(0x4a7a4f), s: LAKE, at: t => [34.8 + 8 * Math.cos(t * 0.028 + 1), 21.2 + 8 * Math.sin(t * 0.028 + 1)] });
+  boats.push({ g: makeBoat(0x2f3236), s: LAKE, at: t => [-12 + 9 * Math.cos(t * 0.025), -39 + 2.6 * Math.sin(t * 0.025)] });
+  boats.push({ g: makeBoat(0x6a5a3c), s: LAKE, at: t => [-30 + 6 * Math.cos(-t * 0.03), -30 + 4 * Math.sin(-t * 0.03)] });
+  boats.push({ g: makeBoat(0x8a3d32, 4.2, 1.35), s: LAKE, at: t => [-7.6 + 12 * Math.cos(t * 0.013 + 4), 9.4 + 12 * Math.sin(t * 0.013 + 4)] });   // a 画舫
+  boats.push({ g: makeBoat(0x2e5a7a, 4.0, 1.3), s: LAKE, at: t => [28 + 10 * Math.cos(-t * 0.015), 30 + 6 * Math.sin(-t * 0.015)] });
 }
 function updateBoats(t) {
   boats.forEach(b => {
@@ -2193,8 +2236,8 @@ siteKeepout = function (d, m = 0) {
   if ((p = local(XIXI, d)) && Math.hypot(p.x, p.z) < 10.2 + m) return true;
   if ((p = local(LAKE, d)) && inRect(p, LAKE_AREA.x0, LAKE_AREA.x1, LAKE_AREA.z0, LAKE_AREA.z1)) {
     const sd = lakeSd(p);
-    if (sd < 0.4 + m * 2 || polyD(p, YGD) < 0.8 + m) return true;
-    if (m > 0 && p.z > 9 && sd < 16 && p.x > LK_BOX.x0 && p.x < LK_BOX.x1 + 6) return true;   // the city side of the shore: planted by hand
+    if (sd < 0.4 + m * 2 || polyD(p, YGD) < 1.3 + m) return true;
+    if (m > 0 && p.z > 18 && sd < 30 && p.x > LK_BOX.x0 && p.x < LK_BOX.x1 + 12) return true;   // the city side of the shore: planted by hand
     if (p.z > LAKE.roadZ - 1 && Math.abs(p.x - APPLE[0]) < 5) return true;
   }
   return false;
@@ -2208,15 +2251,15 @@ await slice();
   ];
   // near trees (courtyards, plazas, islands) get detailed crowns; the many meadow and hill trees lighter ones
   const near = variants.map(() => []), far = variants.map(() => []);
-  const meadow = scatterDirs(Math.round(240 * AREA * TREE_SHARE), 0.05, 0.5, 0.02, 90000, null, treeFill);
-  const lakeClear = p => Math.hypot(p.x - LEIFENG[0], p.z - LEIFENG[1]) > 2.4 && Math.hypot(p.x - BAOCHU[0], p.z - BAOCHU[1]) > 1.4
+  const meadow = scatterDirs(Math.round(240 * AREA * TREE_SHARE), 0.05, 0.5, 0.02, 90000 * TRIES, null, treeFill);
+  const lakeClear = p => Math.hypot(p.x - LEIFENG[0], p.z - LEIFENG[1]) > 3.4 && Math.hypot(p.x - BAOCHU[0], p.z - BAOCHU[1]) > 2.0
     && !SHUANGFENG.some(([x, z]) => Math.hypot(p.x - x, p.z - z) < 1.0) && !Object.values(STELES).some(([x, z]) => Math.hypot(p.x - x, p.z - z) < 1.0)
-    && !(Math.abs(p.x - JINGCI[0]) < 4.4 && Math.abs(p.z - JINGCI[1]) < 4.8) && polyD(p, YGD) > 1.3;
-  const forest = scatterIn(LAKE, 620, -50, 50, -52, 16, p => terrainH(L(LAKE, p.x, p.z)) > 0.55 && lakeClear(p), 0.075);
+    && !(Math.abs(p.x - JINGCI[0]) < 4.4 && Math.abs(p.z - JINGCI[1]) < 4.8) && polyD(p, YGD) > 1.8;
+  const forest = scatterIn(LAKE, 1500, -100, 100, -104, 32, p => terrainH(L(LAKE, p.x, p.z)) > 0.8 && lakeClear(p), 0.095);
   const islets = scatterIn(XIXI, 40, -9.5, 9.5, -9.5, 5.4, p => Math.hypot(p.x, p.z) < 9.4 && !(p.z > 0.4 && Math.abs(p.x - 1) < 2.8) && !(p.z > -4.8 && p.z < 1.4 && p.x > -6.4 && p.x < 4.6) && polyD(p, BOARDWALK) > 1.0
     && !XIXI_HOUSES.some(([x, z, w, d]) => Math.abs(p.x - x) < w / 2 + 0.7 && Math.abs(p.z - z) < d / 2 + 0.9) && xixiWater(p) < 0.05, 0.05);
   meadow.forEach((d, i) => far[i % 3].push(matrixOn(d, rand() * 6.28, 0.85 + rand() * 0.5, 0.05)));
-  forest.forEach((d, i) => far[i % 2].push(matrixOn(d, rand() * 6.28, 1.15 + rand() * 0.6, 0.05)));   // 西湖's hills: fewer, bigger trees
+  forest.forEach((d, i) => far[i % 2].push(matrixOn(d, rand() * 6.28, 1.3 + rand() * 0.7, 0.05)));   // 西湖's hills: fewer, bigger trees
   islets.forEach((d, i) => near[i % 3].push(matrixOn(d, rand() * 6.28, 0.85 + rand() * 0.5, 0.05)));
   heroTrees.forEach(([s, x, z, kind]) => near[kind === 'small' ? 2 : 0].push(matrixOn(L(s, x, z), rand() * 6.28, kind === 'small' ? 1.0 : 0.95 + rand() * 0.25, 0.05)));
   variants.forEach((vt, vi) => {
@@ -2282,7 +2325,7 @@ await slice();
   // bushes: meadow edges plus a hedge inside the courtyard railing
   {
     const bg = canopy([[0, 0.32, 0, 0.42], [0.36, 0.24, 0.1, 0.3], [-0.32, 0.26, -0.08, 0.32]], 41);
-    const bm = scatterDirs(Math.round(105 * AREA * TREE_SHARE), 0.035, 0.3, 0.35, 40000, null, treeFill).map(d => matrixOn(d, rand() * 6.28, 0.7 + rand() * 0.6, 0.08));
+    const bm = scatterDirs(Math.round(105 * AREA * TREE_SHARE), 0.035, 0.3, 0.35, 40000 * TRIES, null, treeFill).map(d => matrixOn(d, rand() * 6.28, 0.7 + rand() * 0.6, 0.08));
     const { x0, x1, z0, z1 } = HOME_FENCE;
     for (let x = x0 + 0.6; x <= x1 - 0.6; x += 0.95) { if (Math.abs(x) > HOME_GATE + 1.2) bm.push(matrixOn(L(HOME, x, z1 - 0.55), rand() * 6.28, 0.75, 0.08)); bm.push(matrixOn(L(HOME, x, z0 + 0.55), rand() * 6.28, 0.75, 0.08)); }
     for (let z = z0 + 1.4; z <= z1 - 0.9; z += 0.95) [x0 + 0.55, x1 - 0.55].forEach(x => bm.push(matrixOn(L(HOME, x, z), rand() * 6.28, 0.75, 0.08)));
@@ -2294,7 +2337,7 @@ await slice();
   }
 
   await slice();
-  const rockDirs = scatterDirs(Math.round(56 * AREA * TREE_SHARE), 0.04, 0.3, 0.15, 30000, null, treeFill);
+  const rockDirs = scatterDirs(Math.round(56 * AREA * TREE_SHARE), 0.04, 0.3, 0.15, 30000 * TRIES, null, treeFill);
   const rg = lump(0.5, 1, 0.35, 2.3); rg.scale(1, 0.62, 1);
   const rocks = new THREE.InstancedMesh(rg, toon(0xd8ceb6, { kind: 'ROCK', shade: 0x8f93a0, breakMul: 0.5, noiseScale: 1.6 }), rockDirs.length);
   rockDirs.forEach((d, i) => rocks.setMatrixAt(i, matrixOn(d, rand() * 6.28, 0.4 + rand() * 1.1, 0.12)));
@@ -2306,14 +2349,14 @@ await slice();
   {
     const onWater = (x, z, yaw, sc, lift = 0.02) => frameMatrix(L(LAKE, x, z), LT(LAKE, Math.cos(yaw), Math.sin(yaw)), sc, 0, WATER + lift);
     const pads = [], blooms = [], koi = [];
-    for (let i = 0, n = 0; i < 2000 && n < 150; i++) {
-      const a = rand() * Math.PI * 2, r = Math.sqrt(rand()) * 3.4, x = QYFH[0] + Math.cos(a) * r, z = QYFH[1] + Math.sin(a) * r * 1.3;
+    for (let i = 0, n = 0; i < 6000 && n < 420; i++) {
+      const a = rand() * Math.PI * 2, r = Math.sqrt(rand()) * 6.5, x = QYFH[0] + Math.cos(a) * r, z = QYFH[1] + Math.sin(a) * r * 1.3;
       if (terrainH(L(LAKE, x, z)) > WATER - 0.3) continue;
       pads.push(onWater(x, z, rand() * 6.28, 0.7 + rand() * 0.6)); n++;
       if (n % 5 === 0) blooms.push(onWater(x + 0.08, z, 0, 0.8 + rand() * 0.4, 0.18));
     }
-    for (let i = 0; i < 26; i++) {
-      const a = rand() * Math.PI * 2, r = Math.sqrt(rand()) * 0.85;
+    for (let i = 0; i < 50; i++) {
+      const a = rand() * Math.PI * 2, r = Math.sqrt(rand()) * 1.9;
       koi.push(onWater(HGGY[0] + Math.cos(a) * r, HGGY[1] + Math.sin(a) * r * 1.3, rand() * 6.28, 0.8 + rand() * 0.4, -0.03));
     }
     const padG = new THREE.CylinderGeometry(0.24, 0.24, 0.03, 12); padG.translate(0, 0.015, 0);
@@ -2343,7 +2386,7 @@ await slice();
     const shallow = (s, p) => { const h = terrainH(L(s, p.x, p.z)); return h > WATER - 0.38 && h < WATER + 0.18; };
     const rd = [
       ...scatterIn(XIXI, 420, -9.5, 9.5, -9.5, 5.5, p => shallow(XIXI, p) && polyD(p, BOARDWALK) > 0.7 && Math.abs(p.x - 3.4) > 0.8 && Math.abs(p.x - 0.3) > 1.2, 0, true),
-      ...scatterIn(LAKE, 260, -36, 36, -38, 28, p => shallow(LAKE, p) && Math.abs(p.z - YF.z) + Math.abs(p.x - YF.x) > 6 && LAKE_BRIDGES.every(([w]) => segD(p, w.a, w.b) > 1.0), 0, true),
+      ...scatterIn(LAKE, 600, -72, 72, -76, 56, p => shallow(LAKE, p) && Math.abs(p.z - YF.z) + Math.abs(p.x - YF.x) > 10 && LAKE_BRIDGES.every(([w]) => segD(p, w.a, w.b) > 1.6), 0, true),
     ];
     const reeds = new THREE.InstancedMesh(reed, toon(0xcdc47e, { shade: 0x8f9a72, breakMul: 0.4 }), rd.length);
     const c = new THREE.Color(), tints = [0xffffff, 0xe9f0d8, 0xf4ead2];
@@ -2357,7 +2400,7 @@ await slice();
   const blade = (x, z, h, lean) => { const g = new THREE.ConeGeometry(0.05, h, 3, 1); g.translate(0, h / 2, 0); g.rotateZ(lean); g.translate(x, 0, z); return prep(g); };
   const tuft = mergeGeometries([blade(0, 0, 0.34, 0.1), blade(0.07, 0.03, 0.26, -0.35), blade(-0.06, 0.04, 0.24, 0.4), blade(0.01, -0.07, 0.22, -0.15)]);
   const tn = tuft.attributes.normal; for (let i = 0; i < tn.count; i++) tn.setXYZ(i, 0, 1, 0);
-  const grassDirs = scatterDirs(Math.round(2700 * AREA * GRASS_SHARE), 0, 0, 0.4, 160000, d => !walk.inFootprint(d, 0.15), grassFill);
+  const grassDirs = scatterDirs(Math.round(2700 * AREA * GRASS_SHARE), 0, 0, 0.4, 160000 * TRIES, d => !walk.inFootprint(d, 0.15), grassFill);
   const grass = new THREE.InstancedMesh(tuft, toon(0x7cb85e, { shade: 0x4a8468, breakMul: 0.5 }), grassDirs.length);
   grassDirs.forEach((d, i) => grass.setMatrixAt(i, matrixOn(d, rand() * 6.28, 0.7 + rand() * 0.8)));
   grass.receiveShadow = true; grass.layers.set(1);
@@ -2365,7 +2408,7 @@ await slice();
 
   await slice();
   const fg = new THREE.IcosahedronGeometry(0.07, 0); fg.translate(0, 0.16, 0);
-  const flowerDirs = scatterDirs(Math.round(310 * AREA * GRASS_SHARE), 0, 0, 0.3, 40000, d => !walk.inFootprint(d, 0.15), grassFill);
+  const flowerDirs = scatterDirs(Math.round(310 * AREA * GRASS_SHARE), 0, 0, 0.3, 40000 * TRIES, d => !walk.inFootprint(d, 0.15), grassFill);
   const flowers = new THREE.InstancedMesh(fg, toon(0xffffff, { shade: 0xb9b6c8, breakMul: 0 }), flowerDirs.length);
   const fc = [0xfaf6ee, 0xf3d35c, 0xe98a7a, 0xb9a3e3];
   const c = new THREE.Color();
@@ -2375,8 +2418,10 @@ await slice();
 }
 
 W.update = t => { updateBoats(t); updateFountain(t); };
+// 西湖's overview: from anywhere round the lake, up and out over the water toward its middle
+W.overview = { s: LAKE, near: d => nearLake(d), centre: mp(1000, 760), label: '俯瞰西湖', zoom: 10, pitch: 1.22, ahead: 42 };
 W.lawnEx = HOME.ex.clone();
-W.startLon = -12;
+W.startLon = -6;
 // arrivals stand outside the 小区 gate, looking in at the courtyard and the towers
 W.spawn = { s: HOME, at: [0, HOME_FENCE.z1 + 0.9], look: [0, 0] };
 }
@@ -2898,7 +2943,7 @@ function cameraReach(dt) {
   const { p, c } = readView(), D = Math.hypot(camBase.y, camBase.z) * camZoom;
   const run = D * Math.cos(camPitch), rise = D * Math.sin(camPitch), head = 1.0, h0 = walk.surfaceH(p);
   let want = 1;
-  for (let s = 0.3; s < run; s += 0.3) {
+  if (ov < 0.05) for (let s = 0.3; s < run; s += 0.3) {
     const d = geodesicTmp(p, c, -s / R), top = walk.occluderHeight(d);
     if (top && walk.surfaceH(d) - h0 + top > head + (rise - head) * s / run) { want = Math.max(0.3, s - 0.5) / run; break; }
   }
@@ -2924,11 +2969,12 @@ const gestures = createGestures({
     if (building) return;
     lastLook = elapsed;
     lookPending += dx * LOOK_PER_PX;
-    camPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, camPitch + dy * PITCH_PER_PX));
+    camPitch = Math.max(overviewOn ? 0.5 : PITCH_MIN, Math.min(overviewOn ? 1.35 : PITCH_MAX, camPitch + dy * PITCH_PER_PX));
+    pitchGoal = null;
     canvas.classList.add('dragging');
     hintSeen();
   },
-  zoom(f) { zoomUser = Math.min(1.6, Math.max(0.6, zoomUser * f)); },
+  zoom(f) { zoomBy(f); },
   tap(x, y) {
     if (building) return;
     // on a phone the composer covers a good part of the screen: a tap on the scene just puts it away
@@ -2973,7 +3019,35 @@ function applyLook(dt) {
 const hintEl = document.getElementById('touch-hint');
 function hintSeen() { if (!hintEl.hidden) { hintEl.hidden = true; store.set('dream:hinted', '1'); } }
 if (matchMedia('(pointer: coarse)').matches && !store.get('dream:hinted')) hintEl.hidden = false;
-canvas.addEventListener('wheel', e => { zoomUser = Math.min(1.6, Math.max(0.6, zoomUser * (1 + e.deltaY * 0.001))); e.preventDefault(); }, { passive: false });
+canvas.addEventListener('wheel', e => { zoomBy(1 + e.deltaY * 0.001); e.preventDefault(); }, { passive: false });
+
+// ---------- overview: a high view over a place that has one (W.overview: near, zoom, pitch, ahead, centre) ----------
+// A button appears while the avatar is there. The camera rises behind the avatar, turns toward the place's
+// centre and looks out over it; dragging still turns and tilts it, the wheel or a pinch zooms within the
+// overview. Walking (keys, stick, a click, a stop) brings the camera back down to where it was.
+let overviewOn = false, ovZoom = 1, pitchGoal = null, pitchSaved = null;
+const overviewBtn = document.getElementById('overview-btn');
+function zoomBy(f) {
+  if (overviewOn) ovZoom = Math.min(1.35, Math.max(0.55, ovZoom * f));
+  else zoomUser = Math.min(1.6, Math.max(0.6, zoomUser * f));
+}
+function setOverview(on) {
+  if (on === overviewOn || (on && !(W && W.overview))) return;
+  overviewOn = on;
+  overviewBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  overviewBtn.lastElementChild.textContent = on ? '回到地面' : W && W.overview ? W.overview.label : '俯瞰';
+  if (on) {
+    pitchSaved = camPitch; pitchGoal = W.overview.pitch; ovZoom = 1;
+    // turn the view toward the place's centre
+    const { p, c } = readView(), q = P(W.overview.s, W.overview.centre);
+    const to = q.addScaledVector(p, -q.dot(p)).normalize();
+    lookPending = angleRight(c, to, p);
+  } else {
+    pitchGoal = pitchSaved ?? pitchGoal;
+  }
+}
+// a mouse or touch click hands the keys back to the scene (WASD is ignored while a button has focus)
+overviewBtn.addEventListener('click', e => { setOverview(!overviewOn); hintSeen(); if (e.detail) overviewBtn.blur(); });
 
 // ---------- click to walk ----------
 // A click on the ground plans a route round buildings, water and railings (js/walk/path.js) and the
@@ -3067,8 +3141,8 @@ const PLANETS = {
   hangzhou: { name: '杭州', build: buildHangzhou },
   ski: { name: '滑雪', build: buildSki },
 };
-function aimSun() {
-  sun.target.position.set(0, R - 1, -5);
+function aimSun(ahead = -5) {
+  sun.target.position.set(0, R - 1, ahead);
   sun.position.copy(SUN).multiplyScalar(60).add(sun.target.position);
   sun.target.updateMatrixWorld();
 }
@@ -3401,6 +3475,8 @@ function setLowTier(t) {
   if (t >= 2) { sw('t-line').checked = false; toggles.line(); }
 }
 
+const shadowQ = new THREE.Quaternion();
+let shadowTick = 0;
 function frame() {
   requestAnimationFrame(frame);
   if (building) { clock.getDelta(); return; }
@@ -3413,6 +3489,7 @@ function frame() {
   let walking = 0;
   leanTarget = 0;
   applyLook(dt);
+  if (overviewOn && (fw || sd || (stickNow && stickNow.amount > 0) || autoWalk || travel)) setOverview(false);
   if (fw || sd) { walking = moveBody(viewDir(sd, fw), 1, dt); setActive(null); }
   else if (stickNow && stickNow.amount > 0) walking = moveBody(viewDir(stickNow.x, stickNow.y), stickNow.amount, dt);
   else if (autoWalk && !travel) walking = followRoute(dt);
@@ -3470,8 +3547,30 @@ function frame() {
   poseAvatar(me, moveSpeed, runPhase, elapsed, W.ski);
 
   // camera pulls back at big places, closer while walking
-  const zt = flyZoom ?? (travel || curStop == null ? 1.35 : zones[curStop].zoom) * zoomUser;
-  camZoom += (zt - camZoom) * Math.min(1, dt * 1.4);
+  // the overview button shows where there is one; the camera eases in and out of it
+  const ovHere = !!(W.overview && !travel && W.overview.near(avatarDir));
+  if (overviewBtn.hidden === ovHere) {
+    overviewBtn.hidden = !ovHere;
+    if (ovHere) overviewBtn.lastElementChild.textContent = overviewOn ? '回到地面' : W.overview.label;
+    else setOverview(false);
+  }
+  ov += ((overviewOn ? 1 : 0) - ov) * Math.min(1, dt * 1.6);
+  ovAhead = W.overview ? W.overview.ahead : 0;
+  if (Math.abs(ov - (overviewOn ? 1 : 0)) < 0.002) ov = overviewOn ? 1 : 0;
+  if (pitchGoal !== null) {
+    camPitch += (pitchGoal - camPitch) * Math.min(1, dt * 1.8);
+    if (Math.abs(pitchGoal - camPitch) < 0.002) { camPitch = pitchGoal; pitchGoal = null; }
+  }
+  const ztGround = (travel || curStop == null ? 1.35 : zones[curStop].zoom) * zoomUser;
+  const zt = flyZoom ?? ztGround + ((W.overview ? W.overview.zoom * ovZoom : ztGround) - ztGround) * ov;
+  camZoom += (zt - camZoom) * Math.min(1, dt * (ov > 0 && ov < 1 ? 2.2 : 1.4));
+  // the sun's shadow box: round the avatar normally, widened over the place in an overview
+  if (W.overview && (ov > 0 || sun.shadow.camera.right !== 26)) {
+    const half = 26 + 52 * ov;
+    Object.assign(sun.shadow.camera, { left: -half, right: half, top: half, bottom: -half, far: 160 + 120 * ov });
+    sun.shadow.camera.updateProjectionMatrix();
+    aimSun(-5 - W.overview.ahead * 0.8 * ov);
+  }
   cameraReach(dt);
   placeCamera();
   if (W.update) W.update(elapsed);
@@ -3490,8 +3589,11 @@ function frame() {
   renderer.setRenderTarget(rtNormal); renderer.setClearColor(0x000000, 0); renderer.clear();
   if (post.uniforms.uLine.value > 0.5) { scene.overrideMaterial = normalMat; renderer.render(scene, camera); scene.overrideMaterial = null; }
   if (lowTier < 1) camera.layers.enable(1);
-  // pass 2: colour (shadow map redrawn once per frame, here)
-  renderer.shadowMap.needsUpdate = true;
+  // pass 2: colour (shadow map redrawn once per frame, here). In an overview the wide shadow box is costly
+  // and nothing big moves under it unless the view turns, so it is redrawn then, or every sixth frame.
+  const turned = !shadowQ.equals(planet.quaternion);
+  renderer.shadowMap.needsUpdate = ov < 1 || turned || ++shadowTick % 6 === 0;
+  if (renderer.shadowMap.needsUpdate) shadowQ.copy(planet.quaternion);
   renderer.setRenderTarget(rtColor); renderer.clear();
   renderer.render(scene, camera);
   // pass 3: sky, lines, paper grain
@@ -3510,8 +3612,10 @@ function frame() {
       o.tag.style.pointerEvents = show && !o.tag.classList.contains('mini') ? 'auto' : 'none';
       if (show) o.tag.style.transform = `translate(${(tagPos.x * 0.5 + 0.5) * innerWidth}px, ${(-tagPos.y * 0.5 + 0.5) * innerHeight}px) translate(-50%, -100%)`;
     };
-    zones.forEach(z => z.tag && placeTag(z, W.tagCos[0]));
-    LANDMARKS.forEach(m => placeTag(m, W.tagCos[1]));
+    const reach = Math.max(1, camZoom / 2.3) * (1 + 0.45 * ov);   // labels reach further as the camera pulls back
+    const up0 = Math.cos(Math.acos(W.tagCos[0]) * reach), up1 = Math.cos(Math.acos(W.tagCos[1]) * reach);
+    zones.forEach(z => z.tag && placeTag(z, up0));
+    LANDMARKS.forEach(m => placeTag(m, up1));
   }
 
   company.placeTags();
@@ -3538,12 +3642,24 @@ function frame() {
       view(key, at, look, zoom = 1.35, pitch = null) {
         const s = sites.find(o => o.key === key), p = P(s, at), q = P(s, look);
         stopTravel(); heading = null;
+        if (overviewOn) setOverview(false);
+        ov = 0; pitchGoal = null; lookPending = 0;
         writeView({ p, c: q.addScaledVector(p, -q.dot(p)).normalize() });
         camZoom = zoom; zoomUser = zoom / 1.35; camReach = 1; if (pitch !== null) camPitch = pitch;
         renderer.shadowMap.needsUpdate = true;
       },
       // can the avatar stand at site-local [x, z]? (clearance >= 0 means yes)
       walkable(key, pts) { const st = sites.find(o => o.key === key); return pts.map(([x, z]) => +walk.clearance(L(st, x, z)).toFixed(2)); },
+      overview(on) { setOverview(on); },
+      tags() { const v = new THREE.Vector3(); return LANDMARKS.map(m => { v.copy(m.tagLocal).applyMatrix4(planet.matrixWorld); const up = v.y / v.length(); v.project(camera); return `${m.name} up=${up.toFixed(3)} x=${v.x.toFixed(2)} y=${v.y.toFixed(2)} z=${v.z.toFixed(3)}`; }).join('\n') + `\ncamZoom=${camZoom.toFixed(2)} far=${camera.far.toFixed(0)}`; },
+      // skip the easing (headless renders run at a few frames a second)
+      settle() {
+        ov = overviewOn ? 1 : 0;
+        if (pitchGoal !== null) { camPitch = pitchGoal; pitchGoal = null; }
+        if (overviewOn) { camZoom = W.overview.zoom * ovZoom; ovAhead = W.overview.ahead; }
+        orbit(lookPending); lookPending = 0; camReach = 1;
+        renderer.shadowMap.needsUpdate = true;
+      },
       stats() { const i = renderer.info.render; return { calls: i.calls, tris: i.triangles }; },
       // triangles on the whole planet by kind (instanced sets by their geometry, the rest by material)
       budget() {
