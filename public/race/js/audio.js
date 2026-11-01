@@ -130,7 +130,7 @@ export class Sound {
     o.connect(g).connect(this.music); o.start(t); o.stop(t + 0.1);
   }
 
-  update(speed, throttle, drifting, boost, active) {
+  update(speed, throttle, drifting, boost, active, under = 0) {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
     const v = Math.abs(speed), gear = Math.min(5, Math.floor(v / 14)), inGear = (v - gear * 14) / 14;
@@ -139,7 +139,10 @@ export class Sound {
     this.engLp.frequency.setTargetAtTime(500 + v * 22 + (throttle ? 350 : 0), t, 0.08);
     // 车声垫在音乐下面：引擎、胎噪、风声都比之前低一半左右
     this.eng.gain.setTargetAtTime(active ? 0.045 + (throttle ? 0.025 : 0) + v * 0.0006 : 0.02, t, 0.1);
-    this.skid.g.gain.setTargetAtTime(drifting && v > 10 ? 0.06 : 0, t, 0.05);
+    // 漂移是粗的胎噪；抓地过弯到了极限（推头）是细一点、轻一点的尖叫
+    const squeal = !drifting && under > 0.5 && v > 22;
+    this.skid.g.gain.setTargetAtTime(drifting && v > 10 ? 0.06 : squeal ? 0.03 : 0, t, 0.05);
+    this.skid.bp.frequency.setTargetAtTime(squeal ? 2400 : 1500, t, 0.05);
     this.wind.g.gain.setTargetAtTime(Math.min(0.08, v * 0.0011) + (boost ? 0.04 : 0), t, 0.2);
     this.wind.bp.frequency.setTargetAtTime(400 + v * 12, t, 0.2);
   }

@@ -1,7 +1,11 @@
-// AI 车手：沿赛道距离 + 横向偏移来开。看前方弯道算目标速度，弯前走外线、弯心切内线，
+// AI 车手：沿赛道距离 + 横向偏移来开，走和玩家一样的走线（track.line）。目标速度来自按走线曲率算的限速：
+// 过弯横向 aiLat·skill、刹车 aiBrake，都比玩家低（AI 走线不出错，给满了玩家追不上）。
 // 弯够急就做个漂移的样子（车身甩角 + 冒烟），直道上偶尔放氮气。名字取自西湖的传说。
 import { animateCar, TUNE } from './car.js';
 import { damp } from './noise.js';
+import { speedProfile } from './line.js';
+
+export const AI_TUNE = { aiLat: 8.4, aiBrake: 9.5 };   // AI 走线完美，所以抓地和刹车给得比玩家低：纯抓地开干净大约排中间，会漂移才能赢
 
 export const AI_DRIVERS = [
   { name: '白娘子', body: 0xf3efe6, trim: 0x9ccfd8, helmet: 0xffffff, skill: 1.0 },
@@ -25,6 +29,14 @@ export class AICar {
     this.x = s.x + s.rx * lat; this.z = s.z + s.rz * lat; this.h = s.hd;
   }
   get d() { return this.track.wrapD(this.dist); }
+  profile() {
+    const tr = this.track, key = `aiProf${this.skill}|${AI_TUNE.aiLat}|${AI_TUNE.aiBrake}`;
+    if (!tr[key]) {
+      const k = tr.line ? tr.line.k : tr.curv;
+      tr[key] = speedProfile(tr, k, { aLat: AI_TUNE.aiLat * this.skill, brake: AI_TUNE.aiBrake, vmax: TUNE.vmaxBoost });
+    }
+    return tr[key];
+  }
 
   update(dt, active, playerProgress, myProgress) {
     const tr = this.track, hw = tr.halfW;
@@ -33,21 +45,19 @@ export class AICar {
     const gap = playerProgress - myProgress;
     const rub = clamp(1 + gap / 2400, 0.94, 1.06);
     const vTop = Math.min(TUNE.vmaxBoost, TUNE.vmax * this.skill * rub * (this.nitroT > 0 ? 1.38 : 1));
-    // 前方 120 米最急的弯决定目标速度（v² = a_lat / κ）
-    const ahead = tr.curvAhead(this.dist, 8, 30 + this.s * 1.4);
-    const kAbs = Math.max(Math.abs(ahead.k), 1e-4);
-    const vCorner = Math.sqrt((21 + this.skill * 6) / kAbs);
-    const vt = Math.min(vTop, vCorner * (1 + clamp(ahead.at / 120, 0, 0.4)));
+    // 限速剖面：按走线曲率和刹车距离算好的一圈目标速度（每种车技一份，缓存在赛道上）
+    const prof = this.profile();
+    const i0 = Math.floor(tr.wrapD(this.dist + this.s * 0.12) / tr.ds) % tr.N;
+    const vt = Math.min(vTop, prof[i0]);
     if (this.s < vt) this.s += (TUNE.accel + (this.nitroT > 0 ? 14 : 0)) * (1 - (this.s / Math.max(vTop, 1)) ** 2 * 0.7) * dt;
-    else this.s -= Math.min(32, (this.s - vt) * 3) * dt;
+    else this.s -= Math.min(AI_TUNE.aiBrake * 1.15, (this.s - vt) * 4) * dt;
+    const ahead = tr.curvAhead(this.dist, 8, 30 + this.s * 1.4);
     // 爬坡减速
     const s = tr.sample(this.dist, this.s2);
     this.s -= tr.slope[s.i] * 6 * dt;
-    // 横向：弯前走外线，弯心切内线；其余回到自己的习惯线
-    const kNow = tr.curv[s.i];
-    let target = this.line * hw;
-    if (Math.abs(ahead.k) > 1 / 220) target = (ahead.at > 35 ? 1 : -1) * Math.sign(ahead.k) * hw * 0.5;
-    if (Math.abs(kNow) > 1 / 120) target = Math.sign(kNow) * -hw * 0.55;
+    // 横向：跟走线（外—内—外），直道上各人有一点自己的习惯偏移
+    const L = tr.line, kNow = L ? L.k[s.i] : tr.curv[s.i];
+    let target = L ? L.lat[(s.i + 6) % tr.N] + this.line * 4 * (1 - clamp(Math.abs(kNow) * 60, 0, 1)) : this.line * hw;
     // 避让前车
     for (const o of this.others) {
       if (o === this) continue;
@@ -63,7 +73,7 @@ export class AICar {
     this.steer = damp(this.steer, clamp(kNow * 30 + this.latV * 0.06, -1, 1), 8, dt);
 
     // 急弯 + 有速度 = 漂移的样子
-    const wantDrift = Math.abs(kNow) > 1 / 70 && this.s > 22;
+    const wantDrift = Math.abs(kNow) > 1 / 55 && this.s > 14;
     if (wantDrift && !this.drift) { this.drift = true; this.driftDir = Math.sign(kNow); }
     if (!wantDrift && this.drift) { this.drift = false; this.smallT = 0.7; this.s += 3; }
     this.yaw = damp(this.yaw, this.drift ? this.driftDir * 0.5 : 0, 5, dt);

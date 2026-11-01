@@ -7,7 +7,7 @@ and the daily deploy ships whatever changed.
 
 ## Route
 
-About 4.2 km and 90–95 s a lap. The start/finish is on 平海路 by 龙翔桥 metro station: the street runs west straight
+About 4.2 km and roughly 2 minutes a lap. The start/finish is on 平海路 by 龙翔桥 metro station: the street runs west straight
 at the music fountain between the two 湖滨 flagships, modelled on their real architecture without logos or wordmarks —
 on the right the two-storey glass box with its cantilevered mezzanine and wooden tables, flanked by beige stone and
 brick-lattice blocks over a herringbone plaza; on the left the blue glass towers with the patterned blue feature wall
@@ -45,28 +45,43 @@ speed. Physics, AI and the camera all live on the plane; only the picture curves
 | `effects.js`, `audio.js` | drift smoke, flame puffs and skid marks; an original pentatonic 江南-style background loop (plucked lead with echo, pad, bass, light percussion) mixed above the synthesized engine, tyres and wind (WebAudio, no files) |
 | `main.js` | wiring: build, race states, camera, HUD (analog speedometer 0–280 km/h with the 180+ boost zone in red, three nitro bottles under the car that fill as you drift, burn-time bar), minimap, captions, adaptive quality |
 
-Handling: the car's facing `h` and its direction of travel `m` are separate. With grip `m` catches up fast;
-in a drift (Shift + direction) it lags. Top speed is 180 km/h without boost and 260 km/h with any boost (nitro, 小喷,
-boost pad, start boost); nitro pushes at about 1.7× normal thrust (and keeps full thrust right up to 260) plus a
-+11 km/h kick when it fires. From standstill: 0→100 km/h in 1.9 s and 0→180 in 5.1 s without nitro; 0→100 in 0.9 s,
-0→180 in 1.7 s and 0→260 in 2.9 s on nitro (100→180 takes 3.2 s without, 0.7 s with).
-Space (or Ctrl) fires nitro whenever one is stored, including while one is already burning (the time adds up, to at
-most 5 s). The moment it fires it ends any drift and snaps the travel direction to where the nose points — drift
-round, point the nose at the exit, fire. While it burns the tyres grip fully when not drifting (no slide, steering
-at 72 %), and you can start a new drift; the nitro's thrust (cut to 30 % like any throttle in a drift) still pushes,
-so a drift under nitro sheds less speed (260 → ~200 km/h over 1 s, against 180 → ~120 km/h without). Drifting costs speed: drag of 4.5 + 12·sin(slip) + 0.3·v·sin(slip) m/s² with throttle cut to 30 %, so the faster
-you enter and the longer you hold it, the more you lose: a 1 s drift takes 80 → 50, 120 → 75, 180 → 120 km/h. The gauge only fills on a real drift (slip above
-~6° and held longer than 0.25 s); three nitros can be stored, shown as three slots under the car. The slide after you let go
-scales with how long you held the drift: a tap (≤0.12 s) is a small flick of ~10° that straightens at once, a 0.3 s
-drift slides on 0.1 s, a 1 s drift about 0.5 s. Releasing a clean
-drift opens a 0.5 s window for 小喷 (↑), a small top-up that never outruns not drifting; nitro right after it is 双喷.
-Crests launch the car when v²·(−κ) > g — the northern 杨公堤 bridges at ~140 km/h, the short southern ones at
-~105 km/h — and a landing opens a 落地喷 window.
+Handling: the car's facing `h` and its direction of travel `m` are separate. Braking and cornering follow real cars
+(`car.js` `TUNE`), acceleration stays arcade:
+
+- Acceleration: 0→100 km/h in 1.9 s (Xiaomi SU7 Ultra: 1.98 s), 0→100 in 0.9 s on nitro; top speed 180 km/h, 260 with
+  any boost (nitro, 小喷, boost pad, start boost).
+- Braking 12.5 m/s² (SU7 Ultra: 100→0 in 30.8 m): 100→0 in 30.8 m / 2.25 s, 180→0 in 99.8 m / 4.0 s. Lifting off
+  coasts at 1.0 + 0.03·v m/s² (≈ 2.5 m/s² at 180).
+- Grip cornering is capped at 1.0 g (`latGrip` 9.8 m/s², Porsche Panamera Turbo S E-Hybrid class): yaw rate ≤ latGrip / v,
+  so the tightest grip turn is ~255 m at 180 km/h and ~80 m at 100. Steering past the limit understeers: the car will not
+  turn tighter, scrubs 1.2 m/s² and the tyres squeal. Braking and turning share the grip (friction ellipse, steering
+  first): at full lock the brakes give ~40 % — brake in a straight line before the corner.
+- Walls are not a way round corners: a scrape costs speed in proportion to how hard the wall had to push the car
+  (`wallFriction` 2 × the removed normal speed, plus 14 m/s² while touching).
+- Drift (Shift + direction) is how you take tight corners faster: the direction of travel may turn at up to `driftLat`
+  13 m/s² (≈ 1.33 g), while the slide's own drag plus any braking never exceeds ~13 m/s² (a drift is not a better brake).
+  On the bench (`pilot.js` drivers, best of a parameter grid each, eight corners with a straight approach) a good drift is
+  0.3–1.1 s and on average 0.6 s faster than the best brake-and-grip line; in a race with corners chained together the
+  measured gain is ~0.3 s per tight corner. On straights drifting only loses speed. The gauge fills only on a real
+  drift (slip > ~6°, held > 0.25 s); three nitros can be stored. A tap is a small flick; the slide after release
+  scales with how long the drift was held. Releasing a clean drift opens a 0.5 s window for 小喷 (↑); nitro right after
+  it is 双喷.
+- Nitro (Space / Ctrl) fires whenever one is stored, stacks up to 5 s, and snaps the direction of travel to the nose —
+  drift round, point the nose at the exit, fire. At 260 km/h 1.0 g only allows ~530 m radius, so nitro is for straights
+  and corner exits.
+- Crests launch the car when v²·(−κ) > g; a landing opens a 落地喷 window.
+
+Racing line (`line.js`): a curvature-minimising line inside the road (fourth-difference smoothing, ±8.4 m), with a speed
+profile (`speedProfile`: corner speed √(a/κ), braking distance backwards). The AI follows it with cornering 8.4 m/s² ×
+skill and braking 9.5 m/s² — below the player's, because the AI never misses its line; with these numbers a clean
+grip-only player (the `pilot.js` driver, laps of ~128 s) finishes mid-pack, and drifting the tight corners is what wins.
+`?auto` uses the same `pilot.js` driver. Yellow chevron boards (`cornerSigns` in `trackMesh.js`) stand on the outside
+of every corner slower than 150 km/h: 1–3 arrows by severity and the grip speed rounded down to 10 km/h.
 
 ## Leaderboard (个人最佳 + 总榜)
 
 Scores live in the community project (Alibaba Cloud Supabase), schema in `sql/race/001_race_scores.sql`
-(run once in its SQL editor, then `sql/race/001_race_scores.test.sql` to self-check; it rolls back). The browser
+(run once in its SQL editor, then `sql/race/001_race_scores.test.sql` to self-check; it rolls back). `002_reset_for_real_physics.sql` cleared the board when braking and grip went realistic and accepts only `version = '2'` from then on; the local best moved to `race.best.v2`. The browser
 talks to PostgREST directly with the public publishable key, which `race.astro` hands to the game by postMessage
 (`race:config`); opened outside the site, the game keeps only the local best.
 
@@ -88,6 +103,6 @@ talks to PostgREST directly with the public publishable key, which `race.astro` 
   `?quality=high` pins quality (no automatic downgrade); `?laps=1..5`; `?cam=x,y,z,lx,ly,lz` pins the camera.
 - Drift economy check: on a 2 km straight, drifting left and right all the way (taking every 小喷 and nitro it earns)
   is much slower than just holding the throttle (48.2 s vs 40.0 s), so drifting pays only where you would slow down anyway.
-- Full simulated race (2 laps, 60 Hz, a clean grip-driving autopilot): laps of 93 s and 91 s, finishing ~4 s ahead of
-  the AI, which spread over 8 s. Scene: ~500–1050 draw calls and 0.9–2.4 M triangles per frame across all passes
+- Full simulated race (2 laps, 60 Hz, grip-only `pilot.js` driver): laps of ~129 s and ~128 s, 3rd of 6; the AI spread
+  over ~9 s. Scene: ~500–1050 draw calls and 0.9–2.4 M triangles per frame across all passes
   (the most on 平海路 looking down the street at the lake).

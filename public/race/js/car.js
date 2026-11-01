@@ -10,8 +10,15 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
 export const TUNE = {
   // 不喷气最高 180 km/h（50 m/s）；喷气（氮气、小喷、加速带、起步）最高 260 km/h（72.2 m/s）
-  vmax: 50, vmaxBoost: 72.2, accel: 16.2, nitroAccel: 27.7, brake: 40, reverseMax: 10, roll: 2.0,   // 0→100：不喷 1.9 s，喷氮气 0.9 s
+  vmax: 50, vmaxBoost: 72.2, accel: 16.2, nitroAccel: 27.7, reverseMax: 10,   // 0→100：不喷 1.9 s（小米 SU7 Ultra 1.98 s），喷氮气 0.9 s
+  // 刹车按小米 SU7 Ultra：100→0 30.8 m ≈ 12.5 m/s²，180→0 约 100 m / 4 s；松油门滑行：180 时约 2.5 m/s²
+  brake: 12.5, roll: 1.0, rollV: 0.03,
+  // 抓地过弯按保时捷 Panamera Turbo S E-Hybrid：横向 1.0 g。刹车和转向共用抓地（摩擦椭圆，转向优先）：
+  // 满舵时刹车只剩约 4 成，所以要在入弯前直线上把速度刹下来；过了极限推头、掉速
+  latGrip: 9.8, brakeWhileTurning: 0.85, understeerDrag: 1.2,
   turn: 1.75, grip: 11, nitroTurn: 0.72,
+  // 漂移：车尾甩出去之后，行进方向能拐得比抓地更急（等效横向 driftLat），代价是掉速；车身最多斜 maxDrift
+  driftLat: 13, driftDecelMax: 13, wallDrag: 14, wallFriction: 2.0,
   driftMin: 12, driftYaw: 1.35, driftYawAlign: 0.8, driftGrip: 1.9, driftRelease: 5.5, maxDrift: 1.1,
   // 漂移掉速：基础 + 随漂移角、随车速增长；漂移角越大集气越快，但也掉得越多
   driftDrag: 4.5, driftDragAngle: 12, driftDragSpeed: 0.3,
@@ -168,6 +175,7 @@ export class PlayerCar {
     if (inp.nitroPressed) this.fireNitro();
 
     const ground = !this.air;
+    this.braking = false; this.under = 0; this.brakeDec = 0;
     if (ground) {
       if (inp.up) {
         if (this.s < 0) this.s += T.brake * dt;
@@ -175,11 +183,15 @@ export class PlayerCar {
         // 漂移中轮胎在侧滑，油门只有三成推力
         else if (this.s < vmax) this.s += acc * (this.drift ? T.driftThrottle : 1) * (1 - (this.s / vmax) ** (nitro ? 6 : 2) * 0.82) * dt;
       } else if (inp.down) {
-        if (this.s > 0.5) this.s -= T.brake * dt; else this.s = Math.max(-T.reverseMax, this.s - 14 * dt);
+        if (this.s > 0.5) {
+          const u = Math.min(1, this.latUse || 0);
+          this.brakeDec = T.brake * Math.sqrt(1 - T.brakeWhileTurning * u * u);
+          this.s = Math.max(0, this.s - this.brakeDec * dt); this.braking = true;
+        } else this.s = Math.max(-T.reverseMax, this.s - 8 * dt);
       } else if (nitro) {
         this.s += acc * 0.85 * (1 - (this.s / vmax) ** 6) * dt;   // 喷气中不踩油门也照样往前推
       } else {
-        const dec = (T.roll + Math.abs(this.s) * 0.05) * dt;
+        const dec = (T.roll + Math.abs(this.s) * T.rollV) * dt;
         this.s = Math.abs(this.s) <= dec ? 0 : this.s - Math.sign(this.s) * dec;
       }
       if (this.s > vmax) this.s -= (this.s - vmax) * (nitro ? 3 : 1.4) * dt;
@@ -193,6 +205,7 @@ export class PlayerCar {
       this.emit('driftStart');
     }
     if (this.drift) {
+      this.latUse = 1;
       const align = steerIn * this.driftDir, held = inp.drift && this.release === 0;   // 松开过一次就不再续上
       this.release = held ? 0 : this.release + dt;
       if (held) this.heldT += dt;
@@ -201,13 +214,18 @@ export class PlayerCar {
       const yaw = held ? T.driftYaw + T.driftYawAlign * align : (0.4 + 0.9 * align) * commit * Math.exp(-3 * this.release);
       this.h += this.driftDir * yaw * clamp(this.s / 26, 0.35, 1) * dt * (ground ? 1 : 0.4);
       const k = held ? T.driftGrip : T.driftRelease * (1 + 2.5 * (1 - commit));
-      this.m += wrap(this.h - this.m) * (1 - Math.exp(-k * dt));
+      // 行进方向往车头靠拢，但拐的急缓受轮胎侧向力限制：每秒最多 driftLat / v 弧度
+      const mCap = T.driftLat / Math.max(Math.abs(this.s), 4) * dt;
+      this.m += clamp(wrap(this.h - this.m) * (1 - Math.exp(-k * dt)), -mCap, mCap);
       let a = wrap(this.h - this.m);
-      if (Math.abs(a) > T.maxDrift) { this.m = this.h - Math.sign(a) * T.maxDrift; a = Math.sign(a) * T.maxDrift; }
+      // 车身斜到头了：车头不能再往里甩，只能跟着行进方向走
+      if (Math.abs(a) > T.maxDrift) { this.h = this.m + Math.sign(a) * T.maxDrift; a = Math.sign(a) * T.maxDrift; }
       this.slip = a;
       const sa = Math.abs(Math.sin(a));
       if (ground) {
-        this.s -= (T.driftDrag + T.driftDragAngle * sa + T.driftDragSpeed * this.s * sa) * dt;
+        // 侧滑的减速和刹车加起来不超过轮胎能给的（≈ ABS 刹车），漂移不是更猛的刹车，只是能拐得更急
+        const drag = T.driftDrag + T.driftDragAngle * sa + T.driftDragSpeed * this.s * sa;
+        this.s -= Math.max(0, Math.min(drag, T.driftDecelMax - this.brakeDec)) * dt;
         // 集气只看真正的漂移：角度小于 ~6° 不集气、点一下（0.25 s 以内）不集气；角度越大越快，同时也掉速越多
         this.gauge += dt * T.gaugeRate * 2.2 * clamp((sa - 0.1) / 0.5, 0, 1) * clamp((this.driftT - 0.25) / 0.3, 0, 1) * clamp(this.s / 34, 0.3, 1.1);
         while (this.gauge >= 1) {
@@ -219,10 +237,23 @@ export class PlayerCar {
     } else {
       this.slip = damp(this.slip, 0, 10, dt);
       const dir = this.s >= 0 ? 1 : -1, sp = Math.abs(this.s);
-      const turn = T.turn * clamp(sp / 9, 0, 1) * (1 - 0.5 * clamp(sp / T.vmax, 0, 1.3)) * (nitro ? T.nitroTurn : 1);
-      this.h += this.steer * turn * dt * dir * (ground ? 1 : 0.35);
-      // 喷气时轮胎完全咬住：车往车头方向走，没有甩尾摆动
-      if (this.s >= 0) this.m += wrap(this.h - this.m) * (nitro ? 1 : 1 - Math.exp(-T.grip * dt)); else this.m = this.h;
+      // 方向盘能给的转向（低速时的手感），和轮胎能给的横向力：v·ω ≤ 横向抓地。刹车占掉一部分抓地（摩擦圆，ABS 留一点转向）
+      const turn = T.turn * clamp(sp / 9, 0, 1) * (nitro ? T.nitroTurn : 1);
+      const latCap = T.latGrip;
+      const wCap = latCap / Math.max(sp, 1), want = this.steer * turn;
+      const w = clamp(want, -wCap, wCap);
+      this.latUse = Math.abs(w) * sp / T.latGrip;
+      this.h += w * dt * dir * (ground ? 1 : 0.35);
+      // 推头：方向打得比轮胎能给的多，车不会更急地拐，只会尖叫、掉速
+      if (ground && sp > 8 && Math.abs(want) > wCap * 1.05) {
+        this.under = clamp((Math.abs(want) - wCap) / wCap, 0, 1);
+        this.s -= Math.sign(this.s) * T.understeerDrag * this.under * dt;
+      }
+      // 喷气时轮胎完全咬住：车往车头方向走，没有甩尾摆动；其余时候行进方向同样受横向抓地限制
+      if (this.s >= 0) {
+        const mCap = (latCap + 2) / Math.max(sp, 4) * dt;
+        this.m += nitro ? wrap(this.h - this.m) : clamp(wrap(this.h - this.m) * (1 - Math.exp(-T.grip * dt)), -mCap, mCap);
+      } else this.m = this.h;
     }
 
     // 平面积分
@@ -242,7 +273,10 @@ export class PlayerCar {
       if (vn > 0) {
         const sp = Math.max(1, Math.hypot(vx, vz)), hit = vn / sp;
         vx -= nx * vn * 1.25; vz -= nz * vn * 1.25;
-        const keep = 1 - 0.42 * hit; vx *= keep; vz *= keep;
+        // 撞墙/蹭墙要真掉速，不然贴着护栏全速过弯比刹车还快：墙推着车拐了多少（vn），就按摩擦系数扣多少速度；撞得越正损失越大
+        const ns0 = Math.hypot(vx, vz), loss = T.wallFriction * vn * 1.25 + T.wallDrag * dt;
+        const keep = Math.max(0, ns0 - loss) / Math.max(ns0, 1e-6) * Math.max(0.25, 1 - 0.42 * hit - 0.9 * hit * hit);
+        vx *= keep; vz *= keep;
         const ns = Math.hypot(vx, vz);
         if (this.s >= 0) {
           this.s = ns; if (ns > 0.5) this.m = Math.atan2(vx, vz);
