@@ -118,12 +118,12 @@ export class PlayerCar {
   get boosting() { return this.nitroT > 0 || this.smallT > 0 || this.padT > 0 || this.startT > 0; }
 
   fireNitro() {
-    if (this.nitroN <= 0 || this.nitroT > 0.3) return;
+    if (this.nitroN <= 0) return;   // 有氮气就喷，喷着的时候再按一下就接上（时间叠加，最多 5 秒）
     this.nitroN--;
     const dbl = this.time - this.lastSmall < 0.45;   // 小喷后紧接氮气 = 双喷
-    this.nitroT = TUNE.nitroTime + (dbl ? 0.5 : 0);
+    this.nitroT = Math.min(5, Math.max(0, this.nitroT) + TUNE.nitroTime + (dbl ? 0.5 : 0));
     this.s = Math.max(this.s, 20) + (dbl ? 7 : 4);
-    // 喷气停止摆动：结束漂移（不扣小喷窗口），运动方向立刻对齐车头，按车头方向冲出去
+    // 喷的那一下停止摆动：结束漂移，运动方向立刻对齐车头，按车头方向冲出去（喷着的时候还可以再漂）
     if (this.drift) { this.drift = false; this.emit('driftEnd', { t: this.driftT }); }
     this.m = this.h; this.slip = 0;
     this.emit(dbl ? 'double' : 'nitro');
@@ -187,7 +187,7 @@ export class PlayerCar {
     }
 
     // Shift + 方向：进入漂移
-    if (!this.drift && !nitro && inp.drift && steerIn !== 0 && this.s > T.driftMin && ground) {
+    if (!this.drift && inp.drift && steerIn !== 0 && this.s > T.driftMin && ground) {
       this.drift = true; this.driftDir = steerIn; this.driftT = 0; this.release = 0; this.window = 0;
       this.h += steerIn * 0.08;
       this.emit('driftStart');
