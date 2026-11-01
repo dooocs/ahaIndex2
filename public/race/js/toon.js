@@ -21,7 +21,7 @@ export const G = {
   uBend: { value: 1 / 3400 }, uBendStart: { value: 140 },
 };
 
-const BEND_GLSL = /* glsl */`
+export const BEND_GLSL = /* glsl */`
 uniform float uBend; uniform float uBendStart;
 vec4 bendWorld(vec4 wp){
   float d = max(length(wp.xz - cameraPosition.xz) - uBendStart, 0.0);

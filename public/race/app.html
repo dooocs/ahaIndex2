@@ -95,9 +95,17 @@
   .count.show { animation: pop .9s ease-out; }
   @keyframes pop { 0% { opacity: 0; transform: translate(-50%, -50%) scale(1.6); } 20% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -50%) scale(0.95); } }
   #wrong { position: absolute; left: 50%; top: 52%; transform: translate(-50%, -50%); padding: 8px 18px; font: 800 22px/1 var(--body); letter-spacing: 0.2em; color: #fffaf2; background: #c4473a; border: 2px solid var(--ink); border-radius: 10px; }
-  #mute { position: fixed; right: 16px; bottom: 150px; z-index: 6; width: 38px; height: 38px; border-radius: 50%; border: 2px solid var(--ink); background: var(--card); cursor: pointer; display: grid; place-items: center; padding: 0; }
-  #mute svg { width: 18px; height: 18px; }
+  #mute { position: fixed; right: 18px; bottom: 150px; z-index: 13; min-width: 58px; height: 58px; border-radius: 29px; border: 2.5px solid var(--ink); background: var(--card); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 0 14px; box-shadow: 3px 3px 0 var(--ink); font: 700 16px/1 var(--body); color: var(--ink); }
+  #mute:hover { transform: translate(-1px, -1px); box-shadow: 4px 4px 0 var(--ink); }
+  #mute:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+  #mute svg { width: 30px; height: 30px; flex: none; }
+  #mute .lbl { display: none; white-space: nowrap; }
   #mute.off .wave { display: none; }
+  #mute:not(.off) .x { display: none; }
+  #mute.off .lbl { display: inline; }
+  #mute.short .lbl { display: none; }
+  #mute.off.hint { animation: nudge 2.4s ease-in-out infinite; }
+  @keyframes nudge { 0%, 70%, 100% { transform: none; } 80% { transform: rotate(-6deg); } 90% { transform: rotate(6deg); } }
   #paused, #result { position: fixed; inset: 0; display: grid; place-items: center; z-index: 12; background: rgba(42, 50, 56, 0.25); padding-top: var(--inset-top); }
   #paused .card { padding: 18px 26px; font-size: 18px; letter-spacing: 0.1em; }
   #result .card { width: min(420px, 92vw); padding: 22px 24px; }
@@ -154,7 +162,8 @@
   .touch #nitro { bottom: auto; top: calc(var(--inset-top) + 64px); left: auto; right: 16px; transform: none; }
   .touch #nitro .slots { gap: 8px; padding: 6px 10px 4px; }
   .touch #nitro .slot { width: 26px; height: 42px; }
-  .touch #mute { bottom: auto; top: calc(var(--inset-top) + 14px); right: 140px; }
+  .touch #mute { bottom: auto; top: calc(var(--inset-top) + 12px); right: 140px; height: 50px; min-width: 50px; padding: 0 10px; }
+  .touch #mute svg { width: 26px; height: 26px; }
   @media (max-width: 640px) { #board { display: none; } .tl .card:nth-child(3) { display: none; } }
 </style>
 </head>
@@ -200,7 +209,7 @@
   </div>
   <canvas id="gauge" class="dial" width="200" height="200" aria-label="车速"></canvas>
 </div>
-<button id="mute" aria-label="声音开关" title="声音（M）"><svg viewBox="0 0 24 24" fill="none" stroke="#2a3238" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="wave" d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"/></svg></button>
+<button id="mute" class="off hint" aria-label="声音开关" title="声音（M）"><svg viewBox="0 0 24 24" fill="none" stroke="#2a3238" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="wave" d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"/><path class="x" d="M16.5 9.5l5 5M21.5 9.5l-5 5"/></svg><span class="lbl">开音乐</span></button>
 
 <div class="pad l"><button data-key="left" aria-label="左">◀</button><button data-key="right" aria-label="右">▶</button></div>
 <div class="pad r"><div class="row"><button data-key="nitro">氮气</button><button data-key="drift">漂移</button></div><div class="row"><button data-key="down">刹车</button></div></div>

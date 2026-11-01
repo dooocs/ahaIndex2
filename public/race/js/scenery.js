@@ -3,7 +3,7 @@
 // 静态几何按材质 + 300 米地块合并，树和茶树按地块做 InstancedMesh，都能被视锥剔除。
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { toon, mergeColored } from './toon.js';
+import { toon, mergeColored, BEND_GLSL, G } from './toon.js';
 import * as LY from './layout.js';
 import { WATER, baseHeight } from './terrain.js';
 import { fbm2, makeRand, smoothstep, slice } from './noise.js';
@@ -62,6 +62,7 @@ class Inst {
       const im = new THREE.InstancedMesh(part.geo, part.mat, list.length);
       list.forEach(([m, c], i) => { im.setMatrixAt(i, m); if (part.tint) im.setColorAt(i, new THREE.Color(c ?? 0xffffff)); });
       im.castShadow = part.cast !== false; im.receiveShadow = true;
+      if (part.layer) im.layers.set(part.layer);   // 第 1 层不进法线 pass，不描黑边
       im.computeBoundingSphere(); im.boundingSphere.radius += 40;
       im.visible = vis;
       scene.add(im);
@@ -177,8 +178,8 @@ function treeKinds() {
   const nearRings = [[0.36, 18, 1.86, 1.15], [0.52, 26, 1.84, 1.35], [0.68, 34, 1.8, 1.5], [0.84, 40, 1.72, 1.55]];
   const farRings = [[0.55, 20, 1.82, 1.4], [0.84, 26, 1.72, 1.5]];
   K.willow = {
-    near: [{ geo: wTrunk, mat: wTrunkMat }, { geo: willowCrown(1), mat: wLeaf }, { geo: willowStrands(nearRings, 6), mat: wStrand }],
-    far: [{ geo: wTrunk, mat: wTrunkMat, cast: false }, { geo: willowCrown(0), mat: wLeaf, cast: false }, { geo: willowStrands(farRings, 3), mat: wStrand, cast: false }],
+    near: [{ geo: wTrunk, mat: wTrunkMat }, { geo: willowCrown(1), mat: wLeaf }, { geo: willowStrands(nearRings, 6), mat: wStrand, layer: 1 }],
+    far: [{ geo: wTrunk, mat: wTrunkMat, cast: false }, { geo: willowCrown(0), mat: wLeaf, cast: false }, { geo: willowStrands(farRings, 3), mat: wStrand, cast: false, layer: 1 }],
     swap: 260,
   };
   const pTrunk = new THREE.CylinderGeometry(0.05, 0.08, 0.8, 5).translate(0, 0.4, 0), pTrunkMat = toon(0x7a5a4a, { shade: 0x56484c });
@@ -625,7 +626,7 @@ export async function buildScenery(track, terrain, scene, onProgress = () => {})
       if (onSudi) place((i / 6 + (side > 0 ? 1 : 0)) % 2 ? 'peach' : 'willow', x, z, (onSudi ? 3.4 : 3.6) + rand() * 0.6);
       else {
         const lakeSide = baseHeight(track.px[i] - track.rx[i] * side * 40, track.pz[i] - track.rz[i] * side * 40) > WATER && baseHeight(x + track.rx[i] * side * 30, z + track.rz[i] * side * 30) < WATER;
-        if (lakeSide) place('willow', x, z, 3.6 + rand() * 0.5);
+        if (lakeSide) { if (i % 12 === 0) place('willow', x, z, 3.6 + rand() * 0.5); }   // 和行道树一样 18 米一株
         else if (i % 12 === 0 && !(x > 450 && x < 720 && z > -130 && z < 40)) place('round', x, z, 6 + rand() * 2, undefined, leafTints[i % 4]);
       }
     }
@@ -726,17 +727,62 @@ export function buildBoats(scene) {
     const g = mk(big ? 0xb4483a : [0xd65b4f, 0x4f9d8f, 0xe8b14a][i % 3], big ? 3.2 : 1.4, big ? 0.9 : 0.5, big ? 5 : 3.4);
     boats.push({ g, cx: x, cz: z, r: 18 + rand() * 25, w: (0.012 + rand() * 0.02) * (i % 2 ? 1 : -1), a: rand() * 6.28 });
   });
-  // 湖滨音乐喷泉：一圈水柱，高低起伏
-  const jets = [], jetMat = toon(0xeef8f8, { shade: 0x9cc7d0, kind: 'FOLIAGE', breakMul: 0.4, noiseScale: 3 });
-  const jetGeo = new THREE.CylinderGeometry(0.5, 2.0, 1, 10).translate(0, 0.5, 0);
+  // 湖滨音乐喷泉：一圈彩色水柱，高低起伏；颜色随时间转（彩虹一圈转 → 全场同色闪 → 再转），水面一圈同色的光
+  const jets = [];
+  const jetGeo = new THREE.CylinderGeometry(0.45, 2.0, 1, 14, 6).translate(0, 0.5, 0);
+  const jetMat = () => new THREE.ShaderMaterial({
+    uniforms: { uColor: { value: new THREE.Color() }, uTime: G.uTime, uBend: G.uBend, uBendStart: G.uBendStart },
+    vertexShader: /* glsl */`
+      ${BEND_GLSL}
+      varying float vY; varying vec2 vUv; varying vec3 vN; varying vec3 vV;
+      void main() {
+        vY = position.y; vUv = uv;
+        vec4 wp = modelMatrix * vec4(position, 1.0);
+        vN = normalize(mat3(modelMatrix) * normal); vV = normalize(cameraPosition - wp.xyz);
+        gl_Position = projectionMatrix * viewMatrix * bendWorld(wp);
+      }`,
+    fragmentShader: /* glsl */`
+      uniform vec3 uColor; uniform float uTime;
+      varying float vY; varying vec2 vUv; varying vec3 vN; varying vec3 vV;
+      void main() {
+        float streak = 0.82 + 0.18 * sin(vUv.x * 75.0 + vY * 6.0 - uTime * 9.0);
+        float rim = pow(1.0 - abs(dot(normalize(vN), vV)), 1.5);
+        vec3 c = uColor * streak;
+        c = mix(c, vec3(1.0), smoothstep(0.45, 1.0, vY) * 0.7 + rim * 0.25);   // 顶上是白色水花，边缘发亮
+        gl_FragColor = vec4(c, 1.0);
+      }`,
+  });
   for (let i = 0; i < 15; i++) {
     const a = (i / 15) * Math.PI * 2, r = i % 3 === 0 ? 0 : i % 2 ? 9 : 16;
-    const j = new THREE.Mesh(jetGeo, jetMat);
+    const j = new THREE.Mesh(jetGeo, jetMat());
     j.position.set(LY.FOUNTAIN[0] + Math.cos(a) * r, WATER, LY.FOUNTAIN[1] + Math.sin(a) * r);
-    j.castShadow = false; j.receiveShadow = true; j.layers.set(1); scene.add(j); jets.push({ j, ph: a * 2 + r });
+    j.castShadow = false; j.receiveShadow = false; j.layers.set(1); scene.add(j); jets.push({ j, ph: a * 2 + r, a });
   }
+  const glowMat = new THREE.ShaderMaterial({
+    uniforms: { uColor: { value: new THREE.Color() }, uBend: G.uBend, uBendStart: G.uBendStart },
+    vertexShader: /* glsl */`
+      ${BEND_GLSL}
+      varying vec2 vP;
+      void main() { vP = position.xy; gl_Position = projectionMatrix * viewMatrix * bendWorld(modelMatrix * vec4(position, 1.0)); }`,
+    fragmentShader: /* glsl */`
+      uniform vec3 uColor; varying vec2 vP;
+      void main() { float d = length(vP) / 24.0; gl_FragColor = vec4(uColor * smoothstep(1.0, 0.25, d) * 0.55, 1.0); }`,
+    transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  const glow = new THREE.Mesh(new THREE.CircleGeometry(24, 40).rotateX(-Math.PI / 2), glowMat);
+  glow.position.set(LY.FOUNTAIN[0], WATER + 0.06, LY.FOUNTAIN[1]); glow.layers.set(1); glow.renderOrder = 2; scene.add(glow);
+  const hue = (t, a) => {
+    const phase = (t / 8) % 3;                       // 每 8 秒换一个花样
+    if (phase < 1) return (t * 0.12 + a / 6.283) % 1;  // 彩虹沿圆圈转
+    if (phase < 2) return (Math.floor(t * 1.5) * 0.37) % 1;   // 全场同色，跟着节拍换色
+    return (t * 0.2 + (a < 3.14 ? 0 : 0.5)) % 1;     // 两半对比色
+  };
   return t => {
-    for (const { j, ph } of jets) j.scale.set(1, 3 + 11 * (0.5 + 0.5 * Math.sin(t * 1.6 + ph)), 1);
+    for (const { j, ph, a } of jets) {
+      j.scale.set(1, 3 + 11 * (0.5 + 0.5 * Math.sin(t * 1.6 + ph)), 1);
+      j.material.uniforms.uColor.value.setHSL(hue(t, a), 0.9, 0.58);
+    }
+    glowMat.uniforms.uColor.value.setHSL(hue(t, 0), 0.9, 0.55);
     for (const bt of boats) {
       const a = bt.a + t * bt.w;
       bt.g.position.set(bt.cx + Math.cos(a) * bt.r, WATER + 0.05 + Math.sin(t * 1.3 + bt.a) * 0.06, bt.cz + Math.sin(a) * bt.r);
