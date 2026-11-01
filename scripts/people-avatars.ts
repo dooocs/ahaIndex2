@@ -1,14 +1,16 @@
 // Daily People Avatars job (.github/workflows/people-avatars.yml): for every
 // published person with an X or GitHub handle, fetch their photo, store it on
 // OSS under media/people/avatars/<slug>-<hash>.<ext> (immutable: a new photo
-// gets a new name, so nothing needs a CDN refresh) and write
-// people.avatar_url. Unchanged photos are neither uploaded nor written. A
-// photo set by hand (avatar_url outside that prefix) is left alone. One
-// person failing only skips that person. Rules: src/lib/people-avatars.ts.
+// gets a new name, so nothing needs a CDN refresh) and hand the new address
+// to the Aliyun database through people_outbox, which its sync job applies
+// within ten minutes (docs/people.md). People are read from people_snapshots.
+// Unchanged photos are neither uploaded nor sent. A photo set by hand
+// (avatar_url outside that prefix) is left alone. One person failing only
+// skips that person. Rules: src/lib/people-avatars.ts.
 //
 // node --experimental-strip-types scripts/people-avatars.ts [--dry-run]
 //
-// Environment: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (writes people),
+// Environment: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY (writes people_outbox),
 // OSS_ACCESS_KEY_ID, OSS_ACCESS_KEY_SECRET, OSS_BUCKET (default amazingindex),
 // OSSUTIL (default ossutil).
 import { execFile } from 'node:child_process';
@@ -17,7 +19,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { createClient } from '@supabase/supabase-js';
-import { avatarKey, avatarSources, avatarUrl, rejectImage, type AvatarPerson } from '../src/lib/people-avatars.ts';
+import { avatarKey, avatarPersonFromSnapshot, avatarSources, avatarUrl, rejectImage, type AvatarPerson } from '../src/lib/people-avatars.ts';
 
 const run = promisify(execFile);
 const dryRun = process.argv.includes('--dry-run');
@@ -26,17 +28,22 @@ const log = (message: string) => console.log(`[avatars] ${message}`);
 
 const url = process.env.SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required (the job writes people.avatar_url)');
+if (!url || !key) throw new Error('SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required (the job writes people_outbox)');
 const db = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
 const bucket = process.env.OSS_BUCKET || 'amazingindex';
 const ossutil = process.env.OSSUTIL || 'ossutil';
 
-const { data, error } = await db.from('people')
-  .select('id, slug, x_handle, github_handle, avatar_url')
-  .eq('status', 'published')
+const { data, error } = await db.from('people_snapshots')
+  .select('person_id, slug, payload')
   .order('slug');
-if (error) throw new Error(`Failed to read people: ${error.message}`);
-const people = (data ?? []) as AvatarPerson[];
+if (error) throw new Error(`Failed to read people_snapshots: ${error.message}`);
+const people = ((data ?? []) as { person_id: string; slug: string; payload: { person?: Record<string, string | null> } }[])
+  .map((s): AvatarPerson => avatarPersonFromSnapshot(s));
+
+// Photos already handed over and not yet applied: sending them again would only queue duplicates.
+const pending = await db.from('people_outbox').select('person_slug, payload').eq('kind', 'avatar').is('consumed_at', null);
+if (pending.error) throw new Error(`Failed to read people_outbox: ${pending.error.message}`);
+const queued = new Set((pending.data ?? []).map((m: { person_slug: string; payload: { avatar_url?: string } }) => `${m.person_slug} ${m.payload?.avatar_url}`));
 
 async function download(source: string): Promise<{ body: Uint8Array; type: string } | string> {
   try {
@@ -88,7 +95,7 @@ for (const person of people) {
     }
     const objectKey = avatarKey(person.slug, got.body, got.type);
     const next = avatarUrl(objectKey);
-    if (next === person.avatar_url) {
+    if (next === person.avatar_url || queued.has(`${person.slug} ${next}`)) {
       counts.unchanged += 1;
     } else if (dryRun) {
       log(`${person.slug}: would store ${next} (from ${source.name})`);
@@ -96,7 +103,8 @@ for (const person of people) {
     } else {
       try {
         await upload(objectKey, got.body, got.type);
-        const write = await db.from('people').update({ avatar_url: next }).eq('id', person.id);
+        const write = await db.from('people_outbox')
+          .insert({ kind: 'avatar', person_slug: person.slug, payload: { avatar_url: next }, created_by: 'people-avatars' });
         if (write.error) throw new Error(write.error.message);
         log(`${person.slug}: ${next} (from ${source.name})`);
         counts.updated += 1;

@@ -1,9 +1,9 @@
 // Photos for 人物, kept on the site's own OSS so every reader can load them.
 // scripts/people-avatars.ts (the daily People Avatars workflow) fetches each
 // published person's photo, stores it under media/people/avatars/ with its
-// content hash in the name, and writes people.avatar_url. Separate from the
-// 动态 pipeline: it reads only the people table and writes only that column
-// and that prefix.
+// content hash in the name, and sends the new address to the Aliyun database
+// (people_outbox). Separate from the 动态 pipeline: it reads only
+// people_snapshots and writes only people_outbox and that prefix.
 //
 // Sources, in order: a photo set by hand (avatar_url outside the job's
 // prefix) is never replaced; else the X profile picture (via unavatar.io, no
@@ -29,6 +29,18 @@ export interface AvatarPerson {
   x_handle: string | null;
   github_handle: string | null;
   avatar_url: string | null;
+}
+
+/** The fields the job needs, from a people_snapshots row. */
+export function avatarPersonFromSnapshot(s: { person_id: string; slug: string; payload: { person?: Record<string, string | null> } }): AvatarPerson {
+  const p = s.payload?.person ?? {};
+  return {
+    id: s.person_id,
+    slug: s.slug,
+    x_handle: p.x_handle ?? null,
+    github_handle: p.github_handle ?? null,
+    avatar_url: p.avatar_url ?? null,
+  };
 }
 
 export interface AvatarSource {

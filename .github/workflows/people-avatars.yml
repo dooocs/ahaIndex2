@@ -2,9 +2,10 @@ name: People Avatars
 
 # Photos for 人物: once a day, fetch each published person's photo (X via
 # unavatar.io, else GitHub), store it on OSS under media/people/avatars/ and
-# write people.avatar_url (scripts/people-avatars.ts). Separate from the 动态
-# pipeline and from deploys: the pages pick the new photos up on the next
-# hourly feed deploy. A photo set by hand in the table is never replaced.
+# hand the address to the Aliyun database through people_outbox
+# (scripts/people-avatars.ts). Its sync job applies it within ten minutes and
+# pushes a new snapshot; the pages pick it up on the next hourly feed deploy.
+# A photo set by hand is never replaced.
 
 on:
   # Also when the job itself changes, so a fix takes effect without waiting a day.

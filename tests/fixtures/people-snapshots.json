@@ -1,0 +1,661 @@
+[
+    {
+        "slug": "andrew-ng",
+        "payload": {
+            "arcs": [
+            ],
+            "events": [
+            ],
+            "labels": [
+            ],
+            "person": {
+                "name": "Andrew Ng",
+                "role": "DeepLearning.AI 创始人 · Coursera 联合创始人",
+                "slug": "andrew-ng",
+                "tier": null,
+                "fields": [
+                ],
+                "name_zh": "吴恩达",
+                "sources": [
+                ],
+                "added_at": "2026-10-20",
+                "nickname": "吴恩达 · AI 网课顶流",
+                "x_handle": "AndrewYNg",
+                "take_text": null,
+                "avatar_url": null,
+                "birth_date": null,
+                "birth_prec": null,
+                "death_date": null,
+                "death_prec": null,
+                "updated_at": "2026-10-20T09:28:29.62997+00:00",
+                "birth_place": null,
+                "person_group": "布道者",
+                "github_handle": null,
+                "former_subjects": [
+                ],
+                "take_updated_at": null
+            },
+            "states": [
+            ],
+            "wealth": [
+            ],
+            "stances": [
+            ],
+            "dimensions": [
+                {
+                    "key": "role",
+                    "label": "身份"
+                },
+                {
+                    "key": "wealth",
+                    "label": "财富"
+                },
+                {
+                    "key": "family",
+                    "label": "家庭"
+                }
+            ],
+            "comparisons": [
+            ],
+            "achievements": [
+            ],
+            "generated_at": "2026-11-01T11:09:57.294505+00:00"
+        },
+        "person_id": "c5457364-45ef-4239-a2f4-778b9b65a944",
+        "synced_at": "2026-11-01T10:50:17Z"
+    },
+    {
+        "slug": "sam-altman",
+        "payload": {
+            "arcs": [
+            ],
+            "events": [
+                {
+                    "date": "2005-01-01",
+                    "prec": "year",
+                    "links": [
+                    ],
+                    "place": null,
+                    "sides": null,
+                    "steps": null,
+                    "title": "从斯坦福辍学，带着 Loopt 进了 YC 第一期",
+                    "people": [
+                    ],
+                    "pinned": false,
+                    "my_role": "protagonist",
+                    "sources": [
+                        {
+                            "url": "",
+                            "kind": "report",
+                            "lang": "zh",
+                            "phase": null,
+                            "quote": null,
+                            "title": "YC 官方介绍",
+                            "outlet": null,
+                            "excerpt": null,
+                            "pub_prec": "day",
+                            "snapshot": null,
+                            "published_at": null,
+                            "outlet_domain": null
+                        }
+                    ],
+                    "valence": "turn",
+                    "short_id": "6d4a1358",
+                    "is_approx": false,
+                    "then_text": "做基于位置的社交应用。2012 年卖给 Green Dot，价格约 4340 万美元，算不上成功。",
+                    "commentary": "【样稿】产品没做成，但他在 YC 的圈子里站住了位置，这比 Loopt 本身重要。",
+                    "importance": 2,
+                    "later_text": null
+                },
+                {
+                    "date": "2014-02-01",
+                    "prec": "month",
+                    "links": [
+                    ],
+                    "place": null,
+                    "sides": null,
+                    "steps": null,
+                    "title": "接替 Paul Graham，出任 YC 总裁",
+                    "people": [
+                    ],
+                    "pinned": false,
+                    "my_role": "protagonist",
+                    "sources": [
+                        {
+                            "url": "https://www.ycombinator.com/blog/sam-altman-for-president",
+                            "kind": "official",
+                            "lang": "zh",
+                            "phase": null,
+                            "quote": null,
+                            "title": "YC 博客：Sam Altman for President",
+                            "outlet": "Y Combinator",
+                            "excerpt": null,
+                            "pub_prec": "day",
+                            "snapshot": null,
+                            "published_at": null,
+                            "outlet_domain": "ycombinator.com"
+                        }
+                    ],
+                    "valence": "turn",
+                    "short_id": "ffceb60a",
+                    "is_approx": false,
+                    "then_text": "28 岁接手当时最有影响力的创业孵化器，扩大投资规模，推出后期基金。",
+                    "commentary": "【样稿】从这里开始，他的核心能力不是做产品，是组织资源。",
+                    "importance": 2,
+                    "later_text": null
+                },
+                {
+                    "date": "2015-12-01",
+                    "prec": "month",
+                    "links": [
+                    ],
+                    "place": null,
+                    "sides": null,
+                    "steps": null,
+                    "title": "和马斯克等人以非营利形式创立 OpenAI",
+                    "people": [
+                    ],
+                    "pinned": false,
+                    "my_role": "protagonist",
+                    "sources": [
+                        {
+                            "url": "https://openai.com/index/introducing-openai/",
+                            "kind": "official",
+                            "lang": "zh",
+                            "phase": null,
+                            "quote": null,
+                            "title": "OpenAI：Introducing OpenAI",
+                            "outlet": "OpenAI",
+                            "excerpt": null,
+                            "pub_prec": "day",
+                            "snapshot": null,
+                            "published_at": null,
+                            "outlet_domain": "openai.com"
+                        }
+                    ],
+                    "valence": "turn",
+                    "short_id": "63e9f862",
+                    "is_approx": false,
+                    "then_text": "写下的目标是确保通用人工智能造福全人类。早期出资人包括马斯克、Reid Hoffman、Peter Thiel。",
+                    "commentary": "【样稿】这个初衷后来成了他最大的包袱：之后几乎每一次争议，都被拿这一页来对照。",
+                    "importance": 2,
+                    "later_text": null
+                },
+                {
+                    "date": "2019-03-01",
+                    "prec": "month",
+                    "links": [
+                    ],
+                    "place": null,
+                    "sides": [
+                        {
+                            "who": "支持者",
+                            "text": "训练大模型要的钱，靠捐款拿不到。"
+                        },
+                        {
+                            "who": "批评者",
+                            "text": "这是离开非营利承诺的第一步。"
+                        }
+                    ],
+                    "steps": null,
+                    "title": "设立「有上限盈利」公司，随后微软投资 10 亿美元",
+                    "people": [
+                    ],
+                    "pinned": false,
+                    "my_role": "protagonist",
+                    "sources": [
+                        {
+                            "url": "https://openai.com/index/openai-lp/",
+                            "kind": "official",
+                            "lang": "zh",
+                            "phase": null,
+                            "quote": null,
+                            "title": "OpenAI：OpenAI LP",
+                            "outlet": "OpenAI",
+                            "excerpt": null,
+                            "pub_prec": "day",
+                            "snapshot": null,
+                            "published_at": null,
+                            "outlet_domain": "openai.com"
+                        }
+                    ],
+                    "valence": "dispute",
+                    "short_id": "d95c6e37",
+                    "is_approx": false,
+                    "then_text": "投资人回报设上限，超出部分归非营利母体。同年他出任 CEO。",
+                    "commentary": null,
+                    "importance": 2,
+                    "later_text": null
+                },
+                {
+                    "date": "2022-11-01",
+                    "prec": "month",
+                    "links": [
+                    ],
+                    "place": null,
+                    "sides": null,
+                    "steps": null,
+                    "title": "发布 ChatGPT",
+                    "people": [
+                    ],
+                    "pinned": false,
+                    "my_role": "protagonist",
+                    "sources": [
+                        {
+                            "url": "https://openai.com/index/chatgpt/",
+                            "kind": "official",
+                            "lang": "zh",
+                            "phase": null,
+                            "quote": null,
+                            "title": "OpenAI：Introducing ChatGPT",
+                            "outlet": "OpenAI",
+                            "excerpt": null,
+                            "pub_prec": "day",
+                            "snapshot": null,
+                            "published_at": null,
+                            "outlet_domain": "openai.com"
+                        }
+                    ],
+                    "valence": "turn",
+                    "short_id": "f42bcf78",
+                    "is_approx": false,
+                    "then_text": "原本被当作一次研究预览，上线后迅速出圈，把整个行业的节奏提前了。",
+                    "commentary": "【样稿】他最擅长的不是发明，是判断「现在就放出去」。",
+                    "importance": 2,
+                    "later_text": null
+                },
+                {
+                    "date": "2023-05-01",
+                    "prec": "month",
+                    "links": [
+                    ],
+                    "place": null,
+                    "sides": [
+                        {
+                            "who": "支持者",
+                            "text": "头部公司主动要求被监管，很少见。"
+                        },
+                        {
+                            "who": "批评者",
+                            "text": "许可证会抬高门槛，最受益的是已经领先的公司。"
+                        }
+                    ],
+                    "steps": null,
+                    "title": "在美国参议院作证，主张给大模型发许可证",
+                    "people": [
+                    ],
+                    "pinned": false,
+                    "my_role": "protagonist",
+                    "sources": [
+                        {
+                            "url": "",
+                            "kind": "report",
+                            "lang": "zh",
+                            "phase": null,
+                            "quote": null,
+                            "title": "美国参议院司法委员会听证 2023.05.16",
+                            "outlet": null,
+                            "excerpt": null,
+                            "pub_prec": "day",
+                            "snapshot": null,
+                            "published_at": null,
+                            "outlet_domain": null
+                        }
+                    ],
+                    "valence": "dispute",
+                    "short_id": "5970986e",
+                    "is_approx": false,
+                    "then_text": "提出设立专门机构，对超过一定能力的模型实行许可。",
+                    "commentary": null,
+                    "importance": 2,
+                    "later_text": null
+                },
+                {
+                    "date": "2023-11-01",
+                    "prec": "month",
+                    "links": [
+                    ],
+                    "place": null,
+                    "sides": [
+                        {
+                            "who": "董事会的说法",
+                            "text": "他在与董事会的沟通中「不够坦诚」，董事会对他继续领导公司失去信心。"
+                        },
+                        {
+                            "who": "支持他的一方",
+                            "text": "绝大多数员工站在他这边；微软愿意接收他和整个团队。"
+                        }
+                    ],
+                    "steps": [
+                        {
+                            "date": "11.17",
+                            "text": "董事会宣布解雇他"
+                        },
+                        {
+                            "date": "11.20",
+                            "text": "微软宣布聘请他"
+                        },
+                        {
+                            "date": "11.20",
+                            "text": "700 多名员工联名，要求董事会辞职"
+                        },
+                        {
+                            "date": "11.22",
+                            "text": "宣布回归，董事会改组"
+                        }
+                    ],
+                    "title": "被董事会解雇，5 天后回归",
+                    "people": [
+                    ],
+                    "pinned": true,
+                    "my_role": "protagonist",
+                    "sources": [
+                        {
+                            "url": "https://openai.com/index/openai-announces-leadership-transition/",
+                            "kind": "official",
+                            "lang": "zh",
+                            "phase": null,
+                            "quote": null,
+                            "title": "OpenAI 公告 2023.11.17",
+                            "outlet": "OpenAI",
+                            "excerpt": null,
+                            "pub_prec": "day",
+                            "snapshot": null,
+                            "published_at": null,
+                            "outlet_domain": "openai.com"
+                        }
+                    ],
+                    "valence": "down",
+                    "short_id": "face468b",
+                    "is_approx": false,
+                    "then_text": "董事会突然宣布解雇他；几天之内，绝大多数员工联名要求董事会辞职，微软表示愿意接收他和团队，他随后回归，董事会改组。",
+                    "commentary": "【样稿】公司真正的控制权不在章程里，在员工和资本手里。他在程序上输了，在人心上赢了。",
+                    "importance": 3,
+                    "later_text": null
+                },
+                {
+                    "date": "2024-02-01",
+                    "prec": "month",
+                    "links": [
+                    ],
+                    "place": null,
+                    "sides": [
+                        {
+                            "who": "马斯克",
+                            "text": "OpenAI 变成了一家实际由微软控制的闭源公司。"
+                        },
+                        {
+                            "who": "OpenAI",
+                            "text": "马斯克当年也认同需要营利结构，还想要多数股权和控制权。"
+                        }
+                    ],
+                    "steps": null,
+                    "title": "马斯克起诉 OpenAI 和他本人",
+                    "people": [
+                    ],
+                    "pinned": false,
+                    "my_role": "protagonist",
+                    "sources": [
+                        {
+                            "url": "https://openai.com/index/openai-elon-musk/",
+                            "kind": "official",
+                            "lang": "zh",
+                            "phase": null,
+                            "quote": null,
+                            "title": "OpenAI：OpenAI and Elon Musk",
+                            "outlet": "OpenAI",
+                            "excerpt": null,
+                            "pub_prec": "day",
+                            "snapshot": null,
+                            "published_at": null,
+                            "outlet_domain": "openai.com"
+                        }
+                    ],
+                    "valence": "dispute",
+                    "short_id": "b7e04696",
+                    "is_approx": false,
+                    "then_text": "指控 OpenAI 背离非营利初衷。OpenAI 随后公开早年邮件作为回应。",
+                    "commentary": null,
+                    "importance": 2,
+                    "later_text": null
+                },
+                {
+                    "date": "2024-05-01",
+                    "prec": "month",
+                    "links": [
+                    ],
+                    "place": null,
+                    "sides": [
+                        {
+                            "who": "约翰逊",
+                            "text": "听到演示时感到震惊，声音和她太像。"
+                        },
+                        {
+                            "who": "OpenAI",
+                            "text": "Sky 由另一位配音演员录制，选角早于联系她。"
+                        }
+                    ],
+                    "steps": null,
+                    "title": "Sky 语音被指像斯嘉丽·约翰逊",
+                    "people": [
+                    ],
+                    "pinned": false,
+                    "my_role": "protagonist",
+                    "sources": [
+                        {
+                            "url": "",
+                            "kind": "report",
+                            "lang": "zh",
+                            "phase": null,
+                            "quote": null,
+                            "title": "约翰逊声明 2024.05.20",
+                            "outlet": null,
+                            "excerpt": null,
+                            "pub_prec": "day",
+                            "snapshot": null,
+                            "published_at": null,
+                            "outlet_domain": null
+                        }
+                    ],
+                    "valence": "dispute",
+                    "short_id": "cc3e4f33",
+                    "is_approx": false,
+                    "then_text": "GPT-4o 发布当天他只发了一个词：「her」。约翰逊公开表示曾拒绝授权自己的声音；OpenAI 暂停 Sky，称并非模仿她。",
+                    "commentary": "【样稿】一个词的推文，比发布会更能说明他想让产品成为什么。",
+                    "importance": 2,
+                    "later_text": null
+                }
+            ],
+            "labels": [
+                {
+                    "text": "ChatGPT 之父",
+                    "sources": [
+                    ],
+                    "given_by": "中文媒体常用"
+                },
+                {
+                    "text": "年度 CEO",
+                    "sources": [
+                    ],
+                    "given_by": "《时代》2023"
+                }
+            ],
+            "person": {
+                "name": "Sam Altman",
+                "role": "OpenAI CEO · 前 YC 总裁",
+                "slug": "sam-altman",
+                "tier": "值得关注",
+                "fields": [
+                    "大模型",
+                    "创业投资",
+                    "核能"
+                ],
+                "name_zh": "萨姆·奥尔特曼",
+                "sources": [
+                ],
+                "added_at": "2026-10-20",
+                "nickname": "ChatGPT 之父",
+                "x_handle": "sama",
+                "take_text": "【样稿，请用你自己的话重写】他不是最懂技术的人，但他总在对的时候把东西推出去，也总能在争议里活下来。",
+                "avatar_url": null,
+                "birth_date": "1985-01-01",
+                "birth_prec": "year",
+                "death_date": null,
+                "death_prec": null,
+                "updated_at": "2026-11-01T11:09:58.018664+00:00",
+                "birth_place": "芝加哥",
+                "person_group": "掌舵人",
+                "github_handle": null,
+                "former_subjects": [
+                ],
+                "take_updated_at": "2026-10-20"
+            },
+            "states": [
+            ],
+            "wealth": [
+            ],
+            "stances": [
+                {
+                    "axis": {
+                        "left": "开源",
+                        "slug": "open-vs-closed",
+                        "right": "闭源"
+                    },
+                    "note": "核心模型闭源；2025 年发布过开放权重模型 gpt-oss。",
+                    "others": [
+                    ],
+                    "sources": [
+                        {
+                            "url": "",
+                            "kind": "report",
+                            "lang": "zh",
+                            "phase": null,
+                            "quote": null,
+                            "title": "[依据]",
+                            "outlet": null,
+                            "excerpt": null,
+                            "pub_prec": "day",
+                            "snapshot": null,
+                            "published_at": null,
+                            "outlet_domain": null
+                        }
+                    ],
+                    "position": 72,
+                    "previous_position": null
+                },
+                {
+                    "axis": {
+                        "left": "AGI 还很远",
+                        "slug": "agi-timeline",
+                        "right": "AGI 很近"
+                    },
+                    "note": "多次公开说 AGI 可能在几年内到来。",
+                    "others": [
+                    ],
+                    "sources": [
+                        {
+                            "url": "",
+                            "kind": "report",
+                            "lang": "zh",
+                            "phase": null,
+                            "quote": null,
+                            "title": "[依据]",
+                            "outlet": null,
+                            "excerpt": null,
+                            "pub_prec": "day",
+                            "snapshot": null,
+                            "published_at": null,
+                            "outlet_domain": null
+                        }
+                    ],
+                    "position": 88,
+                    "previous_position": null
+                },
+                {
+                    "axis": {
+                        "left": "少监管",
+                        "slug": "ai-regulation",
+                        "right": "多监管"
+                    },
+                    "note": "立场在变：2023 年主张给大模型发许可证，2025 年在参议院说事前审批会是「灾难」。",
+                    "others": [
+                    ],
+                    "sources": [
+                        {
+                            "url": "",
+                            "kind": "report",
+                            "lang": "zh",
+                            "phase": null,
+                            "quote": null,
+                            "title": "[依据]",
+                            "outlet": null,
+                            "excerpt": null,
+                            "pub_prec": "day",
+                            "snapshot": null,
+                            "published_at": null,
+                            "outlet_domain": null
+                        }
+                    ],
+                    "position": 40,
+                    "previous_position": 75
+                }
+            ],
+            "dimensions": [
+                {
+                    "key": "role",
+                    "label": "身份"
+                },
+                {
+                    "key": "wealth",
+                    "label": "财富"
+                },
+                {
+                    "key": "family",
+                    "label": "家庭"
+                }
+            ],
+            "comparisons": [
+                {
+                    "why": "一起创立 OpenAI，后来成了对手。",
+                    "name": "埃隆·马斯克",
+                    "slug": "elon-musk",
+                    "sources": [
+                    ]
+                },
+                {
+                    "why": "在开源和 AGI 时间线上，几乎站他对面。",
+                    "name": "杨立昆",
+                    "slug": null,
+                    "sources": [
+                    ]
+                }
+            ],
+            "achievements": [
+                {
+                    "note": null,
+                    "text": "YC 总裁，任内推出后期基金 YC Continuity",
+                    "period": "2014–2019",
+                    "sources": [
+                    ]
+                },
+                {
+                    "note": "UBS 估算",
+                    "text": "ChatGPT 约两个月月活过亿",
+                    "period": "2022",
+                    "sources": [
+                    ]
+                },
+                {
+                    "note": null,
+                    "text": "《时代》年度 CEO",
+                    "period": "2023",
+                    "sources": [
+                    ]
+                }
+            ],
+            "generated_at": "2026-11-01T11:09:58.028856+00:00"
+        },
+        "person_id": "bd99072e-fac5-4855-af6f-d6bafafa042b",
+        "synced_at": "2026-11-01T10:50:17Z"
+    }
+]
