@@ -207,7 +207,7 @@ export function buildFixture() {
     person('sam-altman', 'Sam Altman', 'sama', '掌舵人', 'OpenAI CEO', {
       name_zh: '萨姆·奥尔特曼', tier: '值得关注', take_text: '总在对的时候把东西推出去。', take_updated_at: day,
       former_subjects: ['person:sam'], avatar_url: 'https://www.amazingindex.com/media/people/avatars/mock-sam-altman.jpg',
-      nickname: 'ChatGPT 之父',
+      nickname: 'ChatGPT 之父', featured_rank: 2,
     }),
     person('santiago', 'Santiago', 'svpino', '布道者', '机器学习工程博主', { nickname: '机器学习科普博主' }),
     person('andrej-karpathy', 'Andrej Karpathy', 'karpathy', '布道者', 'Eureka Labs', { status: 'draft', take_text: '草稿' }),
@@ -232,8 +232,12 @@ export function buildFixture() {
     people,
     person_profiles: personProfiles,
     // What the build reads now: the Aliyun sync job's snapshots of the same people.
-    people_snapshots: people.filter((p) => p.status === 'published')
-      .map((p) => snapshotFromRows(p, personProfiles.find((x) => x.person_id === p.id), people)),
+    // Lei Jun is a real person_public() payload with a life grid (主线 / 状态, tests/fixtures).
+    people_snapshots: [
+      ...people.filter((p) => p.status === 'published')
+        .map((p) => snapshotFromRows(p, personProfiles.find((x) => x.person_id === p.id), people)),
+      JSON.parse(readFileSync(new URL('../../tests/fixtures/people-lei-jun.json', import.meta.url), 'utf8')),
+    ],
     people_sync_status: [{ id: 1, last_push_at: `${day}T00:00:00Z`, last_pull_at: new Date().toISOString(), last_result: null }],
     people_outbox: [],
     display_items: displayItems,
@@ -267,7 +271,7 @@ export function snapshotFromRows(person, profile, everyone = []) {
       birth_place: born[1] ?? null, death_date: null, death_prec: null, person_group: person.person_group,
       role: person.role, tier: person.tier, fields: profile?.fields ?? [], take_text: person.take_text,
       take_updated_at: person.take_updated_at, x_handle: person.x_handle, github_handle: person.github_handle ?? null,
-      former_subjects: person.former_subjects ?? [], added_at: person.added_at,
+      former_subjects: person.former_subjects ?? [], added_at: person.added_at, featured_rank: person.featured_rank ?? null,
       updated_at: [person.updated_at, profile?.updated_at].filter(Boolean).sort().at(-1), sources: [],
     },
     dimensions: [], states: [], arcs: [], wealth: [],

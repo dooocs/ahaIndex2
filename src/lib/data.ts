@@ -33,8 +33,8 @@ export const getFeed = () => memo('feed', () => getFeedPosts(db()));
 
 // ─── 人物 ───────────────────────────────────────────
 
-/** Published people as people / person_profiles rows (from people_snapshots). */
-export const getPeopleTables = () => memo('people', () => q.getPeopleRows(db()));
+/** Every published person's snapshot (people_snapshots, synced from the Aliyun database). */
+export const getPeopleSnapshots = () => memo('people', () => q.getPeopleSnapshots(db()));
 /** When the Aliyun people sync job last reached this database. */
 export const getPeopleSyncSeenAt = () => memo('peopleSync', () => q.getPeopleSyncSeenAt(db()));
 
