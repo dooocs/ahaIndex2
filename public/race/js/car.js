@@ -10,11 +10,11 @@ const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
 export const TUNE = {
   // 不喷气最高 180 km/h（50 m/s）；喷气（氮气、小喷、加速带、起步）最高 260 km/h（72.2 m/s）
-  vmax: 50, vmaxBoost: 72.2, accel: 20, nitroAccel: 52, brake: 40, reverseMax: 10, roll: 2.0,
+  vmax: 50, vmaxBoost: 72.2, accel: 16.2, nitroAccel: 27.7, brake: 40, reverseMax: 10, roll: 2.0,   // 0→100：不喷 1.9 s，喷氮气 0.9 s
   turn: 1.75, grip: 11, nitroTurn: 0.72,
   driftMin: 12, driftYaw: 1.35, driftYawAlign: 0.8, driftGrip: 1.9, driftRelease: 5.5, maxDrift: 1.1,
   // 漂移掉速：基础 + 随漂移角、随车速增长；漂移角越大集气越快，但也掉得越多
-  driftDrag: 3, driftDragAngle: 8, driftDragSpeed: 0.2,
+  driftDrag: 4.5, driftDragAngle: 12, driftDragSpeed: 0.3,
   driftThrottle: 0.3, gaugeRate: 0.3, nitroTime: 2.6, smallWindow: 0.5, gravity: 30,
 };
 
@@ -148,7 +148,7 @@ export class PlayerCar {
     if (nitro) { vmax = T.vmaxBoost; acc = T.nitroAccel; this.nitroT -= dt; }
     if (this.smallT > 0) { vmax += this.smallPow; acc += 16; this.smallT -= dt; }
     if (this.padT > 0) { vmax += 14; acc += 22; this.padT -= dt; }
-    if (this.startT > 0) { vmax += 12; acc += 28; this.startT -= dt; }
+    if (this.startT > 0) { vmax += 12; acc += 18; this.startT -= dt; }
     vmax = Math.min(vmax, T.vmaxBoost);
     this.vmaxNow = vmax;
 
