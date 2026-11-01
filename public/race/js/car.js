@@ -116,7 +116,7 @@ export class PlayerCar {
     this.h = this.m = s.hd; this.s = 0; this.vy = 0; this.air = false; this.airT = 0;
     this.steer = 0; this.drift = false; this.driftDir = 0; this.driftT = 0; this.lastDriftT = 0; this.slip = 0;
     this.gauge = 0; this.nitroN = 0; this.nitroT = 0; this.smallT = 0; this.smallPow = 0; this.window = 0; this.windowKind = '';
-    this.padT = 0; this.startT = 0; this.hint = -1; this.wrongT = 0; this.impact = 0; this.wallContact = false; this.wallT = 0; this.lastWallSound = -9; this.lastSmall = -9; this.time = 0;
+    this.padT = 0; this.startT = 0; this.hint = -1; this.wrongT = 0; this.impact = 0; this.wallContact = false; this.wallT = 0; this.lastSmall = -9; this.time = 0;
     this.track.project(this.x, this.z, -1, this.proj);
     this.hint = this.proj.i; this.d = this.proj.d; this.lat = this.proj.lat;
   }
@@ -289,11 +289,7 @@ export class PlayerCar {
         } else this.s = -ns;
         this.impact = hit * sp;
         if (hit > 0.35 && this.drift) this.endDrift(false);
-        // 反复贴墙也不会一帧一响。
-        if (!this.wallContact || this.time - this.lastWallSound > 0.25) {
-          this.emit(hit * sp > 6 ? 'crash' : 'scrape', { power: hit * sp, side: sg });
-          this.lastWallSound = this.time;
-        }
+        this.emit(hit * sp > 6 ? 'crash' : 'scrape', { power: hit * sp, side: sg });
       }
       this.wallContact = true;
       p.lat = sg * lim;
