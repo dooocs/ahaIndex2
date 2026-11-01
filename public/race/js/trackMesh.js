@@ -266,3 +266,60 @@ function buildGate(track, i, scene) {
   g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   scene.add(g);
 }
+
+// 弯道预告牌：每个要刹车的弯（按走线、横向 1.0 g 算，过弯速度低于 150 km/h）在入弯点外侧立一块黄底黑箭头的牌子，
+// 箭头越多弯越急（1～3 个），下面写建议速度。牌子面朝来车。
+export function cornerSigns(track, scene, latGrip = 9.8) {
+  const L = track.line; if (!L) return [];
+  const N = track.N, ds = track.ds, out = [];
+  for (let i = 0; i < N; i++) {
+    const k = Math.abs(L.k[i]); let peak = k > 1e-4;
+    for (let j = -20; j <= 20 && peak; j++) if (j && Math.abs(L.k[(i + j + N) % N]) > k) peak = false;
+    if (!peak) continue;
+    const v = Math.sqrt(latGrip / k) * 3.6;
+    if (v >= 150 || out.some(o => Math.abs(o.i - i) < 30 || Math.abs(o.i - i) > N - 30)) continue;
+    out.push({ i, v, dir: Math.sign(L.k[i]) });
+  }
+  const texCache = new Map();
+  const tex = (n, dir, adv) => {
+    const key = `${n}${dir}${adv}`;
+    if (texCache.has(key)) return texCache.get(key);
+    const cv = document.createElement('canvas'); cv.width = 512; cv.height = 320;
+    const c = cv.getContext('2d');
+    c.fillStyle = '#f2c230'; c.fillRect(0, 0, 512, 320);
+    c.strokeStyle = '#2a3238'; c.lineWidth = 16; c.strokeRect(8, 8, 496, 304);
+    // 箭头：左弯 <，右弯 >
+    c.fillStyle = '#2a3238';
+    const w = 92, gap = 22, total = n * w + (n - 1) * gap, x0 = 256 - total / 2;
+    for (let k = 0; k < n; k++) {
+      const x = x0 + k * (w + gap), y0 = 34, y1 = 210, ym = (y0 + y1) / 2, t = 34;
+      c.beginPath();
+      if (dir > 0) { c.moveTo(x + w, y0); c.lineTo(x + w - t * 1.4, y0); c.lineTo(x, ym); c.lineTo(x + w - t * 1.4, y1); c.lineTo(x + w, y1); c.lineTo(x + t * 1.4, ym); }
+      else { c.moveTo(x, y0); c.lineTo(x + t * 1.4, y0); c.lineTo(x + w, ym); c.lineTo(x + t * 1.4, y1); c.lineTo(x, y1); c.lineTo(x + w - t * 1.4, ym); }
+      c.closePath(); c.fill();
+    }
+    c.font = '800 70px "Barlow Condensed","PingFang SC","Microsoft YaHei",sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText(`${adv} km/h`, 256, 266);
+    const t = new THREE.CanvasTexture(cv); t.anisotropy = 4;
+    texCache.set(key, t);
+    return t;
+  };
+  const post = toon(0x8f979c, { shade: 0x5b6266 });
+  for (const s of out) {
+    // 入弯点：弯心前 ~35 m（速度越高越早），避开桥面
+    let i = (s.i - Math.round((25 + s.v * 0.12) / ds) + N) % N;
+    for (let k = 0; k < 40 && track.bridge[i]; k++) i = (i - 3 + N) % N;
+    const lat = s.dir * (track.halfW + 2.2), p = P(track, i, lat);
+    const n = s.v < 80 ? 3 : s.v < 120 ? 2 : 1, adv = Math.max(30, Math.floor(s.v / 10) * 10);
+    const g = new THREE.Group();
+    const board = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 2.1), toon(0xffffff, { map: tex(n, s.dir, adv), breakMul: 0, side: THREE.DoubleSide }));
+    board.position.set(0, 2.5, 0); g.add(board);
+    for (const x of [-1.1, 1.1]) g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 3.6, 6).translate(x, 1.8, -0.06), post));
+    g.position.set(p[0], track.py[i] - 0.2, p[2]);
+    g.rotation.y = track.hd[i] + Math.PI;   // 正面朝来车
+    g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+    scene.add(g);
+    s.at = i;
+  }
+  return out;
+}

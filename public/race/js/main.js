@@ -3,8 +3,10 @@ import * as THREE from 'three';
 import { G, createPost } from './toon.js';
 import * as LY from './layout.js';
 import { Track } from './track.js';
+import { racingLine } from './line.js';
+import { makePilot } from './pilot.js';
 import { buildTerrain, WATER } from './terrain.js';
-import { classify, buildTrackMeshes } from './trackMesh.js';
+import { classify, buildTrackMeshes, cornerSigns } from './trackMesh.js';
 import { buildScenery, buildBoats, updateLOD } from './scenery.js';
 import { buildCarModel, PlayerCar, IDLE } from './car.js';
 import { AICar, AI_DRIVERS } from './ai.js';
@@ -101,6 +103,7 @@ function readInput() {
 
 // ---------- 世界 ----------
 const track = new Track(LY.CENTERLINE, LY.ROAD_WIDTH);
+track.line = racingLine(track, 2.6);   // 走线：AI 和自动驾驶按它开、按它的曲率算过弯速度
 track.startAt = LY.START_AT;
 track.padAt = [[425, -180], [50, -352], [-403, -178], [-300, 474]];
 const D_START = track.dAt(...LY.START_AT);
@@ -124,6 +127,7 @@ async function build() {
   prog(0, 0.35)(1);
   classify(track);
   buildTrackMeshes(track, scene);
+  cornerSigns(track, scene);
   // 杨公堤里六桥的名字：按经过顺序（由北往南）
   const yang = (track.bridgeRuns || []).filter(([a]) => track.px[a % track.N] < -380).sort((p, q) => p[0] - q[0]);
   yang.forEach(([a, b], k) => SPOTS.push({ d: ((a + b) / 2) * track.ds - 12, name: LY.YANG_BRIDGES[k] || '', small: true }));
@@ -278,26 +282,11 @@ function updateHud() {
   $('board').innerHTML = rk.map((c, i) => `<li class="${c === player ? 'me' : ''}"><b>${i + 1}</b>${c.name}</li>`).join('');
 }
 
-// ---------- 自动驾驶（?auto，测试和录屏用） ----------
-const autoS = {};
-let autoDrift = 0;
-// 弯前甩进漂移，车头一对准出弯方向就松开；有氮气且前方够直就直接喷出去
+// ---------- 自动驾驶（?auto，测试和录屏用）：和调参模拟同一个车手，纯抓地、按限速剖面刹车 ----------
+let pilot = null;
 function autopilot() {
-  const p = player, look = 12 + p.s * 0.4;
-  const k = track.curvAhead(p.d, 0, 40 + p.s * 1.2);
-  const tgt = track.sample(p.d + look, autoS);
-  const want = Math.atan2(tgt.x - p.x, tgt.z - p.z);
-  const err = wrapA(want - p.m), errH = wrapA(want - p.h);
-  const vSafe = Math.sqrt(30 / Math.max(Math.abs(k.k), 1e-4));
-  const kNow = track.curvAhead(p.d, 0, 25).k;
-  if (!p.drift && p.nitroT <= 0 && Math.abs(kNow) > 1 / 90 && p.s > 24) autoDrift = Math.sign(kNow);
-  if (p.drift && (p.driftT > 1.1 || (p.driftT > 0.5 && errH * p.driftDir < 0.04) || Math.abs(kNow) < 1 / 220)) autoDrift = 0;
-  if (!p.drift && p.nitroT > 0) autoDrift = 0;
-  const dir = p.drift ? (err * p.driftDir > 0.12 ? p.driftDir : err * p.driftDir < -0.05 ? -p.driftDir : 0) : (err > 0.03 ? 1 : err < -0.03 ? -1 : 0);
-  const turn = autoDrift && !p.drift ? autoDrift : dir;
-  const straight = Math.abs(track.curvAhead(p.d, 0, 90).k) < 1 / 160;
-  return { up: p.s < vSafe + 8, down: !p.drift && p.s > vSafe + 12, left: turn > 0, right: turn < 0, drift: autoDrift !== 0,
-    upPressed: p.window > 0 && p.window < 0.38, nitroPressed: straight && p.nitroN > 0 && p.nitroT <= 0 && p.smallT <= 0.2 };
+  pilot ||= makePilot(track, { drift: false, f: 0.85, g: 0.6 });
+  return pilot.step(player);
 }
 
 // ---------- 相机 ----------
@@ -466,7 +455,7 @@ function step(dt) {
   }
   smoke.update(dt);
   player.sync(dt);
-  sound.update(player.s, inp.up && active, player.drift, player.boosting, state === 'race' || state === 'count');
+  sound.update(player.s, inp.up && active, player.drift, player.boosting, state === 'race' || state === 'count', player.under);
 
   if (toastT > 0) { toastT -= dt; if (toastT <= 0) toastEl.className = 'toast'; }
   if (spotT > 0) { spotT -= dt; if (spotT <= 0) spotEl.className = 'spot'; }
