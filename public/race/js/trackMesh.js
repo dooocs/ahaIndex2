@@ -10,10 +10,12 @@ const STONE = 0xe6e0d2, STONE_CAP = 0xc9c1b0, MARBLE = 0xf1eee6, WOOD = 0x8a6a52
 export function classify(track) {
   const N = track.N;
   track.mountain = new Uint8Array(N);
+  track.city = new Uint8Array(N);
   for (let i = 0; i < N; i++) {
     const x = track.px[i], z = track.pz[i];
-    // 三台山之字形是山路（木护栏）；白堤和所有拱桥是石板路
+    // 三台山之字形是山路（木护栏）；平海路、解放路、延安路是城市道路（矮路缘 + 金属人行护栏）；白堤和所有拱桥是石板路
     track.mountain[i] = x < -408 && z > -48 && z < 246 ? 1 : 0;
+    track.city[i] = x > 452 ? 1 : 0;
     track.surface[i] = track.bridge[i] || (x > -16 && x < 258 && z > -420 && z < -330) ? 1 : 0;
   }
 }
@@ -60,9 +62,9 @@ const P = (track, i, lat, dy = 0) => {
   return [track.px[i] + track.rx[i] * lat, track.py[i] + lat * sb + dy, track.pz[i] + track.rz[i] * lat];
 };
 
-// 按 260 米分块合并，便于剔除
+// 按 420 米分块合并，便于剔除（块再小 draw call 就太多了）
 function chunked(track, i0, i1, build, hex, opts, add) {
-  const step = Math.round(260 / track.ds);
+  const step = Math.round(420 / track.ds);
   for (let a = i0; a < i1; a += step) add(mesh(build(a, Math.min(a + step, i1)), hex, opts));
 }
 
@@ -105,7 +107,7 @@ export function buildTrackMeshes(track, scene) {
   // 护栏：平地和桥上是石栏（桥上更高更白），山路是木护栏
   const wallH = i => (track.bridge[i] ? 1.05 : 0.85);
   for (const side of [-1, 1]) {
-    for (const [a, b] of runs(track, i => !track.mountain[i], 2)) {
+    for (const [a, b] of runs(track, i => !track.mountain[i] && !track.city[i], 2)) {
       chunked(track, a, b, (s, e) => strip(track, s, e, i => {
         const h = wallH(i), l0 = side * hw, l1 = side * (hw + 0.55);
         return side < 0
@@ -118,13 +120,28 @@ export function buildTrackMeshes(track, scene) {
         return side < 0 ? [P(track, i, l1, h), P(track, i, l0, h)] : [P(track, i, l0, h), P(track, i, l1, h)];
       }), STONE_CAP, { breakMul: 0.2, cast: false }, add);
     }
+    // 城市：花岗岩矮路缘 + 两道金属扶手
+    for (const [a, b] of runs(track, i => track.city[i], 2)) {
+      chunked(track, a, b, (s, e) => strip(track, s, e, i => {
+        const l0 = side * hw, l1 = side * (hw + 0.6);
+        return side < 0
+          ? [P(track, i, l1, -0.6), P(track, i, l1, 0.28), P(track, i, l0, 0.28), P(track, i, l0, -0.05)]
+          : [P(track, i, l0, -0.05), P(track, i, l0, 0.28), P(track, i, l1, 0.28), P(track, i, l1, -0.6)];
+      }), 0xc9c6bf, { breakMul: 0.3, cast: false }, add);
+      for (const [y0, y1] of [[0.62, 0.7], [1.02, 1.1]]) {
+        chunked(track, a, b, (s, e) => strip(track, s, e, i => {
+          const l = side * (hw + 0.3);
+          return side < 0 ? [P(track, i, l, y0), P(track, i, l, y1)] : [P(track, i, l, y1), P(track, i, l, y0)];
+        }), 0xe4e8ea, { side: THREE.DoubleSide, breakMul: 0.15, cast: false }, add);
+      }
+    }
     // 山路：木柱 + 两道横木
     for (const [a, b] of runs(track, i => track.mountain[i], 2)) {
       for (const [y0, y1] of [[0.45, 0.62], [0.8, 0.97]]) {
         chunked(track, a, b, (s, e) => strip(track, s, e, i => {
           const l = side * (hw + 0.15);
           return side < 0 ? [P(track, i, l, y0), P(track, i, l, y1)] : [P(track, i, l, y1), P(track, i, l, y0)];
-        }), WOOD, { side: THREE.DoubleSide, breakMul: 0.3 }, add);
+        }), WOOD, { side: THREE.DoubleSide, breakMul: 0.3, cast: false }, add);
       }
     }
   }
@@ -139,6 +156,18 @@ export function buildTrackMeshes(track, scene) {
     posts.forEach((m, k) => im.setMatrixAt(k, m));
     im.castShadow = im.receiveShadow = true;
     scene.add(im);
+    // 城市护栏的细立柱
+    const cp = [];
+    for (let i = 0; i < N; i += 2) if (track.city[i]) for (const side of [-1, 1]) {
+      const p = P(track, i, side * (hw + 0.3));
+      cp.push(m4.compose(new THREE.Vector3(p[0], p[1] + 0.55, p[2]), q.setFromEuler(e.set(0, track.hd[i], 0)), new THREE.Vector3(1, 1, 1)).clone());
+    }
+    if (cp.length) {
+      const cm = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.05, 0.05, 1.1, 6), toon(0xd4d9dc, { breakMul: 0.1 }), cp.length);
+      cp.forEach((m, k) => cm.setMatrixAt(k, m));
+      cm.castShadow = true; cm.receiveShadow = true;
+      scene.add(cm);
+    }
   }
 
   // 拱桥：两侧桥身带拱洞，拱券底面，桥上栏杆柱
@@ -202,7 +231,7 @@ export function buildTrackMeshes(track, scene) {
   }
 }
 
-// 起点牌坊：两根朱红柱、黛瓦顶、牌匾“杭州飞车”
+// 起点牌坊：两根朱红柱、黛瓦顶、牌匾“西湖飞车”
 function buildGate(track, i, scene) {
   const hw = track.halfW, g = new THREE.Group();
   const RED = 0xb4483a, TILE = 0x4b5159;
@@ -226,7 +255,7 @@ function buildGate(track, i, scene) {
   c.fillStyle = '#2f3a3f'; c.fillRect(0, 0, 1024, 256);
   c.strokeStyle = '#d8b65e'; c.lineWidth = 14; c.strokeRect(14, 14, 996, 228);
   c.fillStyle = '#f2e3b3'; c.font = '900 150px "PingFang SC","Microsoft YaHei","Noto Sans CJK SC",sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
-  c.fillText('杭州飞车', 512, 136);
+  c.fillText('西湖飞车', 512, 136);
   const tex = new THREE.CanvasTexture(cv); tex.anisotropy = 4;
   const sign = new THREE.Mesh(new THREE.PlaneGeometry(13, 3.25), toon(0xffffff, { map: tex, breakMul: 0, side: THREE.DoubleSide }));
   sign.position.set(0, 9.3, 0.62); g.add(sign);

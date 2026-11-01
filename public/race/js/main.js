@@ -1,4 +1,4 @@
-// 杭州飞车 · 西湖赛道：把赛道、地形、景物、车辆、AI、HUD、声音接到一起。
+// 西湖飞车 · 西湖赛道：把赛道、地形、景物、车辆、AI、HUD、声音接到一起。
 import * as THREE from 'three';
 import { G, createPost } from './toon.js';
 import * as LY from './layout.js';
@@ -25,7 +25,7 @@ const fmt = t => { if (!isFinite(t)) return '--:--.--'; const m = Math.floor(t /
 const canvas = $('c');
 let renderer;
 try { renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' }); }
-catch (e) { $('loadmsg').textContent = '这台设备的浏览器没有开启 WebGL，无法运行杭州飞车。'; throw e; }
+catch (e) { $('loadmsg').textContent = '这台设备的浏览器没有开启 WebGL，无法运行西湖飞车。'; throw e; }
 renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -212,28 +212,39 @@ function updateHud() {
   });
   $('nitro').classList.toggle('burn', player.nitroT > 0);
   $('nitro').classList.toggle('max', n >= 3);
-  $('nlabel').textContent = player.nitroT > 0 ? '氮气中！' : n >= 3 ? '氮气已满 · Ctrl/空格' : n > 0 ? `氮气 ×${n} · Ctrl/空格` : '漂移集气';
+  $('nlabel').textContent = player.nitroT > 0 ? '氮气中！' : n >= 3 ? '氮气已满 · 按空格' : n > 0 ? `氮气 ×${n} · 按空格` : '漂移集气';
   $('wrong').hidden = !(player.wrongT > 1.2);
   $('board').innerHTML = rk.map((c, i) => `<li class="${c === player ? 'me' : ''}"><b>${i + 1}</b>${c.name}</li>`).join('');
 }
 
 // ---------- 自动驾驶（?auto，测试和录屏用） ----------
 const autoS = {};
+let autoDrift = 0;
+// 弯前甩进漂移，车头一对准出弯方向就松开；有氮气且前方够直就直接喷出去
 function autopilot() {
-  const p = player, look = 14 + p.s * 0.45;
+  const p = player, look = 12 + p.s * 0.4;
   const k = track.curvAhead(p.d, 0, 40 + p.s * 1.2);
   const tgt = track.sample(p.d + look, autoS);
   const want = Math.atan2(tgt.x - p.x, tgt.z - p.z);
-  const err = wrapA(want - p.h);
+  const err = wrapA(want - p.m), errH = wrapA(want - p.h);
   const vSafe = Math.sqrt(30 / Math.max(Math.abs(k.k), 1e-4));
-  const sharp = Math.abs(track.curv[p.hint]) > 1 / 60;
-  return { up: p.s < vSafe + 4, down: p.s > vSafe + 10, left: err > 0.03, right: err < -0.03, drift: sharp && p.s > 20 && Math.abs(err) > 0.08,
-    upPressed: p.window > 0 && p.window < 0.38, nitroPressed: Math.abs(k.k) < 1 / 400 && p.nitroN > 0 };
+  const kNow = track.curvAhead(p.d, 0, 25).k;
+  if (!p.drift && p.nitroT <= 0 && Math.abs(kNow) > 1 / 90 && p.s > 24) autoDrift = Math.sign(kNow);
+  if (p.drift && (p.driftT > 1.1 || (p.driftT > 0.5 && errH * p.driftDir < 0.04) || Math.abs(kNow) < 1 / 220)) autoDrift = 0;
+  if (!p.drift && p.nitroT > 0) autoDrift = 0;
+  const dir = p.drift ? (err * p.driftDir > 0.12 ? p.driftDir : err * p.driftDir < -0.05 ? -p.driftDir : 0) : (err > 0.03 ? 1 : err < -0.03 ? -1 : 0);
+  const turn = autoDrift && !p.drift ? autoDrift : dir;
+  const straight = Math.abs(track.curvAhead(p.d, 0, 90).k) < 1 / 160;
+  return { up: p.s < vSafe + 8, down: !p.drift && p.s > vSafe + 12, left: turn > 0, right: turn < 0, drift: autoDrift !== 0,
+    upPressed: p.window > 0 && p.window < 0.38, nitroPressed: straight && p.nitroN > 0 && p.nitroT <= 0 && p.smallT <= 0.2 };
 }
 
 // ---------- 相机 ----------
 const cam = { yaw: 0, pos: new THREE.Vector3(), look: new THREE.Vector3(), fov: 62, shake: 0, fly: 0 };
+// ?cam=x,y,z,lx,ly,lz：固定机位（截图、检查建模用）
+const CAM_PIN = Q.get('cam') ? Q.get('cam').split(',').map(Number) : null;
 function updateCamera(dt) {
+  if (CAM_PIN) { camera.position.set(CAM_PIN[0], CAM_PIN[1], CAM_PIN[2]); camera.lookAt(CAM_PIN[3], CAM_PIN[4], CAM_PIN[5]); camera.fov = 55; camera.updateProjectionMatrix(); return; }
   if (state === 'title' || state === 'loading') {
     // 片头：沿着赛道上空慢慢飞，看西湖
     cam.fly += dt * 22;

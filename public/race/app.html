@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>杭州飞车 · 西湖赛道</title>
+<title>西湖飞车</title>
 <style>
   @font-face { font-family: "Barlow Condensed"; font-weight: 600; font-display: swap; src: url("/dream/fonts/barlow-condensed-600.woff2") format("woff2"); }
   :root {
@@ -124,22 +124,22 @@
 <canvas id="c" tabindex="0"></canvas>
 
 <div id="loading"><div class="card">
-  <h2>杭州飞车</h2>
+  <h2>西湖飞车</h2>
   <p id="loadmsg">正在铺西湖赛道……</p>
   <div class="bar"><div id="bar"></div></div>
 </div></div>
 
 <div id="title" hidden><div class="card">
-  <h1>杭州飞车<span>西湖赛道</span></h1>
+  <h1>西湖飞车<span>环湖赛道</span></h1>
   <p class="sub">龙翔桥地铁站起步，顺着平海路冲向西湖，绕湖逆时针一圈：过断桥上白堤，绕孤山过西泠桥，杨公堤六连跳，翻三台山三个发卡弯，再沿南山路过雷峰塔，从解放路、延安路绕回龙翔桥。两圈定胜负。</p>
   <dl class="keys">
-    <dt><kbd>↑ ↓ ← →</kbd> <kbd>WASD</kbd></dt><dd>油门、刹车、转向</dd>
-    <dt><kbd>Shift</kbd> + 方向</dt><dd>漂移。车下面三个氮气槽，漂移把槽灌满，最多存三个</dd>
-    <dt>松开漂移后按 <kbd>↑</kbd></dt><dd>小喷；从杨公堤的桥上飞起落地时按 <kbd>↑</kbd> 是落地喷</dd>
-    <dt><kbd>Ctrl</kbd> / <kbd>空格</kbd></dt><dd>放氮气（用 WASD 的话请按空格）。小喷后马上放 = 双喷</dd>
+    <dt><kbd>↑ ↓ ← →</kbd> <kbd>WASD</kbd></dt><dd>油门、刹车、转向。不喷气最高 180 km/h</dd>
+    <dt><kbd>空格</kbd></dt><dd>喷氮气：最高 260 km/h，加速猛、车身立刻按车头方向冲出去（Ctrl 也可以）</dd>
+    <dt><kbd>Shift</kbd> + 方向</dt><dd>漂移。漂移会掉速，但能把车下面的氮气槽灌满，最多存三个</dd>
+    <dt>漂移里车头对准了就按 <kbd>空格</kbd></dt><dd>直接喷出弯；松开漂移再按 <kbd>↑</kbd> 是小喷，小喷后马上喷氮气是双喷</dd>
     <dt><kbd>R</kbd> <kbd>C</kbd> <kbd>Esc</kbd></dt><dd>回到赛道 · 切换视角 · 暂停</dd>
   </dl>
-  <p class="touchhint">自动油门。左边两个键转向；右边按住“漂移”再配合方向漂移，松开自动小喷；“氮气”放氮气。</p>
+  <p class="touchhint">自动油门。左边两个键转向；右边按住“漂移”配合方向漂移（会掉速、但能集氮气），松开自动小喷；车头对准了按“氮气”直接冲出去。</p>
   <button class="btn" id="start">开始比赛</button>
 </div></div>
 

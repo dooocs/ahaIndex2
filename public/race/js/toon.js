@@ -186,7 +186,7 @@ void main(){
   #endif
   #ifdef USE_TMAP
     vec4 tx = texture2D(uMap, vUv);
-    c = mix(c, tx.rgb * (0.86 + 0.14 * l), tx.a);
+    c = mix(c, tx.rgb * mix(0.72, 1.0, l), tx.a);
   #endif
 
   gl_FragColor = vec4(c, 1.0);
@@ -249,6 +249,7 @@ export const normalMat = new THREE.ShaderMaterial({
       gl_Position = projectionMatrix * viewMatrix * bendWorld(modelMatrix * wp);
     }`,
   fragmentShader: /* glsl */`varying vec3 vN; void main(){ gl_FragColor = vec4(normalize(vN) * 0.5 + 0.5, 1.0); }`,
+  side: THREE.DoubleSide,
 });
 
 // ---------- 后处理：天空、描线、雾气、纸纹、速度线 ----------

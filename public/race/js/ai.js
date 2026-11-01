@@ -32,11 +32,11 @@ export class AICar {
     // 远远落后玩家时稍微加把劲，领先太多时稍微松一点（只影响直道速度）
     const gap = playerProgress - myProgress;
     const rub = clamp(1 + gap / 2400, 0.94, 1.06);
-    const vTop = TUNE.vmax * this.skill * rub * (this.nitroT > 0 ? 1.3 : 1);
+    const vTop = Math.min(TUNE.vmaxBoost, TUNE.vmax * this.skill * rub * (this.nitroT > 0 ? 1.38 : 1));
     // 前方 120 米最急的弯决定目标速度（v² = a_lat / κ）
     const ahead = tr.curvAhead(this.dist, 8, 30 + this.s * 1.4);
     const kAbs = Math.max(Math.abs(ahead.k), 1e-4);
-    const vCorner = Math.sqrt((17.5 + this.skill * 6) / kAbs);
+    const vCorner = Math.sqrt((21 + this.skill * 6) / kAbs);
     const vt = Math.min(vTop, vCorner * (1 + clamp(ahead.at / 120, 0, 0.4)));
     if (this.s < vt) this.s += (TUNE.accel + (this.nitroT > 0 ? 14 : 0)) * (1 - (this.s / Math.max(vTop, 1)) ** 2 * 0.7) * dt;
     else this.s -= Math.min(32, (this.s - vt) * 3) * dt;

@@ -1,5 +1,5 @@
 ---
-// 杭州飞车: the site's masthead and tab bar on top, the racing game below it.
+// 西湖飞车: the site's masthead and tab bar on top, the racing game below it.
 // The game is a self-contained page (public/race/app.html + public/race/js/, plain ES modules,
 // three.js r170 shared with 梦想人生 from public/dream/vendor/) shown in an iframe, so its
 // full-screen styles, keyboard handling and render loop stay out of the site's layout.
@@ -10,7 +10,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import Masthead from '../components/Masthead.astro';
 import { SITE_URL, siteTitle } from '../lib/site';
 
-const title = siteTitle('杭州飞车');
+const title = siteTitle('西湖飞车');
 const description = '绕西湖一圈的卡通赛车：湖滨起步，过断桥上白堤，绕孤山过西泠桥，杨公堤六连跳，翻三台山发卡弯，沿南山路过雷峰塔冲回湖滨。漂移、小喷、氮气，和白娘子、济公他们比一比。';
 const canonical = `${SITE_URL}/race`;
 ---
@@ -18,9 +18,9 @@ const canonical = `${SITE_URL}/race`;
 <BaseLayout title={title} description={description} canonicalUrl={canonical} ogUrl={canonical}>
   <Masthead tab="race" showScore={false} overlay />
   <main class="race-page">
-    <h1 class="sr-only">杭州飞车</h1>
-    <iframe id="race-app" class="race-app" src="/race/app.html" title="杭州飞车 · 西湖赛道" allow="fullscreen; autoplay"></iframe>
-    <noscript><p class="race-noscript">杭州飞车是一个 3D 网页游戏，需要开启 JavaScript。</p></noscript>
+    <h1 class="sr-only">西湖飞车</h1>
+    <iframe id="race-app" class="race-app" src="/race/app.html" title="西湖飞车 · 西湖赛道" allow="fullscreen; autoplay"></iframe>
+    <noscript><p class="race-noscript">西湖飞车是一个 3D 网页游戏，需要开启 JavaScript。</p></noscript>
   </main>
 </BaseLayout>
 

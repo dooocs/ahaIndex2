@@ -9,10 +9,13 @@ const wrap = a => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
 export const TUNE = {
-  vmax: 52, vmaxNitro: 72, accel: 22, nitroAccel: 38, brake: 40, reverseMax: 10, roll: 2.0,
-  turn: 1.75, grip: 11,
+  // 不喷气最高 180 km/h（50 m/s）；喷气（氮气、小喷、加速带、起步）最高 260 km/h（72.2 m/s）
+  vmax: 50, vmaxBoost: 72.2, accel: 20, nitroAccel: 52, brake: 40, reverseMax: 10, roll: 2.0,
+  turn: 1.75, grip: 11, nitroTurn: 0.72,
   driftMin: 12, driftYaw: 1.35, driftYawAlign: 0.8, driftGrip: 1.9, driftRelease: 5.5, maxDrift: 1.1,
-  gaugeRate: 0.42, nitroTime: 2.6, smallWindow: 0.5, gravity: 30,
+  // 漂移掉速：基础 + 随漂移角、随车速增长；漂移角越大集气越快，但也掉得越多
+  driftDrag: 3, driftDragAngle: 8, driftDragSpeed: 0.2,
+  driftThrottle: 0.3, gaugeRate: 0.3, nitroTime: 2.6, smallWindow: 0.5, gravity: 30,
 };
 
 // ---------- 模型 ----------
@@ -104,7 +107,7 @@ export class PlayerCar {
     const s = this.track.sample(d, {});
     this.x = s.x + s.rx * lat; this.z = s.z + s.rz * lat; this.y = this.track.surfaceY(s, lat);
     this.h = this.m = s.hd; this.s = 0; this.vy = 0; this.air = false; this.airT = 0;
-    this.steer = 0; this.drift = false; this.driftDir = 0; this.driftT = 0; this.slip = 0; this.release = 0;
+    this.steer = 0; this.drift = false; this.driftDir = 0; this.driftT = 0; this.lastDriftT = 0; this.slip = 0; this.release = 0;
     this.gauge = 0; this.nitroN = 0; this.nitroT = 0; this.smallT = 0; this.smallPow = 0; this.window = 0; this.windowKind = '';
     this.padT = 0; this.startT = 0; this.hint = -1; this.wrongT = 0; this.impact = 0; this.lastSmall = -9; this.time = 0;
     this.track.project(this.x, this.z, -1, this.proj);
@@ -120,12 +123,16 @@ export class PlayerCar {
     const dbl = this.time - this.lastSmall < 0.45;   // 小喷后紧接氮气 = 双喷
     this.nitroT = TUNE.nitroTime + (dbl ? 0.5 : 0);
     this.s = Math.max(this.s, 20) + (dbl ? 7 : 4);
+    // 喷气停止摆动：结束漂移（不扣小喷窗口），运动方向立刻对齐车头，按车头方向冲出去
+    if (this.drift) { this.drift = false; this.emit('driftEnd', { t: this.driftT }); }
+    this.m = this.h; this.slip = 0;
     this.emit(dbl ? 'double' : 'nitro');
   }
   endDrift(clean) {
     if (!this.drift) return;
     this.drift = false;
-    if (clean && this.driftT > 0.25) { this.window = TUNE.smallWindow; this.windowKind = 'drift'; }
+    this.lastDriftT = this.driftT;
+    if (clean && this.driftT > 0.4) { this.window = TUNE.smallWindow; this.windowKind = 'drift'; }
     this.emit('driftEnd', { t: this.driftT });
   }
 
@@ -137,19 +144,22 @@ export class PlayerCar {
     this.steer = damp(this.steer, steerIn, 12, dt);
 
     let vmax = T.vmax, acc = T.accel;
-    if (this.nitroT > 0) { vmax = T.vmaxNitro; acc = T.nitroAccel; this.nitroT -= dt; }
-    if (this.smallT > 0) { vmax += this.smallPow; acc += 14; this.smallT -= dt; }
-    if (this.padT > 0) { vmax += 12; acc += 22; this.padT -= dt; }
-    if (this.startT > 0) { vmax += 10; acc += 28; this.startT -= dt; }
-    vmax = Math.min(vmax, 82);
+    const nitro = this.nitroT > 0;
+    if (nitro) { vmax = T.vmaxBoost; acc = T.nitroAccel; this.nitroT -= dt; }
+    if (this.smallT > 0) { vmax += this.smallPow; acc += 16; this.smallT -= dt; }
+    if (this.padT > 0) { vmax += 14; acc += 22; this.padT -= dt; }
+    if (this.startT > 0) { vmax += 12; acc += 28; this.startT -= dt; }
+    vmax = Math.min(vmax, T.vmaxBoost);
+    this.vmaxNow = vmax;
 
     // 小喷 / 落地喷：窗口内再按一下 ↑
     if (this.window > 0) {
       this.window -= dt;
       if (inp.upPressed) {
         const perfect = (this.windowKind === 'drift' ? T.smallWindow : 0.45) - this.window < 0.2;
-        this.smallT = perfect ? 1.0 : 0.75; this.smallPow = perfect ? 11 : 8;
-        this.s += perfect ? 5.5 : 4;
+        // 小喷只补回一部分漂移掉的速度：漂移越久（集气越多）补得越多，但不会比不漂移更快
+        this.smallT = perfect ? 0.6 : 0.45; this.smallPow = perfect ? 4 : 3;
+        this.s += (perfect ? 2 : 1.5) * (this.windowKind === 'land' ? 1 : Math.min(1, this.lastDriftT / 0.9));
         this.lastSmall = this.time;
         this.emit(this.windowKind === 'land' ? 'landBoost' : 'small', { perfect });
         this.window = 0;
@@ -161,19 +171,23 @@ export class PlayerCar {
     if (ground) {
       if (inp.up) {
         if (this.s < 0) this.s += T.brake * dt;
-        else if (this.s < vmax) this.s += acc * (1 - (this.s / vmax) ** 2 * 0.82) * dt;
+        // 喷气时几乎全程满推力，不喷气时越接近极速推力越小
+        // 漂移中轮胎在侧滑，油门只有三成推力
+        else if (this.s < vmax) this.s += acc * (this.drift ? T.driftThrottle : 1) * (1 - (this.s / vmax) ** (nitro ? 6 : 2) * 0.82) * dt;
       } else if (inp.down) {
         if (this.s > 0.5) this.s -= T.brake * dt; else this.s = Math.max(-T.reverseMax, this.s - 14 * dt);
+      } else if (nitro) {
+        this.s += acc * 0.85 * (1 - (this.s / vmax) ** 6) * dt;   // 喷气中不踩油门也照样往前推
       } else {
         const dec = (T.roll + Math.abs(this.s) * 0.05) * dt;
         this.s = Math.abs(this.s) <= dec ? 0 : this.s - Math.sign(this.s) * dec;
       }
-      if (this.s > vmax) this.s -= (this.s - vmax) * 1.2 * dt;
+      if (this.s > vmax) this.s -= (this.s - vmax) * (nitro ? 3 : 1.4) * dt;
       this.s -= tr.slope[this.hint] * Math.cos(this.h - tr.hd[this.hint]) * 7 * dt;
     }
 
     // Shift + 方向：进入漂移
-    if (!this.drift && inp.drift && steerIn !== 0 && this.s > T.driftMin && ground) {
+    if (!this.drift && !nitro && inp.drift && steerIn !== 0 && this.s > T.driftMin && ground) {
       this.drift = true; this.driftDir = steerIn; this.driftT = 0; this.release = 0; this.window = 0;
       this.h += steerIn * 0.08;
       this.emit('driftStart');
@@ -190,8 +204,9 @@ export class PlayerCar {
       this.slip = a;
       const sa = Math.abs(Math.sin(a));
       if (ground) {
-        this.s -= (2.2 + 10 * sa) * dt;
-        this.gauge += dt * T.gaugeRate * (0.3 + sa * 1.8) * clamp(this.s / 34, 0.3, 1.1);
+        this.s -= (T.driftDrag + T.driftDragAngle * sa + T.driftDragSpeed * this.s * sa) * dt;
+        // 集气只看真正的漂移：角度小于 ~6° 不集气、点一下（0.25 s 以内）不集气；角度越大越快，同时也掉速越多
+        this.gauge += dt * T.gaugeRate * 2.2 * clamp((sa - 0.1) / 0.5, 0, 1) * clamp((this.driftT - 0.25) / 0.3, 0, 1) * clamp(this.s / 34, 0.3, 1.1);
         while (this.gauge >= 1) {
           if (this.nitroN < 3) { this.nitroN++; this.gauge -= 1; this.emit('gauge'); } else { this.gauge = 1; break; }
         }
@@ -201,9 +216,10 @@ export class PlayerCar {
     } else {
       this.slip = damp(this.slip, 0, 10, dt);
       const dir = this.s >= 0 ? 1 : -1, sp = Math.abs(this.s);
-      const turn = T.turn * clamp(sp / 9, 0, 1) * (1 - 0.5 * clamp(sp / T.vmax, 0, 1.3));
+      const turn = T.turn * clamp(sp / 9, 0, 1) * (1 - 0.5 * clamp(sp / T.vmax, 0, 1.3)) * (nitro ? T.nitroTurn : 1);
       this.h += this.steer * turn * dt * dir * (ground ? 1 : 0.35);
-      if (this.s >= 0) this.m += wrap(this.h - this.m) * (1 - Math.exp(-T.grip * dt)); else this.m = this.h;
+      // 喷气时轮胎完全咬住：车往车头方向走，没有甩尾摆动
+      if (this.s >= 0) this.m += wrap(this.h - this.m) * (nitro ? 1 : 1 - Math.exp(-T.grip * dt)); else this.m = this.h;
     }
 
     // 平面积分
@@ -264,7 +280,7 @@ export class PlayerCar {
     for (const pad of tr.pads) {
       let dd = this.d - pad.d; if (dd < 0) dd += tr.length;
       if (dd < pad.len && Math.abs(this.lat) < pad.halfW + 0.8 && !this.air) {
-        if (this.padT < 0.6) { this.emit('pad'); this.s = Math.min(this.s + 6, 72); }
+        if (this.padT < 0.6) { this.emit('pad'); this.s = Math.min(this.s + 6, T.vmaxBoost); }
         this.padT = 1.1;
       }
     }
