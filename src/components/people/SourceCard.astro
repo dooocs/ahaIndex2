@@ -1,0 +1,19 @@
+---
+// 一条来源，画成一张缩小的网页：顶上是网址，下面是媒体、日期和标题。
+// 网页快照抓好以后（source_snapshots），会换成快照图。
+import type { GridSource } from '../../lib/life-grid';
+
+interface Props { source: GridSource }
+
+const { source: s } = Astro.props;
+const meta = [s.outlet, s.date ?? '日期未标注'].filter(Boolean).join(' · ');
+---
+
+{s.url ? (
+  <a class="sc-snap" href={s.url} target="_blank" rel="noopener nofollow">
+    <span class="sc-snap-bar"><i></i><i></i><i></i><span>{s.host}</span></span>
+    <span class="sc-snap-body"><span class="sc-snap-out">{meta}</span><span class="sc-snap-t">{s.title}</span>{s.quote && <q>{s.quote}</q>}</span>
+  </a>
+) : (
+  <div class="sc-snap"><span class="sc-snap-body"><span class="sc-snap-out">{meta}</span><span class="sc-snap-t">{s.title}</span></span></div>
+)}

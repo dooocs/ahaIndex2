@@ -8,6 +8,9 @@
 //     <Fragment slot="mobile-summary">…shown above the content on phones, where the side column is hidden…</Fragment>
 //   </TabLayout>
 //
+// Without a side slot the content takes the whole width (the 人物 directory,
+// the life-grid pages).
+//
 // The left column has no rules of its own; the right column only gets the
 // column itself. Each page builds its overview from the primitives in
 // src/components/panel/ rather than from a shared data shape: overviews
@@ -63,7 +66,7 @@ const hasMobileSummary = Astro.slots.has('mobile-summary');
   <Wrap {...(wrap ?? {})}>
     <Masthead items={items} showScore={showScore} tab={tab} />
 
-    <div class="layout">
+    <div class:list={['layout', { 'is-single': !hasSide }]}>
       <main class={`main-col ${mainClass}`.trim()}>
         {hasMobileSummary && <div class="tab-mobile-summary"><slot name="mobile-summary" /></div>}
         <slot />

@@ -28,6 +28,8 @@ import * as q from '../src/lib/queries.ts';
 import { indexScoreRows } from '../src/lib/archive.ts';
 import { editionRecord, mergeRecords, monthlyArchive, type EditionRecord } from '../src/lib/edition-ledger.ts';
 import { isWritten, peopleFromRows, retiredSubjectTarget } from '../src/lib/people.ts';
+import { rowsFromSnapshots } from '../src/lib/people-snapshots.ts';
+import { splitPeopleSnapshots } from '../src/lib/life-grid.ts';
 import {
   getArticleSitemapEntriesForYear,
   getArticleSitemapPath,
@@ -200,15 +202,22 @@ await write('data/history.json', json(historyJson(historyItems)));
 await write('rss.xml', renderRss(await itemsOf(homeDate), homeDate));
 
 // ─── People, and the retired 专题 pages ─────────────
-// Astro builds the people pages from the people tables; here the written
-// ones (the others are noindex) go into the sitemap, and every /subjects page
-// still on the bucket is replaced by a noindex page that sends readers to the
-// person who took the subject over, or to the people directory.
-const peopleTables = await q.getPeopleRows(db);
+// Astro builds the people pages from the people snapshots; here the
+// life-grid pages and the written classic ones (the others are noindex) go
+// into the sitemap, and every /subjects page still on the bucket is replaced
+// by a noindex page that sends readers to the person who took the subject
+// over, or to the people directory.
+const peopleSnapshots = await q.getPeopleSnapshots(db);
 // Problems are reported by the build, which reads the same rows.
+const { grids: gridSnapshots, legacy: legacySnapshots } = splitPeopleSnapshots(peopleSnapshots);
+const peopleTables = rowsFromSnapshots(legacySnapshots);
 const people = peopleFromRows(peopleTables.people, peopleTables.profiles);
-const indexedPeople: typeof people = [];
-for (const person of people.filter(isWritten)) {
+const indexedPeople: { slug: string; updated_at: string }[] = [];
+const indexable = [
+  ...gridSnapshots.map((s) => ({ slug: s.slug, updated_at: String(s.payload.person?.updated_at ?? s.synced_at).slice(0, 10) })),
+  ...people.filter(isWritten),
+];
+for (const person of indexable) {
   const key = `people/${person.slug}/index.html`;
   if (inventory.has(key) || await isFile(path.join(dist, key))) indexedPeople.push(person);
 }
@@ -219,7 +228,7 @@ for (const key of inventory.keys()) {
   await write(key, retiredSubjectPage(retiredSubjectTarget(match[1] ?? null, people), SITE_URL));
   retired += 1;
 }
-log(`people: ${people.length} published, ${indexedPeople.length} in the sitemap; ${retired} retired subject page(s) redirected`);
+log(`people: ${people.length + gridSnapshots.length} published (${gridSnapshots.length} life grid), ${indexedPeople.length} in the sitemap; ${retired} retired subject page(s) redirected`);
 
 // ─── Archive pages, rendered into the HTML ──────────
 // /daily and every /daily/<YYYY-MM> are written on every run, daily and full,

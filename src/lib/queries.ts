@@ -6,6 +6,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { fetchProjectHeatmapData } from './project-heatmap.ts';
 import type { PersonRow, ProfileRow } from './people.ts';
 import { rowsFromSnapshots, type SnapshotRow } from './people-snapshots.ts';
+import { splitPeopleSnapshots } from './life-grid.ts';
 import type {
   DailyArchive,
   ProcessedItem,
@@ -217,23 +218,30 @@ export async function getTracks(db: Db): Promise<TrackInfo[]> {
 // ─── People ─────────────────────────────────────────
 
 /**
- * Published people as the old people / person_profiles rows, rebuilt from
- * people_snapshots (src/lib/people-snapshots.ts). The people themselves are
- * edited in the Aliyun database and synced here by its pg_cron job
+ * Every published person's snapshot (people_snapshots): the Aliyun database's
+ * person_public() output, written here by its pg_cron sync job
  * (docs/people.md). Before the table exists the list is empty, so deploys
  * keep working.
  */
-export async function getPeopleRows(db: Db): Promise<{ people: PersonRow[]; profiles: ProfileRow[] }> {
+export async function getPeopleSnapshots(db: Db): Promise<SnapshotRow[]> {
   try {
-    const snapshots = await fetchAllRows<SnapshotRow>((from, to) =>
+    return await fetchAllRows<SnapshotRow>((from, to) =>
       db.from('people_snapshots').select('person_id, slug, payload, synced_at')
         .order('slug', { ascending: true }).range(from, to) as unknown as PageResult<SnapshotRow>,
     );
-    return rowsFromSnapshots(snapshots);
   } catch (error) {
-    if (isMissingRelationError(error)) return { people: [], profiles: [] };
+    if (isMissingRelationError(error)) return [];
     throw error;
   }
+}
+
+/**
+ * The people on the classic person page, as the old people / person_profiles
+ * rows (src/lib/people-snapshots.ts). People with a life grid (主线 or 状态,
+ * src/lib/life-grid.ts) have their own page and are left out.
+ */
+export async function getPeopleRows(db: Db): Promise<{ people: PersonRow[]; profiles: ProfileRow[] }> {
+  return rowsFromSnapshots(splitPeopleSnapshots(await getPeopleSnapshots(db)).legacy);
 }
 
 /**

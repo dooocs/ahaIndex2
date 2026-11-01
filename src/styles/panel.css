@@ -3,6 +3,10 @@
    started. The column itself (.layout / .main-col / .side-col) stays in
    global.css. */
 
+/* A tab page without an overview column: the content takes the whole width. */
+.layout.is-single { grid-template-columns: minmax(0, 1fr); }
+.layout.is-single > .main-col { border-right: 0; padding-right: 0; }
+
 /* Phones hide the side column; a page's mobile summary takes its place. */
 .tab-mobile-summary { display: none; }
 

@@ -1,0 +1,400 @@
+---
+// 人生网格页（/people/<slug>，有主线或状态的人）。数据：src/lib/life-grid.ts。
+//
+// 左边是按年份排的网格：年份、年龄、主线泳道（越长越坚持）、身份 / 财富 /
+// 家庭等状态、事件。右边是固定的“现场”面板：点一个事件，看那一刻的年龄、
+// 身份、财富、家庭、正在坚持的主线，以及当时 / 后来的来源；点一段主线，看
+// 它持续了多久、其间发生了什么。手机上网格横向滑动，面板从底部弹出。
+//
+// 所有现场都在 HTML 里（搜索引擎和不开 JavaScript 的读者靠 #锚点 看到每一个），
+// 脚本只负责切换、键盘和高亮。
+import TabLayout from '../../layouts/TabLayout.astro';
+import { getPeople } from '../../lib/people-data';
+import { PEOPLE_PATH } from '../../lib/people';
+import SourceCard from './SourceCard.astro';
+import { VALENCES, dotDate } from '../../lib/life-grid';
+import { SITE_URL, siteTitle } from '../../lib/site';
+import '../../styles/people.css';
+import '../../styles/life-grid.css';
+
+interface Props { slug: string }
+
+const { slug } = Astro.props;
+const { people, grids } = await getPeople();
+const g = grids.find((x) => x.slug === slug)!;
+const pages = new Set([...people.map((p) => p.slug), ...grids.map((x) => x.slug)]);
+
+const display = g.nameZh ?? g.name;
+const L = g.lanes;
+const D = g.dimensions.length;
+const col = { year: 1, age: 2, lane: (i: number) => 3 + i, dim: (i: number) => 3 + L + i, events: 3 + L + D };
+const row = (i: number) => i + 2;
+const keyEvents = g.events.filter((e) => e.importance === 3);
+const arcsByStart = [...g.arcs].sort((a, b) => a.start.localeCompare(b.start));
+
+const pageTitle = siteTitle(`${g.nameZh ? `${g.nameZh}（${g.name}）` : g.name} · 人物`);
+const pageDesc = `${display}${g.role ? `：${g.role}` : ''}。${g.lifeText ? `${g.lifeText.split(' · ')[0]}，` : ''}${g.events.length} 个事件、${g.arcs.length} 条人生主线，按年份排开，每件事都能回到当时的现场。`;
+const canonical = `${SITE_URL}${PEOPLE_PATH}/${g.slug}`;
+---
+
+<TabLayout tab="people" showScore={false} mainClass="life-page" title={pageTitle} description={pageDesc} canonicalUrl={canonical} ogUrl={canonical}>
+  <script is:inline>document.documentElement.classList.add('lg-js');</script>
+  <a class="person-back" href={PEOPLE_PATH}>← 人物 / People</a>
+
+  <header class="lg-head">
+    <div class="lg-who">
+      <div class="lg-name">
+        <h1>{display}</h1>
+        {g.nameZh && <span class="lg-alt">{g.name}</span>}
+      </div>
+      <div class="lg-sub">
+        {g.lifeText && <span class="lg-life">{g.lifeText}</span>}
+        {g.role && <span>{g.role}</span>}
+      </div>
+    </div>
+    <dl class="lg-facts">
+      {g.facts.map((f) => <div><dd>{f.value}</dd><dt>{f.label}</dt></div>)}
+    </dl>
+  </header>
+
+  <div class="lg-legend">
+    {g.valences.map((v) => <span><i class={`lg-dot v-${v}`}></i>{VALENCES[v]}</span>)}
+    <span class="lg-note">
+      {[g.hasEstimate && '标「估」的是档位估算', '点事件看当时的现场，点主线看那段坚持'].filter(Boolean).join(' · ')}<span class="lg-keys"> · ↑↓ 或 j / k 切换事件</span>
+    </span>
+  </div>
+
+  <div class="lg-body">
+    <section class="lg-ledger" aria-label={`${display}的人生网格`}>
+      <div class="lg-grid" style={`--lanes:${L};--dims:${D}`} data-grid>
+        <div class="lg-hd" style={`grid-column:${col.year}`}>年份</div>
+        <div class="lg-hd lg-hd-age" style={`grid-column:${col.age}`}>岁</div>
+        <div class="lg-hd lg-hd-lanes" style={`grid-column:${col.lane(0)} / span ${L}`}>主线<span class="lg-hd-more"> · 越长越坚持</span></div>
+        {g.dimensions.map((d, i) => <div class="lg-hd lg-hd-dim" style={`grid-column:${col.dim(i)}`}>{d.label}</div>)}
+        <div class="lg-hd" style={`grid-column:${col.events}`}>事件 · 点开看现场</div>
+
+        {g.rows.map((r, i) => (
+          <>
+            <div class:list={['lg-cell lg-yr', { 'is-fold': r.fold }]} style={`grid-row:${row(i)};grid-column:${col.year}`}>{r.label}{r.age !== null && <span class="lg-yr-age">{r.age}岁</span>}</div>
+            <div class:list={['lg-cell lg-age', { 'is-fold': r.fold }]} style={`grid-row:${row(i)};grid-column:${col.age}`}>{r.age}</div>
+            <div class:list={['lg-lanebg', { 'is-fold': r.fold }]} style={`grid-row:${row(i)};grid-column:${col.lane(0)} / span ${L}`}></div>
+            {g.dimensions.map((_, j) => <div class:list={['lg-dimbg', { 'is-fold': r.fold }]} style={`grid-row:${row(i)};grid-column:${col.dim(j)}`}></div>)}
+            {r.fold ? (
+              <div class="lg-cell lg-evs is-fold" style={`grid-row:${row(i)};grid-column:${col.events}`}>
+                <span class="lg-foldnote">{r.to > r.from ? `${r.to - r.from + 1} 年 · ` : ''}暂无记录事件</span>
+              </div>
+            ) : (
+              <div class="lg-cell lg-evs" style={`grid-row:${row(i)};grid-column:${col.events}`}>
+                {r.events.map((id) => {
+                  const e = g.events.find((x) => x.id === id)!;
+                  return (
+                    <a class={`lg-ev i${e.importance} v-${e.valence}`} href={`#${e.id}`} data-ev={e.id}>
+                      <span class="lg-dot"></span><span class="lg-md">{e.shortDate}</span><span class="lg-tt">{e.title}</span>
+                    </a>
+                  );
+                })}
+              </div>
+            )}
+          </>
+        ))}
+
+        {g.arcs.map((a) => (
+          <a
+            class:list={['lg-arc', `k-${a.color}`, { 'is-short': a.short, 'is-open': !a.end }]}
+            href={`#${a.id}`}
+            data-arc={a.id}
+            data-events={a.events.join(' ')}
+            style={`grid-column:${col.lane(a.lane)};grid-row:${row(a.rowFrom)} / ${row(a.rowTo) + 1}`}
+            aria-label={`${a.label}，${a.duration}`}
+          >
+            <span class="lg-arc-lab">
+              <span class="lg-arc-nm">{a.label}</span>
+              <span class="lg-arc-du">{a.duration.endsWith('+') ? <>{a.duration.slice(0, -1)}<br />至今</> : a.duration}</span>
+            </span>
+          </a>
+        ))}
+
+        {g.dimensions.map((d, j) => d.states.map((s) => (
+          <div class="lg-st" style={`grid-column:${col.dim(j)};grid-row:${row(s.rowFrom)} / ${row(s.rowTo) + 1}`}>
+            <div class="lg-st-in">
+              {s.label}{s.estimate && <span class="lg-est" title="档位估算">估</span>}
+              {s.note && <span class="lg-st-note">{s.note}</span>}
+            </div>
+          </div>
+        )))}
+      </div>
+    </section>
+
+    <aside class="lg-panel" data-panel aria-live="polite" aria-label="现场">
+      <article class="lg-scene is-default" id="overview" data-scene>
+        <div class="sc-meta"><span>人生网格</span><button type="button" class="sc-close" data-close aria-label="关闭">×</button></div>
+        <h2 class="sc-title">{display}{g.nickname && <small>{g.nickname}</small>}</h2>
+        {g.take && (
+          <div class="sc-block">
+            <div class="sc-k">蜗牛说</div>
+            <p class="sc-narr">{g.take}</p>
+          </div>
+        )}
+        {g.labels.length > 0 && (
+          <div class="sc-block">
+            <div class="sc-k">别人怎么叫他</div>
+            <ul class="sc-labels">
+              {g.labels.map((l) => (
+                <li>
+                  {l.url ? <a href={l.url} target="_blank" rel="noopener nofollow">「{l.text}」</a> : <span>「{l.text}」</span>}
+                  {l.by && <small>{l.by}</small>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <div class="sc-block">
+          <div class="sc-k">{g.arcs.length} 条主线</div>
+          <ul class="sc-list">
+            {arcsByStart.map((a) => (
+              <li><a href={`#${a.id}`} data-go={a.id}><i class={`lg-sw k-${a.color}`}></i><span class="sc-md">{a.duration}</span><span>{a.label}</span></a></li>
+            ))}
+          </ul>
+        </div>
+        {keyEvents.length > 0 && (
+          <div class="sc-block">
+            <div class="sc-k">{keyEvents.length} 个关键时刻</div>
+            <ul class="sc-list">
+              {keyEvents.map((e) => (
+                <li><a href={`#${e.id}`} data-go={e.id}><i class={`lg-dot v-${e.valence}`}></i><span class="sc-md">{e.year}</span><span>{e.title}</span></a></li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <p class="sc-hint">点左边任一事件，回到那一刻：他多大、什么身份、手里有什么、正在坚持什么。来源分成“当时”的报道和“后来”的回忆。</p>
+      </article>
+
+      {g.events.map((e, i) => {
+        const prev = g.events[i - 1];
+        const next = g.events[i + 1];
+        return (
+          <article class="lg-scene" id={e.id} data-scene data-event>
+            <div class="sc-meta">
+              <span>{e.dateText}</span>
+              <nav class="sc-nav" aria-label="切换事件">
+                {prev ? <a href={`#${prev.id}`} data-go={prev.id} aria-label={`上一个事件：${prev.title}`}>↑</a> : <span></span>}
+                {next ? <a href={`#${next.id}`} data-go={next.id} aria-label={`下一个事件：${next.title}`}>↓</a> : <span></span>}
+                <button type="button" class="sc-close" data-close aria-label="关闭">×</button>
+              </nav>
+            </div>
+            <h2 class="sc-title">{e.title}</h2>
+            <div class="sc-tags">
+              <span class={`sc-pill v-${e.valence}`}><i class="lg-dot"></i>{e.valenceLabel}</span>
+              {e.place && <span class="sc-place">{e.place}</span>}
+            </div>
+
+            <dl class="sc-moment">
+              <div><dt>那一刻 · 年龄</dt><dd class="is-num">{e.age ?? '—'}</dd></div>
+              {e.moment.map((m) => <div><dt>{m.label}{m.estimate && ' · 估'}</dt><dd>{m.value ?? '—'}</dd></div>)}
+              <div class="is-wide">
+                <dt>正在坚持</dt>
+                <dd>
+                  {e.arcs.length > 0
+                    ? e.arcs.map((a) => <a class={`sc-chip k-${a.color}`} href={`#${a.id}`} data-go={a.id}>{a.label} · 第{a.year}年</a>)
+                    : <span class="sc-faint">还没有开始</span>}
+                </dd>
+              </div>
+            </dl>
+
+            <div class="sc-tabs" role="tablist">
+              <button type="button" class="sc-tab" role="tab" data-tab="then" aria-selected="true">当时<span>{e.then.length}</span></button>
+              {(e.laterText || e.later.length > 0) && (
+                <button type="button" class="sc-tab" role="tab" data-tab="later" aria-selected="false">后来<span>{e.later.length}</span></button>
+              )}
+            </div>
+
+            <section class="sc-tabbody is-on" data-tabbody="then">
+              <h3 class="sc-tabhead">当时</h3>
+              {e.thenText && <p class="sc-narr">{e.thenText}</p>}
+              {e.steps.length > 0 && (
+                <ol class="sc-steps">{e.steps.map((s) => <li><span>{s.date}</span>{s.text}</li>)}</ol>
+              )}
+              {e.sides.length > 0 && (
+                <div class="sc-sides">{e.sides.map((s) => <div><b>{s.who}</b><p>{s.text}</p></div>)}</div>
+              )}
+              {e.then.length > 0 ? (
+                <div class="sc-snaps">
+                  {e.then.map((s) => <SourceCard source={s} />)}
+                </div>
+              ) : (
+                <p class="sc-hint">没有找到事发当时的公开报道。这段叙述依据事后的回忆和报道还原，出处在“后来”。</p>
+              )}
+            </section>
+
+            {(e.laterText || e.later.length > 0) && (
+              <section class="sc-tabbody" data-tabbody="later">
+                <h3 class="sc-tabhead">后来</h3>
+                {e.laterText && <p class="sc-narr">{e.laterText}</p>}
+                <div class="sc-snaps">
+                  {e.later.map((s) => <SourceCard source={s} />)}
+                </div>
+              </section>
+            )}
+
+            {e.commentary && (
+              <div class="sc-block sc-take">
+                <div class="sc-k">蜗牛说</div>
+                <p>{e.commentary}</p>
+              </div>
+            )}
+            {e.people.length > 0 && (
+              <div class="sc-block">
+                <div class="sc-k">一起出现的人</div>
+                <p class="sc-people">
+                  {e.people.map((x) => (pages.has(x.slug) ? <a href={`${PEOPLE_PATH}/${x.slug}`}>{x.name}</a> : <span>{x.name}</span>))}
+                </p>
+              </div>
+            )}
+            {e.links.length > 0 && (
+              <div class="sc-block">
+                <div class="sc-k">前因后果</div>
+                <ul class="sc-list">
+                  {e.links.map((l) => <li><a href={`#${l.id}`} data-go={l.id}><span>{l.title}</span>{l.note && <small>{l.note}</small>}</a></li>)}
+                </ul>
+              </div>
+            )}
+          </article>
+        );
+      })}
+
+      {g.arcs.map((a) => (
+        <article class="lg-scene" id={a.id} data-scene data-arc-scene={a.id}>
+          <div class="sc-meta"><span>{a.span}</span><button type="button" class="sc-close" data-close aria-label="关闭">×</button></div>
+          <h2 class="sc-title">{a.label}</h2>
+          <div class="sc-tags">
+            {a.role && <span class={`sc-pill k-${a.color}`}>{a.role}</span>}
+            {a.entity && a.entity.name !== a.label && <span class="sc-place">{a.entity.name}</span>}
+          </div>
+          <div class={`sc-dur k-${a.color}`}>{a.duration}</div>
+          {a.summary && <p class="sc-narr">{a.summary}</p>}
+          <div class="sc-k">这段时间里的 {a.events.length} 个事件</div>
+          <ul class="sc-list">
+            {a.events.map((id) => {
+              const e = g.events.find((x) => x.id === id)!;
+              return <li><a href={`#${e.id}`} data-go={e.id}><i class={`lg-dot v-${e.valence}`}></i><span class="sc-md">{dotDate(e.date, e.prec === 'day' ? 'month' : e.prec)}</span><span>{e.title}</span></a></li>;
+            })}
+          </ul>
+          {a.sources.length > 0 && (
+            <div class="sc-snaps">
+              {a.sources.map((s) => <SourceCard source={s} />)}
+            </div>
+          )}
+        </article>
+      ))}
+    </aside>
+  </div>
+</TabLayout>
+
+<script>
+  // 切换现场：点事件 / 主线 / 面板里的链接都走这里，地址栏的 #锚点 跟着变，
+  // 可以分享，也能用浏览器的后退。不开 JavaScript 时靠 CSS 的 :target 显示。
+  //
+  // 站点用 Astro 的 ClientRouter：页面之间是局部替换，这个脚本只执行一次。
+  // 所以点击、键盘、后退的监听挂在 document 上（点击用捕获阶段，抢在路由
+  // 之前处理本页锚点），每次进入页面（astro:page-load）再初始化当前页。
+  const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let current = 'overview';
+
+  const parts = () => {
+    const grid = document.querySelector<HTMLElement>('[data-grid]');
+    const panel = document.querySelector<HTMLElement>('[data-panel]');
+    return grid && panel ? { grid, panel } : null;
+  };
+
+  const sceneOf = (panel: HTMLElement, id: string) =>
+    id ? panel.querySelector<HTMLElement>(`[data-scene]#${CSS.escape(id)}`) : null;
+
+  function focusArc(grid: HTMLElement, id: string | null) {
+    grid.classList.toggle('is-focus', Boolean(id));
+    const arcs = Array.from(grid.querySelectorAll<HTMLElement>('[data-arc]'));
+    const inside = new Set((arcs.find((a) => a.dataset.arc === id)?.dataset.events ?? '').split(' '));
+    arcs.forEach((a) => a.classList.toggle('is-on', a.dataset.arc === id));
+    grid.querySelectorAll<HTMLElement>('[data-ev]').forEach((e) => e.classList.toggle('in-arc', inside.has(e.dataset.ev ?? '')));
+  }
+
+  function show(id: string, open: boolean) {
+    const p = parts();
+    if (!p) return;
+    const scene = sceneOf(p.panel, id) ?? sceneOf(p.panel, 'overview')!;
+    current = scene.id;
+    p.panel.querySelectorAll<HTMLElement>('[data-scene]').forEach((s) => s.classList.toggle('is-on', s === scene));
+    p.grid.querySelectorAll('.is-sel').forEach((x) => x.classList.remove('is-sel'));
+    focusArc(p.grid, scene.dataset.arcScene ?? null);
+    const cell = p.grid.querySelector<HTMLElement>(`[data-ev="${current}"]`);
+    if (cell) {
+      cell.classList.add('is-sel');
+      const r = cell.getBoundingClientRect();
+      if (r.top < 60 || r.bottom > innerHeight - 20) cell.scrollIntoView({ block: 'center', behavior: reduced() ? 'auto' : 'smooth' });
+    }
+    p.panel.scrollTop = 0;
+    p.panel.classList.toggle('is-open', open && current !== 'overview');
+  }
+
+  function go(id: string) {
+    history.pushState(null, '', `#${id}`);
+    show(id, true);
+  }
+
+  document.addEventListener('click', (ev) => {
+    const p = parts();
+    if (!p || ev.defaultPrevented || ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey) return;
+    const target = ev.target as HTMLElement;
+    const tab = target.closest<HTMLElement>('[data-tab]');
+    if (tab && p.panel.contains(tab)) {
+      const scene = tab.closest('[data-scene]')!;
+      scene.querySelectorAll('[data-tab]').forEach((t) => t.setAttribute('aria-selected', String(t === tab)));
+      scene.querySelectorAll<HTMLElement>('[data-tabbody]').forEach((b) => b.classList.toggle('is-on', b.dataset.tabbody === tab.dataset.tab));
+      return;
+    }
+    if (target.closest('[data-close]') && p.panel.contains(target)) { p.panel.classList.remove('is-open'); return; }
+    const link = target.closest<HTMLAnchorElement>('a[href^="#"]');
+    const id = link?.getAttribute('href')?.slice(1) ?? '';
+    if (link && (p.grid.contains(link) || p.panel.contains(link)) && sceneOf(p.panel, id)) {
+      ev.preventDefault();
+      go(id);
+    }
+  }, true);
+
+  document.addEventListener('mouseover', (ev) => {
+    const p = parts();
+    const a = p && (ev.target as HTMLElement).closest<HTMLElement>('[data-arc]');
+    if (p && a) focusArc(p.grid, a.dataset.arc ?? null);
+  });
+  document.addEventListener('mouseout', (ev) => {
+    const p = parts();
+    const a = p && (ev.target as HTMLElement).closest<HTMLElement>('[data-arc]');
+    if (p && a && !a.contains(ev.relatedTarget as Node)) focusArc(p.grid, sceneOf(p.panel, current)?.dataset.arcScene ?? null);
+  });
+
+  addEventListener('keydown', (ev) => {
+    const p = parts();
+    if (!p || /input|textarea|select/i.test((ev.target as HTMLElement).tagName) || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    const ids = Array.from(p.panel.querySelectorAll<HTMLElement>('[data-event]')).map((s) => s.id);
+    const i = ids.indexOf(current);
+    const step = ev.key === 'j' || ev.key === 'ArrowDown' ? 1 : ev.key === 'k' || ev.key === 'ArrowUp' ? -1 : 0;
+    if (!step || i < 0 || !ids[i + step]) return;
+    ev.preventDefault();
+    go(ids[i + step]);
+  });
+
+  addEventListener('popstate', () => {
+    if (parts()) show(decodeURIComponent(location.hash.slice(1)), true);
+  });
+
+  document.addEventListener('astro:page-load', () => {
+    const p = parts();
+    if (!p) return;
+    document.documentElement.classList.add('lg-js');
+    const initial = decodeURIComponent(location.hash.slice(1));
+    show(initial, Boolean(initial));
+    // 带 #锚点 打开时，浏览器会跳到面板里的那一节；改为让网格里对应的格子居中。
+    if (initial && sceneOf(p.panel, initial)) requestAnimationFrame(() => {
+      p.grid.querySelector<HTMLElement>(`[data-ev="${CSS.escape(initial)}"], [data-arc="${CSS.escape(initial)}"]`)?.scrollIntoView({ block: 'center' });
+    });
+  });
+</script>
