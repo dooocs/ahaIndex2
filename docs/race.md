@@ -63,6 +63,25 @@ drift opens a 0.5 s window for 小喷 (↑), a small top-up that never outruns n
 Crests launch the car when v²·(−κ) > g — the northern 杨公堤 bridges at ~140 km/h, the short southern ones at
 ~105 km/h — and a landing opens a 落地喷 window.
 
+## Leaderboard (个人最佳 + 总榜)
+
+Scores live in the community project (Alibaba Cloud Supabase), schema in `sql/race/001_race_scores.sql`
+(run once in its SQL editor, then `sql/race/001_race_scores.test.sql` to self-check; it rolls back). The browser
+talks to PostgREST directly with the public publishable key, which `race.astro` hands to the game by postMessage
+(`race:config`); opened outside the site, the game keeps only the local best.
+
+- `race_scores`: one row per finished two-lap race — nickname, per-lap times, total, best lap. Browser roles may
+  insert and read, never update or delete. That image forbids SECURITY DEFINER, so everything is plain RLS plus
+  column grants.
+- Identity without login: the browser keeps a random key in localStorage and sends it only with an insert; a trigger
+  stores its sha256 as `player_id` and drops the key, so nobody can post under someone else's id.
+- Checks (stop casual tampering, not a determined forger — the game runs in the browser): each lap 60 s–10 min,
+  total = sum of laps (±1.5 s), best lap = the fastest lap, one submission per player per 100 s, nickname 1–12 chars.
+- `race_leaderboard` (security-invoker view): each player's best run, ranked by total time, earliest first on ties.
+  The title screen shows 个人最佳 (local, then the server's best and rank); after a race the result card asks for a
+  nickname once, then uploads automatically; 排行榜 shows the top 50 and your own best.
+- Only real runs upload: not with `?auto`, a non-default `?laps`, or the test hooks.
+
 ## Checking it
 
 - `?debug` shows fps, draw calls and triangles; `?auto` drives the player's car; `?skipcount` skips the countdown;

@@ -11,6 +11,7 @@ import { AICar, AI_DRIVERS } from './ai.js';
 import { Smoke, Skids } from './effects.js';
 import { Sound } from './audio.js';
 import { damp, makeRand, slice } from './noise.js';
+import * as LB from './board.js';
 
 THREE.ColorManagement.enabled = false;
 const Q = new URLSearchParams(location.search);
@@ -64,13 +65,16 @@ resize();
 const keys = new Set(), pressed = new Set();
 const MAP = { ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right',
   ShiftLeft: 'drift', ShiftRight: 'drift', ControlLeft: 'nitro', ControlRight: 'nitro', Space: 'nitro', KeyR: 'reset', Escape: 'pause', KeyP: 'pause', KeyM: 'mute', KeyC: 'cam' };
+const typing = e => e.target && e.target.closest && e.target.closest('input, textarea');
 addEventListener('keydown', e => {
+  if (typing(e)) return;
+  if (e.code === 'Escape' && !$('lb').hidden) { closeBoard(); return; }
   const k = MAP[e.code]; if (!k) return;
   if (e.code.startsWith('Arrow') || e.code === 'Space' || k === 'nitro') e.preventDefault();
   if (!keys.has(k)) pressed.add(k);
   keys.add(k);
 });
-addEventListener('keyup', e => { const k = MAP[e.code]; if (k) keys.delete(k); });
+addEventListener('keyup', e => { if (typing(e)) return; const k = MAP[e.code]; if (k) keys.delete(k); });
 addEventListener('blur', () => keys.clear());
 // 触屏：左边 ◀ ▶，右边 漂移 / 氮气 / 刹车，油门自动
 const touch = { on: false };
@@ -150,7 +154,7 @@ function resetRace() {
   const g = gridSlot(5);
   player.reset(g.d, g.lat);
   player.prog = g.d - D_START; player.lastD = player.d; player.finished = false; player.time = 0;
-  raceT = 0; lapStart = 0; bestLap = Infinity; lastLap = Infinity; finishOrder = []; spotIdx = -1; player.lapSeen = 0;
+  raceT = 0; lapStart = 0; bestLap = Infinity; lastLap = Infinity; finishOrder = []; spotIdx = -1; player.lapSeen = 0; player.laps = [];
   cam.yaw = player.h; cam.pos.set(0, 0, 0);
   smoke && smoke.p.forEach(p => { p.life = 0; });
 }
@@ -393,7 +397,7 @@ function step(dt) {
     if (player.lapSeen === undefined) player.lapSeen = 0;
     if (lapNow > player.lapSeen && lapNow >= 1) {
       player.lapSeen = lapNow;
-      lastLap = raceT - lapStart; lapStart = raceT; bestLap = Math.min(bestLap, lastLap);
+      lastLap = raceT - lapStart; lapStart = raceT; bestLap = Math.min(bestLap, lastLap); (player.laps ||= []).push(lastLap);
       if (lapNow < LAPS) toast(lapNow === LAPS - 1 ? `最后一圈！ ${fmt(lastLap)}` : `第 ${lapNow + 1} 圈 ${fmt(lastLap)}`, 'lap');
     }
     for (const a of ais) finishCheck(a, a.dist - D_START);
@@ -455,7 +459,9 @@ function step(dt) {
   if (spotT > 0) { spotT -= dt; if (spotT <= 0) spotEl.className = 'spot'; }
   if (state === 'race' || state === 'count' || state === 'finish') { updateHud(); drawMini(); drawDial(player.kmh, dt, player.boosting); }
 }
-let finishT = 0;
+let finishT = 0, tainted = false;
+// 只有正常跑完两圈的成绩才上榜：自动驾驶、改圈数、测试钩子跳过的都不算
+const canUpload = () => !AUTO && LAPS === 2 && !tainted && (player.laps || []).length === 2;
 function showResult() {
   const rk = ranking();
   $('result').hidden = false;
@@ -463,7 +469,77 @@ function showResult() {
   $('rtitle').textContent = me === 1 ? '冠军！西湖一圈你最快' : me <= 3 ? `第 ${me} 名，上了领奖台` : `第 ${me} 名，再来一局？`;
   $('rlist').innerHTML = rk.map((c, i) => `<li class="${c === player ? 'me' : ''}"><b>${i + 1}</b><span>${c.name}</span><em>${c.finished ? fmt(c.time) : '未完赛'}</em></li>`).join('');
   $('rbest').textContent = `最快单圈 ${fmt(bestLap)}`;
+  afterRace();
 }
+
+// ---------- 成绩：本机最佳、上传、总榜 ----------
+const status = (html, kind = '') => { const el = $('ustatus'); el.hidden = !html; el.className = `ustatus ${kind}`; el.innerHTML = html; };
+const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+let lastRun = null;
+function afterRace() {
+  $('up').hidden = true; status('');
+  if (!canUpload()) { if (AUTO) status('自动驾驶的成绩不上榜'); return; }
+  const laps = player.laps.slice(0, 2), total = laps[0] + laps[1];
+  const { newTotal } = LB.saveLocalBest(total, Math.min(...laps));
+  lastRun = { laps, total, uploaded: false };
+  if (newTotal) $('rbest').innerHTML = `最快单圈 ${fmt(bestLap)} · <b style="color:var(--accent)">个人新纪录！</b>`;
+  updatePB();
+  LB.online().then(on => {
+    if (!on) { status('本机已记下这次成绩。排行榜要在向上研究所站内（amazingindex.com/race）打开才能上传。'); return; }
+    const nick = LB.nickname();
+    $('nick').value = nick;
+    if (nick) upload(nick); else { $('up').hidden = false; status(''); }
+  });
+}
+async function upload(nick) {
+  if (!lastRun || lastRun.uploaded) return;
+  $('upbtn').disabled = true;
+  status('正在上传成绩……');
+  try {
+    const me = await LB.submit({ nick, laps: lastRun.laps });
+    lastRun.uploaded = true; $('up').hidden = true;
+    LB.setNickname(nick);
+    status(me ? `已上榜：<b>${esc(me.nickname)}</b> 的最佳是 <b>${fmt(me.total_ms / 1000)}</b>，总榜第 <b>${me.rank}</b> 名` : '成绩已上传', 'good');
+    updatePB();
+  } catch (err) {
+    status(LB.why(err), 'bad');
+    if (!LB.nickname()) $('up').hidden = false;
+  } finally { $('upbtn').disabled = false; }
+}
+$('up').addEventListener('submit', e => {
+  e.preventDefault();
+  const nick = $('nick').value.trim().slice(0, 12);
+  if (!nick) { $('nick').focus(); return; }
+  upload(nick);
+});
+async function updatePB() {
+  const lb = LB.localBest();
+  let text = lb && isFinite(lb.total) ? `个人最佳：<b>${fmt(lb.total)}</b> · 最快单圈 ${fmt(lb.lap)}` : '个人最佳：还没有成绩，跑完两圈就有了';
+  $('pb').innerHTML = text;
+  try {
+    if (!(await LB.online())) return;
+    const me = await LB.myBest();
+    if (me) $('pb').innerHTML = `个人最佳：<b>${fmt(me.total_ms / 1000)}</b> · 最快单圈 ${fmt(me.best_lap_ms / 1000)} · 总榜第 <b>${me.rank}</b> 名`;
+  } catch { /* 网络不好时只显示本机最佳 */ }
+}
+async function openBoard() {
+  $('lb').hidden = false;
+  const list = $('lb-list');
+  list.innerHTML = '<li class="empty">加载中……</li>'; $('lb-me').textContent = '';
+  if (!(await LB.online())) { list.innerHTML = '<li class="empty">总榜要在向上研究所站内（amazingindex.com/race）打开</li>'; return; }
+  try {
+    const [rows, me] = await Promise.all([LB.top(50), LB.myBest()]);
+    list.innerHTML = rows.length ? rows.map(r => `<li class="${r.me ? 'me' : ''}"><b>${r.rank}</b><span>${esc(r.nickname)}</span><span>${fmt(r.total_ms / 1000)}</span><span>${fmt(r.best_lap_ms / 1000)}</span></li>`).join('')
+      : '<li class="empty">还没有人上榜，跑完两圈就是第一名</li>';
+    $('lb-me').innerHTML = me ? `我的最佳：<b>${fmt(me.total_ms / 1000)}</b> · 第 <b>${me.rank}</b> 名` : '我还没有上榜成绩';
+  } catch (err) { list.innerHTML = `<li class="empty">${esc(LB.why(err))}</li>`; }
+}
+function closeBoard() { $('lb').hidden = true; canvas.focus(); }
+$('lb-open').addEventListener('click', openBoard);
+$('lb-open2').addEventListener('click', openBoard);
+$('lb-close').addEventListener('click', closeBoard);
+$('lb').addEventListener('click', e => { if (e.target === $('lb')) closeBoard(); });
+updatePB();
 
 function render(dt) {
   updateCamera(dt);
@@ -503,9 +579,10 @@ build().then(() => {
   window.__race = {
     track, player, ais, camera, renderer, get state() { return state; }, get fps() { return fps; }, get info() { return { ...renderer.info.render }; },
     buildMs: Math.round(performance.now() - bootT),
-    finishNow() { player.prog = LAPS * track.length - 30; player.lapSeen = LAPS - 1; ais.forEach((a, k) => { a.dist = D_START + LAPS * track.length + 20 - k * 70; }); },
+    finishNow() { tainted = true; player.prog = LAPS * track.length - 30; player.lapSeen = LAPS - 1; ais.forEach((a, k) => { a.dist = D_START + LAPS * track.length + 20 - k * 70; }); },
     // 测试用：把玩家（和 AI 车队）挪到起点后 d 米处
     teleport(d, lat = 0) {
+      tainted = true;
       player.reset(D_START + d, lat); player.prog = d; player.lastD = player.d; player.lapSeen = 0;
       ais.forEach((a, k) => { a.reset(D_START + d + 18 + k * 9, (k % 2 ? 5 : -5)); a.s = 40; });
       player.s = 40; cam.pos.set(0, 0, 0); cam.yaw = player.h;
