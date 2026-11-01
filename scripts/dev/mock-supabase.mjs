@@ -235,6 +235,7 @@ export function buildFixture() {
     people_snapshots: people.filter((p) => p.status === 'published')
       .map((p) => snapshotFromRows(p, personProfiles.find((x) => x.person_id === p.id), people)),
     people_sync_status: [{ id: 1, last_push_at: `${day}T00:00:00Z`, last_pull_at: new Date().toISOString(), last_result: null }],
+    people_outbox: [],
     display_items: displayItems,
     daily_archives: archives,
     tracks,
