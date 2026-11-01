@@ -19,6 +19,8 @@ on:
     paths-ignore:
       - 'docs/**'
       - '**/*.md'
+      # 联机服务端跑在 ECS 上，和网站部署无关
+      - 'game-server/**'
   workflow_dispatch:
     inputs:
       backfill:

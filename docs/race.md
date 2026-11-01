@@ -106,3 +106,27 @@ talks to PostgREST directly with the public publishable key, which `race.astro` 
 - Full simulated race (2 laps, 60 Hz, grip-only `pilot.js` driver): laps of ~129 s and ~128 s, 3rd of 6; the AI spread
   over ~9 s. Scene: ~500–1050 draw calls and 0.9–2.4 M triangles per frame across all passes
   (the most on 平海路 looking down the street at the lake).
+
+## Multiplayer (联机, `game-server/`)
+
+A separate real-time server on the ECS box (Node.js + Colyseus 0.18 behind Caddy at `wss://game.amazingindex.com`);
+it is not part of the static site and changes under `game-server/` do not trigger a site deploy. Setup and deploy steps
+are in `game-server/README.md`. The game page does not use it yet — wiring `public/race/` to it is the next step.
+
+- Matchmaking: at most 20 players online, 2–4 per race. "开始匹配" joins the fullest waiting room or opens one; with two
+  players the room waits 8 s for more, with four it starts at once. Then it locks and counts down 4 s. Two laps, like solo.
+- Split of work: each client still runs its own car's physics and sends its pose 20 times a second; the server relays poses
+  (state patches every 50 ms; clients render the others 120 ms behind and interpolate) and is the judge.
+- Judging: 20 gates exported from this track (`npm run export:track` → `game-server/src/tracks/xihu.json`, every ~210 m,
+  the last on the start/finish line on 平海路). A gate is a 32 m segment across the road and only counts when crossed
+  forwards, in order; the server keeps lap splits and finish order from its own clock. Moves faster than a speed budget
+  (85 m/s, up to 1 s banked so network bunching is absorbed) or a reset (R) of more than 40 m earn no gates; three such
+  moves, or two laps under 120 s, keep the result off the board. **Re-export and redeploy the server whenever the
+  centerline changes**, or the gates stop matching the road.
+- Grid: the same slots as `gridSlot(0..3)` in `main.js`. Coordinates and heading are the game's (`x` east, `z` south, `h`).
+- Disconnects: the seat is kept for 20 s and the client reconnects on its own.
+- Results: `race_mp_results` in the community project (`sql/race/003_race_mp_results.sql`, self-check in
+  `003_race_mp_results.test.sql`). Only the server writes, with the service role key; browser roles may only read.
+  `player_id` is the same sha256 of the `race.player` key as `race_scores`, so solo and multiplayer runs of one person line
+  up. `race_mp_leaderboard` ranks each player's best two-lap total per track and adds races and wins. The solo board
+  (`race_scores` / `race_leaderboard`) is untouched.

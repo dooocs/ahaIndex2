@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>西湖飞车 · 联机测试</title>
+<style>
+  :root {
+    --bg: #f4f1ea; --panel: #fffdf8; --ink: #22201c; --muted: #7a746a; --line: #e2dccf;
+    --grass: #cfe0b4; --road: #8d8a84; --road-edge: #f4f1ea; --accent: #e4572e; --ok: #3bb273;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #17171a; --panel: #212126; --ink: #ecebe7; --muted: #9a978f; --line: #34343b;
+            --grass: #23331e; --road: #4b4a50; --road-edge: #6c6b72; }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+    font: 15px/1.5 -apple-system, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif; }
+  body { display: flex; flex-direction: column; overscroll-behavior: none; }
+  header { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px 16px;
+    background: var(--panel); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 16px; margin: 0 8px 0 0; white-space: nowrap; }
+  input { font: inherit; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px;
+    background: var(--bg); color: var(--ink); width: 120px; }
+  button { font: inherit; padding: 6px 14px; border: 0; border-radius: 8px; cursor: pointer;
+    background: var(--accent); color: #fff; font-weight: 600; }
+  button.secondary { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  button:disabled { opacity: .5; cursor: default; }
+  #online { color: var(--muted); font-size: 13px; margin-left: auto; white-space: nowrap; }
+  main { position: relative; flex: 1; min-height: 0; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  #hud { position: absolute; left: 12px; top: 10px; font-size: 13px; line-height: 1.6;
+    background: color-mix(in srgb, var(--panel) 85%, transparent); border: 1px solid var(--line);
+    border-radius: 10px; padding: 8px 12px; pointer-events: none; min-width: 150px; }
+  #hud b { font-variant-numeric: tabular-nums; }
+  #center { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none;
+    font-size: 64px; font-weight: 800; color: var(--accent); text-shadow: 0 2px 0 var(--panel); }
+  #banner { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); font-weight: 600;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px;
+    white-space: nowrap; max-width: calc(100% - 32px); overflow: hidden; text-overflow: ellipsis; }
+  #banner:empty { display: none; }
+  #results { position: absolute; inset: 0; display: none; place-items: center;
+    background: color-mix(in srgb, var(--bg) 70%, transparent); }
+  #results .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 18px 20px; min-width: 260px; max-width: calc(100% - 32px); }
+  #results h2 { margin: 0 0 10px; font-size: 18px; }
+  #results table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  #results td { padding: 6px 4px; border-top: 1px solid var(--line); }
+  #results .me td { font-weight: 700; }
+  #results .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+  #touch { position: absolute; left: 0; right: 0; bottom: 0; display: none; justify-content: space-between;
+    padding: 16px; pointer-events: none; }
+  #touch button { pointer-events: auto; width: 84px; height: 84px; border-radius: 50%; font-size: 30px;
+    background: color-mix(in srgb, var(--ink) 18%, transparent); color: var(--ink); user-select: none;
+    -webkit-user-select: none; }
+  #touch button.on { background: color-mix(in srgb, var(--accent) 60%, transparent); }
+  .tip { position: absolute; right: 12px; bottom: 10px; color: var(--muted); font-size: 12px; }
+  @media (pointer: coarse) { .tip { display: none; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>西湖飞车 · 联机测试</h1>
+  <input id="name" maxlength="12" placeholder="昵称">
+  <button id="play">开始匹配</button>
+  <button id="quit" class="secondary" hidden>离开</button>
+  <span id="online">连接中…</span>
+</header>
+<main>
+  <canvas id="cv"></canvas>
+  <div id="hud">还没进房间。多开几个标签页或用几台手机同时点「开始匹配」。</div>
+  <div id="banner"></div>
+  <div id="center"></div>
+  <div id="results"><div class="card">
+    <h2>本局结果</h2>
+    <table id="resultTable"></table>
+    <div class="actions">
+      <button class="secondary" id="closeResults">看看赛道</button>
+      <button id="again">再来一局</button>
+    </div>
+  </div></div>
+  <div id="touch"><button id="tl">◀</button><button id="tr">▶</button></div>
+  <div class="tip">↑ 油门 · ↓ 刹车 · ← → 转向</div>
+</main>
+
+<script src="/sdk/colyseus.js"></script>
+<script type="module">
+import { createRaceNet } from '/client/xihu-race-net.js';
+
+const COLORS = ['#e4572e', '#2e86de', '#f2c14e', '#3bb273'];
+const ENDPOINT = location.origin;
+const $ = (id) => document.getElementById(id);
+const cv = $('cv');
+const ctx = cv.getContext('2d');
+const isTouch = matchMedia('(pointer: coarse)').matches;
+if (isTouch) $('touch').style.display = 'flex';
+
+try { $('name').value = localStorage.getItem('xihu-name') || ''; } catch {}
+
+// ── 本地车辆物理（简化版，只为验证联机） ──
+const car = { x: 0, z: 0, rot: 0, speed: 0 };
+const keys = { up: false, down: false, left: false, right: false };
+const MAX_ON_ROAD = 72;
+const MAX_OFF_ROAD = 28;
+
+let net = null;
+let myFinished = false;
+let lastResults = null;
+
+function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+function resize() {
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  cv.width = cv.clientWidth * dpr;
+  cv.height = cv.clientHeight * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+addEventListener('resize', resize);
+resize();
+
+function offRoadDistance(shape, x, z) {
+  const phi = Math.atan2(z, x);
+  const rc = 1 / Math.sqrt((Math.cos(phi) / shape.rx) ** 2 + (Math.sin(phi) / shape.rz) ** 2);
+  return Math.abs(Math.hypot(x, z) - rc) - shape.width / 2;
+}
+
+function placeOnGrid() {
+  const g = net?.track?.grid?.[net.slot];
+  if (g) { car.x = g.x; car.z = g.z; car.rot = g.rot; }
+  car.speed = 0;
+}
+
+function stepPhysics(dt) {
+  const shape = net?.track?.shape;
+  if (!shape || net.phase !== 'racing' || myFinished) { car.speed = Math.max(0, car.speed - 60 * dt); return; }
+  const throttle = keys.up || isTouch;
+  const offRoad = offRoadDistance(shape, car.x, car.z) > 0;
+  const vmax = offRoad ? MAX_OFF_ROAD : MAX_ON_ROAD;
+  if (throttle) car.speed += 38 * dt;
+  if (keys.down) car.speed -= 70 * dt;
+  car.speed -= car.speed * (offRoad ? 1.6 : 0.25) * dt;
+  car.speed = Math.max(0, Math.min(vmax, car.speed));
+  // 与游戏一致：前进方向 (sin rot, cos rot)，左转 rot 增大
+  const steer = (keys.left ? 1 : 0) - (keys.right ? 1 : 0);
+  car.rot += steer * 2.3 * dt * Math.min(1, car.speed / 20 + 0.2);
+  car.x += Math.sin(car.rot) * car.speed * dt;
+  car.z += Math.cos(car.rot) * car.speed * dt;
+  net.sendState({ x: car.x, y: 0, z: car.z, rot: car.rot, speed: car.speed });
+}
+
+// ── 绘制 ──
+function view(shape) {
+  const w = cv.clientWidth, h = cv.clientHeight;
+  const pad = shape.width + 30;
+  const s = Math.min(w / (2 * (shape.rx + pad)), (h - 40) / (2 * (shape.rz + pad)));
+  return { s, ox: w / 2, oy: h / 2 + 10 };
+}
+
+function draw() {
+  const w = cv.clientWidth, h = cv.clientHeight;
+  ctx.fillStyle = css('--grass');
+  ctx.fillRect(0, 0, w, h);
+  const tr = net?.track;
+  const shape = tr?.shape || { rx: 300, rz: 180, width: 70 };
+  const v = view(shape);
+  const P = (x, z) => [v.ox + x * v.s, v.oy + z * v.s];
+
+  // 赛道
+  ctx.save();
+  ctx.translate(v.ox, v.oy);
+  ctx.beginPath();
+  ctx.ellipse(0, 0, shape.rx * v.s, shape.rz * v.s, 0, 0, Math.PI * 2);
+  ctx.lineWidth = shape.width * v.s + 4;
+  ctx.strokeStyle = css('--road-edge');
+  ctx.stroke();
+  ctx.lineWidth = shape.width * v.s;
+  ctx.strokeStyle = css('--road');
+  ctx.stroke();
+  ctx.restore();
+
+  // 起终点线
+  const [sx, sy] = P(0, shape.rz);
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(sx - 2, sy - (shape.width / 2) * v.s, 4, shape.width * v.s);
+
+  // 检查门：垂直于赛道的线段，只认正向穿过；下一道要过的高亮
+  const me = net?.me();
+  if (tr?.checkpoints) {
+    tr.checkpoints.forEach((cp, i) => {
+      const lx = cp.tz * cp.r, lz = -cp.tx * cp.r; // 门的方向 = 赛道方向转 90°
+      const [x1, y1] = P(cp.x - lx, cp.z - lz);
+      const [x2, y2] = P(cp.x + lx, cp.z + lz);
+      const next = me && !me.finished && net.phase === 'racing' && i === me.cp;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.strokeStyle = next ? css('--accent') : 'rgba(255,255,255,.35)';
+      ctx.lineWidth = next ? 4 : 1.5;
+      ctx.setLineDash(next ? [] : [4, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    });
+  }
+
+  // 其他玩家（插值后的位置）
+  if (net) {
+    for (const r of net.racers()) {
+      if (r.isMe || r.left) continue;
+      const pose = net.getRemotePose(r.sessionId);
+      if (pose) drawCar(P, pose.x, pose.z, pose.rot, COLORS[r.slot % 4], r.name, r.connected ? 1 : 0.35);
+    }
+  }
+  // 自己
+  if (net?.track) drawCar(P, car.x, car.z, car.rot, COLORS[net.slot % 4], '我', 1, true);
+}
+
+function drawCar(P, x, z, rot, color, label, alpha, mine = false) {
+  const [px, py] = P(x, z);
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(px, py);
+  ctx.rotate(Math.PI / 2 - rot); // 车身沿屏幕 +x 画，转到前进方向 (sin rot, cos rot)
+  ctx.fillStyle = color;
+  ctx.strokeStyle = mine ? css('--ink') : 'rgba(0,0,0,.35)';
+  ctx.lineWidth = mine ? 2 : 1;
+  ctx.beginPath();
+  ctx.roundRect(-10, -6, 20, 12, 3);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,.8)';
+  ctx.fillRect(3, -4, 4, 8);
+  ctx.restore();
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.font = '600 12px -apple-system, "PingFang SC", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = css('--ink');
+  ctx.fillText(label, px, py - 13);
+  ctx.restore();
+}
+
+// ── HUD ──
+const fmt = (ms) => {
+  if (ms == null) return '未完赛';
+  const m = Math.floor(ms / 60000), s = (ms % 60000) / 1000;
+  return `${m}:${s.toFixed(2).padStart(5, '0')}`;
+};
+
+function updateHud() {
+  if (!net || net.phase === 'idle') return;
+  const racers = net.racers();
+  const active = racers.filter((r) => !r.left);
+  const me = net.me();
+  const laps = net.track?.laps ?? 0;
+  const lines = [];
+  let banner = '';
+  let center = '';
+  if (net.phase === 'waiting') {
+    const wait = net.waitLeft();
+    banner = wait > 0
+      ? `已有 ${active.length} 人，再等 ${Math.ceil(wait / 1000)} 秒看还有没有人`
+      : `等待对手加入…（${active.length}/4）`;
+  } else if (net.phase === 'countdown') {
+    const left = net.countdownLeft();
+    center = left > 3000 ? '准备' : String(Math.ceil(left / 1000) || 'GO');
+    banner = `${active.length} 人参赛`;
+  } else if (net.phase === 'racing') {
+    if (net.raceElapsed() < 800) center = 'GO!';
+  }
+  if (me) {
+    lines.push(`圈数 <b>${Math.min(me.lap + 1, laps)}/${laps}</b>　名次 <b>${me.place || '-'}</b>`);
+    lines.push(`用时 <b>${fmt(me.finished ? me.finishMs : net.raceElapsed())}</b>`);
+  }
+  lines.push(`延迟 <b>${net.ping} ms</b>　车速 <b>${Math.round(car.speed)}</b>`);
+  lines.push('<span style="color:var(--muted)">' + active.map((r) => `${r.place || '-'}. ${r.isMe ? '我' : r.name}${r.connected ? '' : '（掉线）'}`).join('　') + '</span>');
+  $('hud').innerHTML = lines.join('<br>');
+  $('banner').textContent = banner;
+  $('center').textContent = center;
+}
+
+function showResults(m) {
+  lastResults = m;
+  const myId = net?.sessionId;
+  $('resultTable').innerHTML = m.results.map((r, i) =>
+    `<tr class="${r.sessionId === myId ? 'me' : ''}"><td>${r.finishMs ? i + 1 : '-'}</td><td>${escapeHtml(r.name)}${r.sessionId === myId ? '（我）' : ''}</td><td style="text-align:right">${fmt(r.finishMs)}</td></tr>`).join('');
+  $('results').style.display = 'grid';
+}
+const escapeHtml = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+// ── 匹配流程 ──
+async function play() {
+  $('play').disabled = true;
+  $('results').style.display = 'none';
+  myFinished = false;
+  const name = $('name').value.trim();
+  try { localStorage.setItem('xihu-name', name); } catch {}
+  if (!net) {
+    net = createRaceNet({ Client: Colyseus.Client, endpoint: ENDPOINT, track: 'test-oval', name });
+    window.__net = net; // 方便在控制台里调试
+    net.on('welcome', () => { if (net.phase !== 'racing') placeOnGrid(); });
+    net.on('phase', (p) => {
+      if (p === 'countdown') placeOnGrid();
+      if (p === 'racing') car.speed = 0;
+    });
+    net.on('finish', (m) => {
+      if (m.isMe) { myFinished = true; $('banner').textContent = `完赛！第 ${m.place} 名，用时 ${fmt(m.finishMs)}`; }
+    });
+    net.on('results', showResults);
+    net.on('drop', () => { $('banner').textContent = '网络断开，正在重连…'; });
+    net.on('reconnect', () => { $('banner').textContent = '已重连'; });
+    net.on('left', () => {
+      $('play').disabled = false;
+      $('play').hidden = false;
+      $('quit').hidden = true;
+      $('hud').textContent = '已离开房间。';
+      $('banner').textContent = '';
+      $('center').textContent = '';
+    });
+  }
+  try {
+    await net.findMatch();
+    $('play').hidden = true;
+    $('quit').hidden = false;
+  } catch (err) {
+    $('play').disabled = false;
+    $('hud').textContent = `匹配失败：${err.message || err}`;
+  }
+}
+
+$('play').onclick = play;
+$('quit').onclick = () => net?.leave();
+$('again').onclick = async () => { await net?.leave(); play(); };
+$('closeResults').onclick = () => { $('results').style.display = 'none'; };
+
+// ── 输入 ──
+const keymap = { ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right' };
+addEventListener('keydown', (e) => { if (keymap[e.code] && e.target.tagName !== 'INPUT') { keys[keymap[e.code]] = true; e.preventDefault(); } });
+addEventListener('keyup', (e) => { if (keymap[e.code]) keys[keymap[e.code]] = false; });
+for (const [id, k] of [['tl', 'left'], ['tr', 'right']]) {
+  const b = $(id);
+  const on = (e) => { e.preventDefault(); keys[k] = true; b.classList.add('on'); };
+  const off = (e) => { e.preventDefault(); keys[k] = false; b.classList.remove('on'); };
+  b.addEventListener('pointerdown', on);
+  b.addEventListener('pointerup', off);
+  b.addEventListener('pointercancel', off);
+  b.addEventListener('pointerleave', off);
+}
+
+// ── 全服人数 ──
+async function pollStatus() {
+  try {
+    const res = await fetch(`${ENDPOINT}/status`);
+    const st = await res.json();
+    $('online').textContent = `当前 ${st.online}/${st.max} 人在线${st.full ? '（已满）' : ''}`;
+  } catch { $('online').textContent = '服务器连不上'; }
+}
+pollStatus();
+setInterval(pollStatus, 3000);
+
+// ── 主循环 ──
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  if (net) stepPhysics(dt);
+  draw();
+  updateHud();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
