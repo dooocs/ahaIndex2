@@ -250,6 +250,65 @@ further east; 庆春路, 邮电路, 解放路, 开元路 and 清波街 cross the
   延安路. Every building is a walk footprint with its height.
 - Cost: build +~0.4 s on the test box; ~10k triangles of buildings, batched.
 
+## Done: 南山路, and two bus lines (1314 and 520) shared by everyone
+
+**南山路.** The empty strip south of 柳浪闻莺 between the lake and the ring road now holds 中国美术学院's
+南山 campus, 浙江美术馆 (`cityArtMuseum`: a low white hall under dark sloping ridges) and a row of small
+cafés with awnings along 南山路 (`cityCafe`). They are `NANSHAN_LOTS`, kept with `CITY_LOTS` in `ALL_LOTS` for pavements and
+the keepout. The ring road is road (no longer stone) all round, and 北山街 is a painted road joined to the ring
+at 湖滨, because the 520 runs along it.
+
+**The lines.** Each line is a closed route on the sphere (`makeRoute`: densified by slerp, offset 1.1 units
+into the right-hand lane, smoothed; corners near the lake are rounded first with `fillet2`), a list of stops
+by distance along it, and three buses with 13 places each.
+
+- **1314** runs the ring road (the equator) eastward: 家, 天街, 文体中心, 西溪湿地, 湖滨·音乐喷泉, 钱王祠,
+  星球背面. Period 197 s over 1257 units.
+- **520** is a great circle at right angles to it (a meridian through 湖滨): up 平海路, a short way along
+  湖滨路 in the opposite lane to the 1314, along 北山街 past 断桥 and 曲院风荷, over 西山 through the saddle
+  between the peaks (`SADDLE`, kept clear of forest), across the north pole, down the far side, across the
+  south pole and back. Stops: 湖滨·平海路, 断桥, 曲院风荷, 星球背面. Period 124.5 s over 1284 units. Where the
+  ground mesh is too coarse to paint a road (the hills, the poles, the far side) it has its own road surface,
+  a 4.8-unit strip that follows the ground (`buildTransit`); trees, grass and rocks keep off it (`BUSWAY`).
+- The lines meet twice: at 湖滨 (stops facing each other across the road) and on the far side (星球背面).
+
+**One timetable for everyone** (`js/bus/timetable.js`, pure, tested). A bus waits 20 s at each stop, then
+eases off and in with a cosine speed ramp (3.5 s each way) and cruises at five times walking speed (50 u/s).
+Its position is a function of time alone: bus k runs the same loop k/3 of a period ahead of bus 0. So every
+visitor computes the same three buses without anyone sending bus positions; all that matters is that
+everyone agrees on the time.
+
+- **Clock** (`js/bus/clock.js`). `serverNow()` is the local clock plus an offset measured from the HTTP `Date`
+  header of a few HEAD requests to the page (cache-busted, `Age` honoured). Each answer bounds the offset
+  to a one-second window; intersecting the windows of nine requests, 140 ms apart, narrows it to well under
+  a second (tested within 60 ms on simulated samples). With no answers it falls back to the local clock.
+- **Who is on which bus** goes through presence: a rider's meta carries `ride: { line, bus, since, u, v }`
+  (sent on getting on and off, and when they move about the deck, at most once a second). The riders of a
+  bus are ordered by `since` (then id); the first 13 have a place (`js/bus/riders.js`). If two people take the
+  last place at once, the later one is set down at once while the doors are open (or at the next stop).
+
+**Getting on and off.** While a bus waits, a ring in the line's colour glows at its front door; walking
+into it gets you on (not in the last second, and not if it is full). On board you walk about the aisle and
+the two door wells (`DECK`, `clampDeck`); the view keeps its angle to the bus's heading, so it does not
+change as the bus turns (the buses are open-topped). Walking into the rear door well while the bus waits at
+a stop sets you down outside it; while it is moving you get a hint instead. A card at the top left shows the
+line, the next stop or the seconds before leaving, and how many are aboard. Other riders are drawn standing
+where they are on their bus. Walk-to and travel buttons are off while riding.
+
+**Stops.** A shelter (platform with a yellow kerb, glass back and roof, bench), a column whose plate shows
+the stop name over the line badge, and a countdown board ("N 秒后到站" / "进站 · 还停 N 秒", the next stop,
+the transfer). Each stop sits on a paved bay that also levels the ground, so the 断桥 stop under 宝石山 stands
+flat.
+
+**Cost.** Each bus is one cloned model (six materials) plus two door leaves; door leaves, route boards and
+countdown boards are only drawn within 80 units of the avatar, and only nearby boards are redrawn (twice a
+second). At 湖滨 that is ~+20–50 meshes in view depending on where the buses are; build time unchanged within
+noise.
+
+**Debug** (`?debug`): `dreamDebug.buses()`, `stops()`, `freeze(t)`, `advance(s)`, `atStop(line, k, i, aboard,
+after, look)`, `meet([[line, stop], …])`, `atShelter(line, i)`, `ride()`, `deck(u, v)`, `hint()`, `stopGround()`,
+`stopWalk()`, `inView()`.
+
 ## Next
 
 1. **Pose and motion modes.** Make the pose `{ p, f }` the single source of truth and derive the planet
