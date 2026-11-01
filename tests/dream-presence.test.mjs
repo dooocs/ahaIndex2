@@ -123,6 +123,20 @@ test('the bus someone rides is shared, and cleared when they get off', async () 
   w.done();
 });
 
+test('a bus sent off early is shared with everyone, newcomers included', async () => {
+  const w = world();
+  const a = w.join('a'), b = w.join('b');
+  await wait(80);
+  const go = { l: '520', b: 1, i: 2, a: 1730000123.5 };
+  a.setProfile({ go });
+  await wait(40);
+  assert.deepEqual(b.peers()[0].go, go);
+  const c = w.join('c');
+  await wait(80);
+  assert.deepEqual(c.peers().find(q => q.id === 'a').go, go);
+  w.done();
+});
+
 test('a late pose after someone left does not bring them back', async () => {
   const w = world();
   const a = w.join('a'), b = w.join('b');
