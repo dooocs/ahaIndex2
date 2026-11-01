@@ -495,8 +495,15 @@ function shoppingStreet(b, scene, track, groundAt) {
     for (let q = -2; q <= 2; q++) { k.box(3, 4, 0.3, 0xffffff, q * 4.5, 9, d / 2 + 0.15); k.add(new THREE.CylinderGeometry(1.5, 1.5, 0.3, 12, 1, false, 0, Math.PI).rotateX(Math.PI / 2).rotateZ(-Math.PI / 2).translate(q * 4.5, 11, d / 2 + 0.15), 0xffffff); }
     k.box(w - 6, 3.8, 0.3, 0xcfe7ea, 0, 2.1, d / 2 + 0.2, { kind: 'GLASS', shade: 0x6f97a6 });
     k.box(w + 1, 0.6, d + 1, 0xe6b8bd, 0, h + 0.3, 0); }
+  // 一块地（含骑楼雨棚）有没有压到赛道：在占地范围里撒点检查
+  const blocked = (cx, cz, w, d, m = 2) => {
+    for (let i = 0; i <= 4; i++) for (let j = 0; j <= 4; j++) if (track.distTo(cx - w / 2 + w * i / 4, cz - d / 2 + d * j / 4, 60) < hw + m) return true;
+    return false;
+  };
   [[686, N, 0, 0xe8e2d4], [642, S, Math.PI, 0xf2eee4], [672, S, Math.PI, 0xe8e2d4], [500, S, Math.PI, 0xe9dccb]].forEach(([x, zf, ry, col], i) => {
-    const w = 26, d = 18, h = 16 + (i % 2) * 8, k = kitAt(b, x, gy(x), zf + (ry ? 1 : -1) * d / 2, ry, 1);
+    const w = 26, d = 18, h = 16 + (i % 2) * 8;
+    if (blocked(x, zf + (ry ? 1 : -1) * (d / 2 - 1.5), w, d + 3)) return;
+    const k = kitAt(b, x, gy(x), zf + (ry ? 1 : -1) * d / 2, ry, 1);
     k.box(w, h, d, col, 0, h / 2, 0, { breakMul: 0.3 });
     k.box(w, 0.6, 3, 0x8a98a2, 0, 4.5, d / 2 + 1.5);
     for (let fy = 7.5; fy < h - 1; fy += 3.6) k.box(w + 0.3, 0.9, d + 0.3, 0x8a98a2, 0, fy, 0, { cast: false, breakMul: 0.1 });
@@ -504,7 +511,10 @@ function shoppingStreet(b, scene, track, groundAt) {
   // 路灯：两侧人行道每 26 米一盏，灯臂伸向路面
   for (let x = 480; x < 700; x += 26) for (const sd of [-1, 1]) {
     if (Math.abs(x - 562) < 12 || Math.abs(x - 558) < 10) continue;   // 别挡住两家旗舰店的大门
-    const zz = z0 + sd * (hw + 2.4), k = kitAt(b, x, gy(x), zz, sd > 0 ? Math.PI : 0, 1);
+    const zz = z0 + sd * (hw + 2.4);
+    // 平海路东头接延安路的弯道一带，路灯会落到赛道上：灯杆和灯臂都要离路面边缘至少 1.5 米
+    if (track.distTo(x, zz, 40) < hw + 1.5 || track.distTo(x, zz - sd * 2.5, 40) < hw + 0.5) continue;
+    const k = kitAt(b, x, gy(x), zz, sd > 0 ? Math.PI : 0, 1);
     k.cyl(0.14, 0.2, 8, 0x5a6168, 0, 4, 0, 8);
     k.box(0.16, 0.16, 2.6, 0x5a6168, 0, 7.9, 1.2);
     k.box(0.9, 0.25, 0.5, 0x3a3f46, 0, 7.8, 2.5);
@@ -518,7 +528,14 @@ function shoppingStreet(b, scene, track, groundAt) {
     k.box(0.5, 6.5, 0.5, 0x8a8f96, 7, 3.25, 2.5);
     signMesh(scene, signTex([['地铁', 96, 82], ['龙翔桥站', 120, 200]], 512, 280, '#c4473a', '#ffffff'), 3.2, 1.75, x + 7, groundAt(x, z) + 6.5, z + 2.5 + 0.3, 0); }
   // 平海路路牌（路口）
-  signMesh(scene, signTex([['平海路', 120, 90], ['PINGHAI RD', 52, 190]], 512, 256, '#2f6f8a', '#ffffff'), 4, 2, 458, groundAt(458, -78) + 5, -78, Math.PI / 2);
+  { // 路口的路牌：从 (458,-78) 往外找一个离路面足够远的位置
+    let sx = 458, sz = -78;
+    for (let r = 0; r < 40 && track.distTo(sx, sz, 60) < hw + 3; r += 2) for (let a = 0; a < 8; a++) {
+      const tx = 458 + Math.cos(a * Math.PI / 4) * r, tz = -78 + Math.sin(a * Math.PI / 4) * r;
+      if (track.distTo(tx, tz, 60) >= hw + 3) { sx = tx; sz = tz; break; }
+    }
+    signMesh(scene, signTex([['平海路', 120, 90], ['PINGHAI RD', 52, 190]], 512, 256, '#2f6f8a', '#ffffff'), 4, 2, sx, groundAt(sx, sz) + 5, sz, Math.PI / 2);
+  }
 }
 
 // 城市：湖滨以东的街区，近湖低、越往东越高
