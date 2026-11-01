@@ -43,7 +43,7 @@ speed. Physics, AI and the camera all live on the plane; only the picture curves
 | `car.js` | car model and the player's handling (see below) |
 | `ai.js` | five AI drivers: corner speed from curvature ahead, racing line, overtaking, visual drifts, occasional nitro |
 | `effects.js`, `audio.js` | drift smoke, flame puffs and skid marks; an original pentatonic 江南-style background loop (plucked lead with echo, pad, bass, light percussion) mixed above the synthesized engine, tyres and wind (WebAudio, no files) |
-| `main.js` | wiring: build, race states, camera, HUD, minimap, captions, adaptive quality |
+| `main.js` | wiring: build, race states, camera, HUD (analog speedometer 0–280 km/h with the 180+ boost zone in red, three nitro bottles under the car that fill as you drift, burn-time bar), minimap, captions, adaptive quality |
 
 Handling: the car's facing `h` and its direction of travel `m` are separate. With grip `m` catches up fast;
 in a drift (Shift + direction) it lags. Top speed is 180 km/h without boost and 260 km/h with any boost (nitro, 小喷,

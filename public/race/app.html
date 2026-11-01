@@ -57,26 +57,31 @@
   #board li { display: flex; gap: 8px; padding: 2px 0; }
   #board li b { font: 600 15px/1.2 var(--num); width: 12px; }
   #board li.me { color: var(--accent); font-weight: 700; }
-  .br { position: absolute; right: 16px; bottom: 16px; padding: 8px 14px 10px; min-width: 170px; }
-  .speed { display: flex; align-items: baseline; gap: 6px; }
-  #kmh { font: 600 54px/0.9 var(--num); min-width: 3ch; text-align: right; }
-  .speed span { font: 600 16px/1 var(--num); color: #5a666c; }
-  /* 氮气：三个槽放在车正下方，漂移时当前那格从下往上灌满，满格发亮 */
-  #nitro { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); display: grid; justify-items: center; gap: 6px; }
-  #nitro .slots { display: flex; gap: 12px; padding: 8px 12px; background: var(--card); border: 2px solid var(--ink); border-radius: 999px; box-shadow: 3px 3px 0 rgba(42, 50, 56, 0.85); }
-  #nitro .slot { position: relative; width: 52px; height: 52px; border: 3px solid var(--ink); border-radius: 50%; overflow: hidden; background: #e9eeee; box-shadow: inset 0 3px 0 rgba(42, 50, 56, 0.18); }
-  #nitro .slot i { position: absolute; left: 0; right: 0; bottom: 0; height: 0; background: linear-gradient(0deg, #2f86c8, #7fd7ff); transition: height .08s linear; }
-  #nitro .slot b { position: absolute; inset: 0; display: grid; place-items: center; font: 600 15px/1 var(--num); letter-spacing: 0.02em; color: rgba(42, 50, 56, 0.35); }
-  #nitro .slot.full { background: #7fd7ff; box-shadow: 0 0 0 4px rgba(127, 215, 255, 0.55), 0 0 18px rgba(127, 215, 255, 0.9); }
-  #nitro .slot.full i { height: 100% !important; }
-  #nitro .slot.full b { color: #fff; text-shadow: 0 1px 0 var(--ink); }
+  /* 车速表：左上角圆形指针表，0–280 km/h，180 以上是红区（只有喷气才进得去） */
+  .dial { position: absolute; left: 16px; top: calc(var(--inset-top) + 108px); width: 190px; height: 190px; border-radius: 50%; }
+  /* 氮气：车正下方三个氮气瓶。漂移时当前那瓶从下往上灌满；满瓶变蓝、亮起闪电；喷气时下面一条蓝条倒计时 */
+  #nitro { position: absolute; left: 50%; bottom: 20px; transform: translateX(-50%); display: grid; justify-items: center; gap: 6px; }
+  #nitro .slots { display: flex; gap: 14px; padding: 8px 16px 6px; background: var(--card); border: 2px solid var(--ink); border-radius: 18px; box-shadow: 3px 3px 0 rgba(42, 50, 56, 0.85); }
+  #nitro .slot { width: 40px; height: 64px; }
+  #nitro .slot svg { width: 100%; height: 100%; overflow: visible; display: block; }
+  #nitro .cap { fill: #9aa4a9; stroke: var(--ink); stroke-width: 2.2; }
+  #nitro .neck { fill: #c9d1d4; stroke: var(--ink); stroke-width: 2.2; }
+  #nitro .body { fill: #e6ecec; }
+  #nitro .liq { fill: #49a7e8; }
+  #nitro .shine { fill: rgba(255, 255, 255, 0.45); }
+  #nitro .bolt { fill: rgba(42, 50, 56, 0.16); }
+  #nitro .outline { fill: none; stroke: var(--ink); stroke-width: 2.6; }
+  #nitro .slot.full .liq { fill: #2f86c8; }
+  #nitro .slot.full .cap { fill: #e8643c; }
+  #nitro .slot.full .bolt { fill: #fffbe8; stroke: var(--ink); stroke-width: 1.4; }
+  #nitro .slot.full svg { filter: drop-shadow(0 0 6px rgba(127, 215, 255, 0.95)); }
   #nitro .slot.pop { animation: pop2 .35s ease-out; }
-  @keyframes pop2 { 0% { transform: scale(1.35); } 100% { transform: scale(1); } }
-  #nitro.burn .slots { border-color: #2f86c8; }
-  #nitro.burn .slot.burning { animation: pulse .18s infinite alternate; }
+  @keyframes pop2 { 0% { transform: scale(1.3) rotate(-6deg); } 100% { transform: scale(1); } }
   @keyframes pulse { to { transform: scale(1.1); } }
-  #nitro .nlabel { font: 700 13px/1 var(--body); letter-spacing: 0.12em; padding: 4px 10px; border-radius: 999px; background: var(--card); border: 1.5px solid var(--ink); }
+  #nitro .nlabel { position: relative; overflow: hidden; font: 700 13px/1 var(--body); letter-spacing: 0.12em; padding: 4px 10px 6px; border-radius: 999px; background: var(--card); border: 1.5px solid var(--ink); }
+  #nitro .nlabel i { position: absolute; left: 0; bottom: 0; height: 3px; width: 0; background: #2f86c8; }
   #nitro.max .nlabel { background: #2f86c8; color: #fff; }
+  #nitro.burn .nlabel { background: #dff3ff; }
   #mini { position: absolute; left: 16px; bottom: 16px; width: 170px; height: 160px; padding: 6px; }
   .toast { position: absolute; left: 50%; top: 30%; transform: translate(-50%, -50%) scale(0.8); font: 900 34px/1 var(--body); letter-spacing: 0.06em; color: #fffaf2;
     -webkit-text-stroke: 2px var(--ink); paint-order: stroke fill; text-shadow: 3px 3px 0 var(--ink); opacity: 0; transition: opacity .15s, transform .15s; white-space: nowrap; }
@@ -111,11 +116,11 @@
   .pad .row { display: flex; gap: 12px; }
   .pad button { width: 76px; height: 76px; border-radius: 50%; border: 2px solid var(--ink); background: rgba(251, 252, 247, 0.55); font: 700 16px/1 var(--body); color: var(--ink); touch-action: none; }
   .pad button.on { background: rgba(232, 100, 60, 0.75); color: #fff; }
-  .touch #mini { width: 128px; height: 120px; left: auto; right: 16px; top: calc(var(--inset-top) + 160px); bottom: auto; }
-  .touch .br { bottom: auto; top: calc(var(--inset-top) + 76px); left: 16px; right: auto; min-width: 120px; }
-  .touch #nitro { bottom: auto; top: calc(var(--inset-top) + 64px); }
-  .touch #nitro .slot { width: 40px; height: 40px; }
-  .touch #kmh { font-size: 36px; }
+  .touch #mini { width: 128px; height: 120px; left: auto; right: 16px; top: calc(var(--inset-top) + 172px); bottom: auto; }
+  .touch .dial { width: 112px; height: 112px; top: calc(var(--inset-top) + 76px); }
+  .touch #nitro { bottom: auto; top: calc(var(--inset-top) + 64px); left: auto; right: 16px; transform: none; }
+  .touch #nitro .slots { gap: 8px; padding: 6px 10px 4px; }
+  .touch #nitro .slot { width: 26px; height: 42px; }
   .touch #mute { bottom: auto; top: calc(var(--inset-top) + 14px); right: 140px; }
   @media (max-width: 640px) { #board { display: none; } .tl .card:nth-child(3) { display: none; } }
 </style>
@@ -156,12 +161,10 @@
   <div id="wrong" hidden>逆行了</div>
   <canvas id="mini" class="card" width="340" height="320"></canvas>
   <div id="nitro" aria-label="氮气">
-    <div class="slots"><div class="slot"><i></i><b>N₂O</b></div><div class="slot"><i></i><b>N₂O</b></div><div class="slot"><i></i><b>N₂O</b></div></div>
-    <div class="nlabel" id="nlabel">漂移集气</div>
+    <div class="slots"><div class="slot"><svg viewBox="0 0 40 64" aria-hidden="true"><defs><clipPath id="nb0"><path d="M8 22Q8 14 20 13Q32 14 32 22L32 56Q32 61 27 61L13 61Q8 61 8 56Z"/></clipPath></defs><rect class="cap" x="12" y="2" width="16" height="6" rx="2"/><rect class="neck" x="16" y="7" width="8" height="7"/><path class="body" d="M8 22Q8 14 20 13Q32 14 32 22L32 56Q32 61 27 61L13 61Q8 61 8 56Z"/><g clip-path="url(#nb0)"><rect class="liq" x="0" y="61" width="40" height="48"/><rect class="shine" x="11" y="16" width="4" height="40" rx="2"/></g><path class="bolt" d="M23 23L14 40L20.5 40L17 54L28 35L21.5 35L25 23Z"/><path class="outline" d="M8 22Q8 14 20 13Q32 14 32 22L32 56Q32 61 27 61L13 61Q8 61 8 56Z"/></svg></div><div class="slot"><svg viewBox="0 0 40 64" aria-hidden="true"><defs><clipPath id="nb1"><path d="M8 22Q8 14 20 13Q32 14 32 22L32 56Q32 61 27 61L13 61Q8 61 8 56Z"/></clipPath></defs><rect class="cap" x="12" y="2" width="16" height="6" rx="2"/><rect class="neck" x="16" y="7" width="8" height="7"/><path class="body" d="M8 22Q8 14 20 13Q32 14 32 22L32 56Q32 61 27 61L13 61Q8 61 8 56Z"/><g clip-path="url(#nb1)"><rect class="liq" x="0" y="61" width="40" height="48"/><rect class="shine" x="11" y="16" width="4" height="40" rx="2"/></g><path class="bolt" d="M23 23L14 40L20.5 40L17 54L28 35L21.5 35L25 23Z"/><path class="outline" d="M8 22Q8 14 20 13Q32 14 32 22L32 56Q32 61 27 61L13 61Q8 61 8 56Z"/></svg></div><div class="slot"><svg viewBox="0 0 40 64" aria-hidden="true"><defs><clipPath id="nb2"><path d="M8 22Q8 14 20 13Q32 14 32 22L32 56Q32 61 27 61L13 61Q8 61 8 56Z"/></clipPath></defs><rect class="cap" x="12" y="2" width="16" height="6" rx="2"/><rect class="neck" x="16" y="7" width="8" height="7"/><path class="body" d="M8 22Q8 14 20 13Q32 14 32 22L32 56Q32 61 27 61L13 61Q8 61 8 56Z"/><g clip-path="url(#nb2)"><rect class="liq" x="0" y="61" width="40" height="48"/><rect class="shine" x="11" y="16" width="4" height="40" rx="2"/></g><path class="bolt" d="M23 23L14 40L20.5 40L17 54L28 35L21.5 35L25 23Z"/><path class="outline" d="M8 22Q8 14 20 13Q32 14 32 22L32 56Q32 61 27 61L13 61Q8 61 8 56Z"/></svg></div></div>
+    <div class="nlabel"><span id="nlabel">漂移集气</span><i id="nburn"></i></div>
   </div>
-  <div class="br card">
-    <div class="speed"><span id="kmh">0</span><span>km/h</span></div>
-  </div>
+  <canvas id="gauge" class="dial" width="200" height="200" aria-label="车速"></canvas>
 </div>
 <button id="mute" aria-label="声音开关" title="声音（M）"><svg viewBox="0 0 24 24" fill="none" stroke="#2a3238" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h4l5-4v14l-5-4H4z"/><path class="wave" d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"/></svg></button>
 

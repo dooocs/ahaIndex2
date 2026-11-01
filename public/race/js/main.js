@@ -194,22 +194,66 @@ function drawMini() {
   }
 }
 const nitroSlots = [...document.querySelectorAll('#nitro .slot')];
+// ---------- 车速表：指针表，0–280 km/h，180 以上红区 ----------
+const dial = $('gauge'), dctx = dial.getContext('2d');
+const DIAL_MAX = 280, A0 = Math.PI * 0.75, SWEEP = Math.PI * 1.5;   // 从左下 135° 顺时针扫到右下 45°
+let dialV = 0, dialSize = 0;
+const ang = v => A0 + SWEEP * Math.min(1, Math.max(0, v / DIAL_MAX));
+function drawDial(kmh, dt, boosting) {
+  const css = dial.clientWidth || 168, pr = Math.min(2, devicePixelRatio || 1), px = Math.round(css * pr);
+  if (px !== dialSize) { dial.width = dial.height = px; dialSize = px; }
+  dialV += (kmh - dialV) * (1 - Math.exp(-16 * dt));    // 指针有一点阻尼，漂移掉速时看得见在往回摆
+  const c = dctx, R = px / 2, cx = R, cy = R;
+  c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, px, px);
+  const s = px / 200;
+  c.setTransform(s, 0, 0, s, 0, 0);
+  // 表盘
+  c.beginPath(); c.arc(100, 100, 96, 0, Math.PI * 2); c.fillStyle = 'rgba(251,252,247,0.94)'; c.fill();
+  c.lineWidth = 4; c.strokeStyle = '#2a3238'; c.stroke();
+  // 红区：180–280
+  c.beginPath(); c.arc(100, 100, 80, ang(180), ang(DIAL_MAX)); c.lineWidth = 14;
+  c.strokeStyle = boosting ? '#e5533d' : 'rgba(229,83,61,0.75)'; c.stroke();
+  // 当前速度的弧（蓝色，进红区后变红）
+  c.beginPath(); c.arc(100, 100, 80, ang(0), ang(Math.min(dialV, 180))); c.lineWidth = 6; c.strokeStyle = 'rgba(63,134,160,0.55)'; c.stroke();
+  // 刻度：每 10 一小格，每 20 一中格，每 40 标数字
+  for (let v = 0; v <= DIAL_MAX; v += 10) {
+    const a = ang(v), major = v % 40 === 0, mid = v % 20 === 0, r1 = 88, r0 = major ? 70 : mid ? 75 : 79;
+    c.beginPath(); c.moveTo(100 + Math.cos(a) * r0, 100 + Math.sin(a) * r0); c.lineTo(100 + Math.cos(a) * r1, 100 + Math.sin(a) * r1);
+    c.lineWidth = major ? 3.2 : mid ? 2.2 : 1.4; c.strokeStyle = v > 180 ? '#b8322a' : '#2a3238'; c.stroke();
+    if (major) {
+      c.font = '600 15px "Barlow Condensed", "Arial Narrow", sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.fillStyle = v > 180 ? '#b8322a' : '#2a3238'; c.fillText(String(v), 100 + Math.cos(a) * 58, 100 + Math.sin(a) * 58);
+    }
+  }
+  // 读数
+  const red = dialV > 181;
+  c.textAlign = 'center'; c.textBaseline = 'alphabetic';
+  c.font = '600 32px "Barlow Condensed", "Arial Narrow", sans-serif'; c.fillStyle = red ? '#d23c2c' : '#2a3238'; c.fillText(String(Math.round(kmh)), 100, 156);
+  c.font = '600 12px "Barlow Condensed", "Arial Narrow", sans-serif'; c.fillStyle = '#5a666c'; c.fillText('km/h', 100, 171);
+  // 指针
+  const a = ang(dialV);
+  c.save(); c.translate(100, 100); c.rotate(a);
+  c.beginPath(); c.moveTo(-14, -4.5); c.lineTo(76, -1.6); c.lineTo(80, 0); c.lineTo(76, 1.6); c.lineTo(-14, 4.5); c.closePath();
+  c.fillStyle = red ? '#e5533d' : '#e8643c'; c.fill(); c.lineWidth = 2; c.strokeStyle = '#2a3238'; c.stroke();
+  c.restore();
+  c.beginPath(); c.arc(100, 100, 9, 0, Math.PI * 2); c.fillStyle = '#2a3238'; c.fill();
+  c.beginPath(); c.arc(100, 100, 3.5, 0, Math.PI * 2); c.fillStyle = '#fbfcf7'; c.fill();
+}
 function updateHud() {
   const rk = ranking(), pos = rk.indexOf(player) + 1;
   $('pos').innerHTML = `${pos}<small>/${cars.length}</small>`;
   $('lap').textContent = `${lapOf(player)}/${LAPS}`;
   $('time').textContent = fmt(raceT);
   $('best').textContent = fmt(bestLap);
-  $('kmh').textContent = Math.round(player.kmh);
-  // 氮气槽：前 nitroN 个满，下一个按集气进度灌水
+  // 氮气瓶：前 nitroN 瓶满，下一瓶按集气进度从下往上灌
   const n = player.nitroN;
   nitroSlots.forEach((el, k) => {
-    const full = k < n;
+    const full = k < n, f = full ? 1 : k === n ? player.gauge : 0;
     if (full && !el.classList.contains('full')) { el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); }
     el.classList.toggle('full', full);
-    el.classList.toggle('burning', k === n && player.nitroT > 0);
-    el.firstElementChild.style.height = full ? '100%' : k === n ? `${(player.gauge * 100).toFixed(1)}%` : '0%';
+    el.querySelector('.liq').setAttribute('y', (61 - 48 * f).toFixed(1));
   });
+  $('nburn').style.width = player.nitroT > 0 ? `${Math.min(100, player.nitroT / 2.6 * 100).toFixed(1)}%` : '0';
   $('nitro').classList.toggle('burn', player.nitroT > 0);
   $('nitro').classList.toggle('max', n >= 3);
   $('nlabel').textContent = player.nitroT > 0 ? '氮气中！' : n >= 3 ? '氮气已满 · 按空格' : n > 0 ? `氮气 ×${n} · 按空格` : '漂移集气';
@@ -409,7 +453,7 @@ function step(dt) {
 
   if (toastT > 0) { toastT -= dt; if (toastT <= 0) toastEl.className = 'toast'; }
   if (spotT > 0) { spotT -= dt; if (spotT <= 0) spotEl.className = 'spot'; }
-  if (state === 'race' || state === 'count' || state === 'finish') { updateHud(); drawMini(); }
+  if (state === 'race' || state === 'count' || state === 'finish') { updateHud(); drawMini(); drawDial(player.kmh, dt, player.boosting); }
 }
 let finishT = 0;
 function showResult() {
