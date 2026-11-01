@@ -231,6 +231,11 @@ export function buildFixture() {
     proc_feed_posts: procFeedPosts,
     people,
     person_profiles: personProfiles,
+    // What the build reads now: the Aliyun sync job's snapshots of the same people.
+    people_snapshots: people.filter((p) => p.status === 'published')
+      .map((p) => snapshotFromRows(p, personProfiles.find((x) => x.person_id === p.id), people)),
+    people_sync_status: [{ id: 1, last_push_at: `${day}T00:00:00Z`, last_pull_at: new Date().toISOString(), last_result: null }],
+    people_outbox: [],
     display_items: displayItems,
     daily_archives: archives,
     tracks,
@@ -241,6 +246,50 @@ export function buildFixture() {
     subject_insights: insights,
     octp_snapshot_raw_items: rawItems,
   };
+}
+
+// The Aliyun person_public() payload for one fixture person: the inverse of
+// src/lib/people-snapshots.ts, so the mock serves what the sync job would.
+const VALENCE = { 转折: 'turn', 争议: 'dispute', 低谷: 'down', 高光: 'up' };
+function isoOf(date) {
+  const [y, m, d] = String(date).split('.');
+  return { date: `${y}-${m ?? '01'}-${d ?? '01'}`, prec: d ? 'day' : m ? 'month' : 'year' };
+}
+export function snapshotFromRows(person, profile, everyone = []) {
+  const published = (slug) => everyone.some((p) => p.slug === slug && p.status === 'published');
+  const born = profile?.born ? String(profile.born).split(' · ') : [];
+  const birth = born[0] ? isoOf(born[0]) : null;
+  const src = (s) => ({ title: s.title, url: s.url, outlet: null, published_at: null, pub_prec: 'day', kind: 'report', lang: 'zh', excerpt: null, quote: null, phase: null, snapshot: null });
+  const payload = {
+    person: {
+      slug: person.slug, name: person.name, name_zh: person.name_zh, nickname: person.nickname ?? null,
+      avatar_url: person.avatar_url ?? null, birth_date: birth?.date ?? null, birth_prec: birth?.prec ?? null,
+      birth_place: born[1] ?? null, death_date: null, death_prec: null, person_group: person.person_group,
+      role: person.role, tier: person.tier, fields: profile?.fields ?? [], take_text: person.take_text,
+      take_updated_at: person.take_updated_at, x_handle: person.x_handle, github_handle: person.github_handle ?? null,
+      former_subjects: person.former_subjects ?? [], added_at: person.added_at,
+      updated_at: [person.updated_at, profile?.updated_at].filter(Boolean).sort().at(-1), sources: [],
+    },
+    dimensions: [], states: [], arcs: [], wealth: [],
+    events: (profile?.events ?? []).map((e, i) => ({
+      short_id: `e${i}`, ...(({ date, prec }) => ({ date, prec }))(isoOf(e.date)), is_approx: false,
+      title: e.title, valence: VALENCE[e.type], importance: e.pinned ? 3 : 2, place: null,
+      then_text: e.body, later_text: null, commentary: e.reading ?? null,
+      sides: e.sides ?? null, steps: e.steps ?? null, pinned: Boolean(e.pinned),
+      my_role: 'protagonist', people: [], links: [], sources: (e.sources ?? []).map(src),
+    })),
+    achievements: (profile?.record ?? []).map((r) => ({ period: r.period, text: r.text, note: r.note ?? null, sources: [] })),
+    labels: (profile?.labels ?? []).map((l) => ({ text: l.text, given_by: l.by, sources: l.url ? [src({ title: l.text, url: l.url })] : [] })),
+    stances: (profile?.stances ?? []).map((s) => ({
+      axis: { slug: `${s.left}-${s.right}`, left: s.left, right: s.right }, position: s.position,
+      previous_position: s.was ?? null, note: s.note,
+      others: (s.others ?? []).map((o) => ({ slug: null, name: o.name, name_zh: null, position: o.position })),
+      sources: s.source ? [src(s.source)] : [],
+    })),
+    comparisons: (profile?.compare ?? []).map((c) => ({ slug: c.slug && published(c.slug) ? c.slug : null, name: c.name, why: c.why, sources: [] })),
+    generated_at: person.updated_at,
+  };
+  return { person_id: person.id, slug: person.slug, payload, synced_at: person.updated_at };
 }
 
 function parseValue(raw) {

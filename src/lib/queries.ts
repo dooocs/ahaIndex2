@@ -5,6 +5,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { fetchProjectHeatmapData } from './project-heatmap.ts';
 import type { PersonRow, ProfileRow } from './people.ts';
+import { rowsFromSnapshots, type SnapshotRow } from './people-snapshots.ts';
 import type {
   DailyArchive,
   ProcessedItem,
@@ -215,43 +216,38 @@ export async function getTracks(db: Db): Promise<TrackInfo[]> {
 
 // ─── People ─────────────────────────────────────────
 
-const PEOPLE_BASE_COLUMNS = 'id, slug, name, name_zh, x_handle, person_group, role, tier, take_text, take_updated_at, status, former_subjects, added_at, updated_at';
-// Added by sql/people/003_avatars.sql and 004_nickname.sql; each is read only
-// once its migration is in (a missing column falls back to the shorter list).
-const PEOPLE_AVATAR_COLUMNS = `${PEOPLE_BASE_COLUMNS}, avatar_url, github_handle`;
-const PEOPLE_COLUMNS = `${PEOPLE_AVATAR_COLUMNS}, nickname`;
-
-function isMissingColumnError(error: unknown): boolean {
-  const err = error as { code?: string; message?: string } | null;
-  return Boolean(err && (err.code === '42703' || /column .* does not exist/i.test(err.message ?? '')));
-}
-const PROFILE_COLUMNS = 'person_id, born, fields, events, record, labels, stances, compare, updated_at';
-
 /**
- * Published people and their profiles (sql/people/). Before the tables exist
- * both are empty, so deploys keep working until the migration is applied.
+ * Published people as the old people / person_profiles rows, rebuilt from
+ * people_snapshots (src/lib/people-snapshots.ts). The people themselves are
+ * edited in the Aliyun database and synced here by its pg_cron job
+ * (docs/people.md). Before the table exists the list is empty, so deploys
+ * keep working.
  */
 export async function getPeopleRows(db: Db): Promise<{ people: PersonRow[]; profiles: ProfileRow[] }> {
   try {
-    const read = (columns: string) => fetchAllRows<PersonRow>((from, to) =>
-      db.from('people').select(columns).eq('status', 'published').order('slug', { ascending: true }).range(from, to) as unknown as PageResult<PersonRow>,
+    const snapshots = await fetchAllRows<SnapshotRow>((from, to) =>
+      db.from('people_snapshots').select('person_id, slug, payload, synced_at')
+        .order('slug', { ascending: true }).range(from, to) as unknown as PageResult<SnapshotRow>,
     );
-    const fallback = (next: () => Promise<PersonRow[]>) => (error: unknown) => {
-      if (isMissingColumnError(error)) return next();
-      throw error;
-    };
-    const people = await read(PEOPLE_COLUMNS)
-      .catch(fallback(() => read(PEOPLE_AVATAR_COLUMNS)
-        .catch(fallback(() => read(PEOPLE_BASE_COLUMNS)))));
-    const profiles: ProfileRow[] = [];
-    for (const batch of chunkValues(people.map((p) => p.id), 100)) {
-      profiles.push(...await fetchAllRows<ProfileRow>((from, to) =>
-        db.from('person_profiles').select(PROFILE_COLUMNS).in('person_id', batch).order('person_id', { ascending: true }).range(from, to),
-      ));
-    }
-    return { people, profiles };
+    return rowsFromSnapshots(snapshots);
   } catch (error) {
     if (isMissingRelationError(error)) return { people: [], profiles: [] };
     throw error;
   }
+}
+
+/**
+ * When the Aliyun sync job last reached this database: its pull runs every
+ * 10 minutes even when nothing changed, so this is its heartbeat (null before
+ * the first run).
+ */
+export async function getPeopleSyncSeenAt(db: Db): Promise<string | null> {
+  const { data, error } = await db.from('people_sync_status').select('last_push_at, last_pull_at').eq('id', 1).limit(1);
+  if (error) {
+    if (isMissingRelationError(error)) return null;
+    throw error;
+  }
+  const row = (data as { last_push_at: string | null; last_pull_at: string | null }[] | null)?.[0];
+  const seen = [row?.last_push_at, row?.last_pull_at].filter((v): v is string => Boolean(v)).sort().at(-1);
+  return seen ?? null;
 }
