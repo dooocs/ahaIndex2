@@ -231,6 +231,25 @@ and beside 南山路 and the avatar disappeared behind their crowns.
   `normalMat` and then the tree layer with `normalCutMat` (the same fade injected into MeshNormalMaterial), so
   a faded tree leaves no ink. Shadows are untouched. `updateCut()` sets the uniforms once a frame.
 
+## Done: 湖滨, a city on 西湖's east side
+
+After a map of the 湖滨 商圈, across 湖滨路 (here the ring road) from the lake: 平海路 meets the lake at the music
+fountain, with the glass store and the in77 blocks either side of it; 东坡路 and 延安路 run parallel to 湖滨路
+further east; 庆春路, 邮电路, 解放路, 开元路 and 清波街 cross them. 君悦 stands to the north, 东坡大剧院 and
+杭州解百 behind in77, 中国美术学院 to the south, and 吴山 with 城隍阁 above the old houses of 河坊街. A row of
+12–20-floor towers beyond 延安路 gives the skyline seen from the lake.
+
+- Plots are data (`CITY_LOTS`: kind, x, z, w, d, floors, tone) in three rows between the streets; builders per
+  kind (`cityMall`, `cityTower`, `cityHotel`, `cityDept`, `cityTheatre`, `cityCampus`, `buildJiangnan` with a site
+  and no water steps, `cityPavilionTower` for 城隍阁). Buildings keep the planet's scale (a floor is 0.46 units),
+  not the map's. No logos or lettering.
+- Pavements round every plot come from a per-planet `stoneExtra(d)` hook in `stoneW` (one `local()` call and a
+  bounding test per ground vertex), not from dozens of `STONE_RECTS`, each of which costs a `local()` per vertex.
+- The lake's flat area (`lakeReach`) and its density area (`LAKE_AREA`) reach over the city; 吴山 is a bump in
+  `lakeShape`. Meadow trees, bushes and rocks keep out of the city except on 吴山; plane trees line 东坡路 and
+  延安路. Every building is a walk footprint with its height.
+- Cost: build +~0.4 s on the test box; ~10k triangles of buildings, batched.
+
 ## Next
 
 1. **Pose and motion modes.** Make the pose `{ p, f }` the single source of truth and derive the planet
