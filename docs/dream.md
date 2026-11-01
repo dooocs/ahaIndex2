@@ -53,7 +53,7 @@ it and to walk against it. The planet's rotation stays the source of truth for t
 (the autopilot drives it directly); `walkBy()` reads it as a pose, calls the controller and writes it
 back.
 
-## Done: a planet twice the size at the same cost (杭州, R 50 → 100)
+## Done: a planet twice the size at the same cost (杭州, R 50 → 100; now R = 200, see 西湖 below)
 
 Measured before changing anything (headless Chromium, CPU build time; triangle and draw-call counts are
 hardware-independent): at R = 50 the five places together cost 0.13 s of a 1.4 s build. The rest was the
@@ -160,6 +160,58 @@ split → look, below → stick) and keeps it until it lifts, so a thumb on the 
 view work together and nothing can make the avatar jump. Footprints can carry a height (`{ h }`); the
 camera walks back along the ground behind the avatar and, if something tall would hide it, comes forward
 at the same height and aims nearer (`occluderHeight`, no mesh raycasts).
+
+## Done: 西湖 at eight times the size on a planet of R = 200, with an overview
+
+西湖 is traced from a north-up map of the real lake: `mp(px, py)` turns the map's pixels into the lake site's
+plane (x north, z east, `LK_PX` = 8.5 pixels a unit, 1 unit ≈ 25 m), so the water is about 134 × 104 units —
+eight times the first 16 × 13 pond. The ring road is 湖滨路 / 南山路 on the east shore (`roadZ` 62).
+Geography scales with the map (outline, islands, ponds, hills); what people walk on and buildings keep a
+human size; the pagodas are drawn 2.1× so they read across the water. (A 4× version on R = 100 came first
+and was never shipped.)
+
+- **Planet.** R 100 → 200. The other places keep their spacing in units (66, 117, 127 units apart); 西湖 is
+  172 units past 西溪 so its hills stay clear of it, and the ~780 units from 西湖 round to home are free for
+  new places. Ring-road arcs are cut into ≤ 60° pieces (an arc always takes the short way round). Culling
+  patches stop at N = 6 (N = 8 at R = 200 added ~240 draw calls a view). Scatter attempts scale with the
+  planet (`TRIES`); the loops stop as soon as the counts are reached.
+- **Water** is one signed distance, `lakeSd`: the shore outline (外湖, 北里湖, 西里湖, 岳湖), the ponds west
+  of 杨公堤 (茅家埠, 乌龟潭, 金沙港, 浴鹄湾) and 花港观鱼's fish pond, and the channels linking the ponds to
+  西里湖. `lakeLand` adds what stands in the water: 苏堤 and 白堤 (~1.4 units wide, gaps at their bridges),
+  孤山, 小瀛洲 (a ring with 田字 dikes), 湖心亭 and 阮公墩. `lakeHills` raises 宝石山, 夕照山, 南屏山, the 西山
+  and the two peaks of 双峰插云 away from the water, never on the city side. `lakeReach` also fades out
+  before `local()` stops answering (0.96 R from the site's centre), so the far corners don't step.
+- **Bridges** are walk decks: 苏堤's six, 锦带桥, 断桥, 西泠桥 and one where each channel passes under 杨公堤.
+  Every causeway and bridge is walkable end to end (checked with `dreamDebug.walkable`).
+- **Places**: 雷峰塔 (雷峰夕照), 保俶塔, 三潭印月, 平湖秋月, 曲院风荷 (lotus), 花港观鱼 (koi), 柳浪闻莺 (a willow
+  grove), 净慈寺 (南屏晚钟, with its bell tower), 钱王祠 behind its archway, stele pavilions for 苏堤春晓,
+  断桥残雪 and 双峰插云, the music fountain off 湖滨 (61 jets over 14 units, animated in `updateFountain`) and
+  a glass store across the road from it (no logo or brand marks). 21 landmark tags.
+- **Ground**: `ringSphere(step, win)` keeps one patch (lon ± H, up to z1) at 0.55-unit spacing over the
+  lake and its near hills; its rows exist only inside the patch and meet the ordinary rows along the patch's
+  two edge meridians, each strip fanning in the other set's edge vertices, so the mesh stays watertight
+  (checked: no non-manifold edges). Outside the band the spacing is 1.6, 2.4 from ~110 units out and 3.4
+  near the poles. About 593k ground vertices (R = 100 had 262k).
+- **Overview** (`W.overview`): while the avatar is anywhere round the lake a 俯瞰西湖 button shows. The camera
+  rises (zoom 10, pitch 1.22), turns toward the lake's middle and aims 42 units out; drag still turns and
+  tilts it (pitch 0.5–1.35), the wheel or a pinch zooms within it, labels reach further, and the clip planes
+  and the ink-line fade follow the camera's distance. Walking (keys, stick, a click, a stop) brings it back
+  down. The sun's shadow box widens over the lake; while the view holds still it is redrawn every sixth frame.
+- **Costs** (headless test box, so absolute numbers are slow; compare ratios): build 3.5 → 4.8 s, of which
+  the ground is ~2.1 s (more vertices on a bigger sphere). Main pass at 家 ~0.65–0.75M triangles (0.54M on
+  the 4× version), at the lake 1.1–1.25M (0.78M), overview ~1.35M. Draw calls ~700 (overview ~1,500 in a
+  frame that redraws shadows).
+
+On a planet of R = 200 the camera at a stop sees ~56 units to the horizon, while the lake is ~104 units
+across, so from the shore you see the near half and the far shore's hills and pagodas over the curve. The
+overview is how you see all of it.
+
+Next for cost, if needed: give `ringSphere` several windows (fine near places, coarser along the empty arcs
+of the band), which would take ~150k ground vertices off the build.
+
+`?debug` also exposes `window.dreamDebug`: `view(site, at, look, zoom, pitch)` to stand anywhere,
+`overview(on)`, `settle()` (skip the easing), `stats()`, `budget()` (triangles on the planet by kind),
+`drawn()` (triangles drawn in the current view by kind), `tags()` and `walkable(site, points)`.
 
 ## Next
 
