@@ -122,7 +122,7 @@ export class PlayerCar {
     this.nitroN--;
     const dbl = this.time - this.lastSmall < 0.45;   // 小喷后紧接氮气 = 双喷
     this.nitroT = Math.min(5, Math.max(0, this.nitroT) + TUNE.nitroTime + (dbl ? 0.5 : 0));
-    this.s = Math.max(this.s, 20) + (dbl ? 7 : 4);
+    this.s += dbl ? 5 : 3;   // 点火那一下推一把（+11～18 km/h），不再把静止的车直接拉到 86 km/h
     // 喷的那一下停止摆动：结束漂移，运动方向立刻对齐车头，按车头方向冲出去（喷着的时候还可以再漂）
     if (this.drift) { this.drift = false; this.emit('driftEnd', { t: this.driftT }); }
     this.m = this.h; this.slip = 0;
@@ -188,16 +188,19 @@ export class PlayerCar {
 
     // Shift + 方向：进入漂移
     if (!this.drift && inp.drift && steerIn !== 0 && this.s > T.driftMin && ground) {
-      this.drift = true; this.driftDir = steerIn; this.driftT = 0; this.release = 0; this.window = 0;
-      this.h += steerIn * 0.08;
+      this.drift = true; this.driftDir = steerIn; this.driftT = 0; this.release = 0; this.window = 0; this.heldT = 0;
+      this.h += steerIn * 0.04;
       this.emit('driftStart');
     }
     if (this.drift) {
-      const align = steerIn * this.driftDir, held = inp.drift;
+      const align = steerIn * this.driftDir, held = inp.drift && this.release === 0;   // 松开过一次就不再续上
       this.release = held ? 0 : this.release + dt;
-      const yaw = held ? T.driftYaw + T.driftYawAlign * align : (0.4 + 0.9 * align) * Math.exp(-2.4 * this.release);
+      if (held) this.heldT += dt;
+      // 松手后的“余滑”跟按了多久成正比：点一下只轻轻飘一下，马上回正；按得久才会在松手后继续甩一段
+      const commit = clamp((this.heldT - 0.12) / 0.6, 0, 1);
+      const yaw = held ? T.driftYaw + T.driftYawAlign * align : (0.4 + 0.9 * align) * commit * Math.exp(-3 * this.release);
       this.h += this.driftDir * yaw * clamp(this.s / 26, 0.35, 1) * dt * (ground ? 1 : 0.4);
-      const k = held ? T.driftGrip : T.driftRelease;
+      const k = held ? T.driftGrip : T.driftRelease * (1 + 2.5 * (1 - commit));
       this.m += wrap(this.h - this.m) * (1 - Math.exp(-k * dt));
       let a = wrap(this.h - this.m);
       if (Math.abs(a) > T.maxDrift) { this.m = this.h - Math.sign(a) * T.maxDrift; a = Math.sign(a) * T.maxDrift; }
@@ -212,7 +215,7 @@ export class PlayerCar {
         }
       }
       this.driftT += dt;
-      if ((!held && (Math.abs(a) < 0.09 || (align < 0 && Math.abs(a) < 0.25))) || this.s < 7) this.endDrift(this.s >= 7);
+      if ((!held && (Math.abs(a) < 0.09 + 0.07 * (1 - commit) || (align < 0 && Math.abs(a) < 0.25))) || this.s < 7) this.endDrift(this.s >= 7);
     } else {
       this.slip = damp(this.slip, 0, 10, dt);
       const dir = this.s >= 0 ? 1 : -1, sp = Math.abs(this.s);

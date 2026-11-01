@@ -47,14 +47,18 @@ speed. Physics, AI and the camera all live on the plane; only the picture curves
 
 Handling: the car's facing `h` and its direction of travel `m` are separate. With grip `m` catches up fast;
 in a drift (Shift + direction) it lags. Top speed is 180 km/h without boost and 260 km/h with any boost (nitro, 小喷,
-boost pad, start boost); nitro pushes at about 2.6× normal thrust, so 100 km/h comes in 0.6 s instead of 1.5 s.
+boost pad, start boost); nitro pushes at about 2.6× normal thrust plus a +11 km/h kick when it fires. From standstill:
+0→100 km/h in 1.5 s and 0→180 in 4.1 s without nitro; 0→100 in 0.5 s, 0→180 in 0.9 s and 0→260 in 1.7 s on nitro
+(100→180 takes 2.6 s without, 0.4 s with).
 Space (or Ctrl) fires nitro whenever one is stored, including while one is already burning (the time adds up, to at
 most 5 s). The moment it fires it ends any drift and snaps the travel direction to where the nose points — drift
 round, point the nose at the exit, fire. While it burns the tyres grip fully when not drifting (no slide, steering
 at 72 %), and you can start a new drift; the nitro's thrust (cut to 30 % like any throttle in a drift) still pushes,
 so a drift under nitro sheds far less speed (260 → ~230 km/h over 1 s, against 180 → ~140 km/h without). Drifting costs speed: drag of 3 + 8·sin(slip) + 0.2·v·sin(slip) m/s² with throttle cut to 30 %, so the faster
 you enter and the longer you hold it, the more you lose: a 1 s drift takes 80 → 66, 120 → 95, 180 → 140 km/h. The gauge only fills on a real drift (slip above
-~6° and held longer than 0.25 s); three nitros can be stored, shown as three slots under the car. Releasing a clean
+~6° and held longer than 0.25 s); three nitros can be stored, shown as three slots under the car. The slide after you let go
+scales with how long you held the drift: a tap (≤0.12 s) is a small flick of ~10° that straightens at once, a 0.3 s
+drift slides on 0.1 s, a 1 s drift about 0.5 s. Releasing a clean
 drift opens a 0.5 s window for 小喷 (↑), a small top-up that never outruns not drifting; nitro right after it is 双喷.
 Crests launch the car when v²·(−κ) > g — the northern 杨公堤 bridges at ~140 km/h, the short southern ones at
 ~105 km/h — and a landing opens a 落地喷 window.
