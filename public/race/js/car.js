@@ -1,6 +1,6 @@
 // 车：卡通敞篷小车 + 戴头盔的车手（toon 材质，描线后像手办），以及玩家车的操控物理。
 // 物理是“贴赛道”的街机模型：位置在平面上自由积分，每帧投影回赛道求路面高度、护栏和腾空。
-// 车头朝向 h 与运动方向 m 分开：按住漂移时有侧滑；松开当帧咬住地面；反打方向可收住漂移角。
+// 车头朝向 h 与运动方向 m 分开：抓地时 m 很快追上 h；漂移时 m 慢慢跟，二者之差就是漂移角，漂移角越大集气越快。
 import * as THREE from 'three';
 import { toon, mergeColored } from './toon.js';
 import { damp } from './noise.js';
@@ -9,20 +9,15 @@ const wrap = a => { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 
 export const TUNE = {
+  // 兼容现有 ?auto 车手的目标速度计算；玩家物理恢复旧版，不使用此横向力上限。
+  latGrip: 22,
   // 不喷气最高 180 km/h（50 m/s）；喷气（氮气、小喷、加速带、起步）最高 260 km/h（72.2 m/s）
-  vmax: 50, vmaxBoost: 72.2, accel: 16.2, nitroAccel: 27.7, reverseMax: 10,   // 0→100：不喷 1.9 s（小米 SU7 Ultra 1.98 s），喷氮气 0.9 s
-  // 刹车按小米 SU7 Ultra：100→0 30.8 m ≈ 12.5 m/s²，180→0 约 100 m / 4 s；松油门滑行：180 时约 2.5 m/s²
-  brake: 12.5, roll: 1.0, rollV: 0.03,
-  // 街机式抓地：大多数弯可直接转向，发卡弯仍须减速，松方向后快速回正。
-  latGrip: 22, brakeWhileTurning: 0.7, understeerDrag: 1.6,
-  turn: 2.1, grip: 18, nitroTurn: 0.85,
-  // 漂移比普通抓地转得更紧，但会损失速度；高手可反打方向控角度。
-  driftLat: 31, driftDecelMax: 11.5, driftMin: 10,
-  driftYaw: 1.55, driftYawAlign: 0.35, driftGrip: 3.6, maxDrift: 0.68,
-  driftDrag: 3.0, driftDragAngle: 9, driftDragSpeed: 0.2,
-  driftThrottle: 0.55, gaugeRate: 0.38, nitroTime: 2.6, smallWindow: 0.5,
-  // 首次斜擦保速；持续压墙时摩擦逐渐增加，不能借护栏全油门过弯。
-  wallDrag: 2.0, wallFriction: 0.1, wallRub: 18, wallRubDelay: 0.3, gravity: 30,
+  vmax: 50, vmaxBoost: 72.2, accel: 16.2, nitroAccel: 27.7, brake: 40, reverseMax: 10, roll: 2.0,   // 0→100：不喷 1.9 s，喷氮气 0.9 s
+  turn: 1.75, grip: 11, nitroTurn: 0.72,
+  driftMin: 12, driftYaw: 1.35, driftYawAlign: 0.8, driftGrip: 1.9, driftRelease: 5.5, maxDrift: 1.1,
+  // 漂移掉速：基础 + 随漂移角、随车速增长；漂移角越大集气越快，但也掉得越多
+  driftDrag: 4.5, driftDragAngle: 12, driftDragSpeed: 0.3,
+  driftThrottle: 0.3, gaugeRate: 0.3, nitroTime: 2.6, smallWindow: 0.5, gravity: 30,
 };
 
 // ---------- 模型 ----------
@@ -114,9 +109,9 @@ export class PlayerCar {
     const s = this.track.sample(d, {});
     this.x = s.x + s.rx * lat; this.z = s.z + s.rz * lat; this.y = this.track.surfaceY(s, lat);
     this.h = this.m = s.hd; this.s = 0; this.vy = 0; this.air = false; this.airT = 0;
-    this.steer = 0; this.drift = false; this.driftDir = 0; this.driftT = 0; this.lastDriftT = 0; this.slip = 0;
+    this.steer = 0; this.drift = false; this.driftDir = 0; this.driftT = 0; this.lastDriftT = 0; this.slip = 0; this.release = 0;
     this.gauge = 0; this.nitroN = 0; this.nitroT = 0; this.smallT = 0; this.smallPow = 0; this.window = 0; this.windowKind = '';
-    this.padT = 0; this.startT = 0; this.hint = -1; this.wrongT = 0; this.impact = 0; this.wallContact = false; this.wallT = 0; this.lastSmall = -9; this.time = 0;
+    this.padT = 0; this.startT = 0; this.hint = -1; this.wrongT = 0; this.impact = 0; this.lastSmall = -9; this.time = 0;
     this.track.project(this.x, this.z, -1, this.proj);
     this.hint = this.proj.i; this.d = this.proj.d; this.lat = this.proj.lat;
   }
@@ -148,7 +143,7 @@ export class PlayerCar {
     this.time += dt;
     if (!active) inp = IDLE;
     const steerIn = (inp.left ? 1 : 0) - (inp.right ? 1 : 0);
-    this.steer = damp(this.steer, steerIn, steerIn === 0 ? 26 : 17, dt);
+    this.steer = damp(this.steer, steerIn, 12, dt);
 
     let vmax = T.vmax, acc = T.accel;
     const nitro = this.nitroT > 0;
@@ -175,55 +170,46 @@ export class PlayerCar {
     if (inp.nitroPressed) this.fireNitro();
 
     const ground = !this.air;
-    this.braking = false; this.under = 0; this.brakeDec = 0;
     if (ground) {
       if (inp.up) {
         if (this.s < 0) this.s += T.brake * dt;
         // 喷气时几乎全程满推力，不喷气时越接近极速推力越小
-        // 漂移中轮胎在侧滑，油门按 driftThrottle 保留一部分推力
+        // 漂移中轮胎在侧滑，油门只有三成推力
         else if (this.s < vmax) this.s += acc * (this.drift ? T.driftThrottle : 1) * (1 - (this.s / vmax) ** (nitro ? 6 : 2) * 0.82) * dt;
       } else if (inp.down) {
-        if (this.s > 0.5) {
-          const u = Math.min(1, this.latUse || 0);
-          this.brakeDec = T.brake * Math.sqrt(1 - T.brakeWhileTurning * u * u);
-          this.s = Math.max(0, this.s - this.brakeDec * dt); this.braking = true;
-        } else this.s = Math.max(-T.reverseMax, this.s - 8 * dt);
+        if (this.s > 0.5) this.s -= T.brake * dt; else this.s = Math.max(-T.reverseMax, this.s - 14 * dt);
       } else if (nitro) {
         this.s += acc * 0.85 * (1 - (this.s / vmax) ** 6) * dt;   // 喷气中不踩油门也照样往前推
       } else {
-        const dec = (T.roll + Math.abs(this.s) * T.rollV) * dt;
+        const dec = (T.roll + Math.abs(this.s) * 0.05) * dt;
         this.s = Math.abs(this.s) <= dec ? 0 : this.s - Math.sign(this.s) * dec;
       }
       if (this.s > vmax) this.s -= (this.s - vmax) * (nitro ? 3 : 1.4) * dt;
       this.s -= tr.slope[this.hint] * Math.cos(this.h - tr.hd[this.hint]) * 7 * dt;
     }
 
-    // 释放 Shift 立即退出漂移并回到抓地模式，不再有松键余滑。
-    if (this.drift && (!inp.drift || this.s < 7)) {
-      this.endDrift(this.s >= 7);
-      this.m = this.h; this.slip = 0;
-    }
+    // Shift + 方向：进入漂移
     if (!this.drift && inp.drift && steerIn !== 0 && this.s > T.driftMin && ground) {
-      this.drift = true; this.driftDir = steerIn; this.driftT = 0; this.window = 0;
+      this.drift = true; this.driftDir = steerIn; this.driftT = 0; this.release = 0; this.window = 0; this.heldT = 0;
       this.h += steerIn * 0.04;
       this.emit('driftStart');
     }
     if (this.drift) {
-      this.latUse = 1;
-      const align = steerIn * this.driftDir;
-      // 顺打加深弯度、放开方向盘维持小角度、反打则主动收住甩尾。
-      const yaw = T.driftYaw * align + T.driftYawAlign;
+      const align = steerIn * this.driftDir, held = inp.drift && this.release === 0;   // 松开过一次就不再续上
+      this.release = held ? 0 : this.release + dt;
+      if (held) this.heldT += dt;
+      // 松手后的“余滑”跟按了多久成正比：点一下只轻轻飘一下，马上回正；按得久才会在松手后继续甩一段
+      const commit = clamp((this.heldT - 0.12) / 0.6, 0, 1);
+      const yaw = held ? T.driftYaw + T.driftYawAlign * align : (0.4 + 0.9 * align) * commit * Math.exp(-3 * this.release);
       this.h += this.driftDir * yaw * clamp(this.s / 26, 0.35, 1) * dt * (ground ? 1 : 0.4);
-      const mCap = T.driftLat / Math.max(Math.abs(this.s), 4) * dt;
-      this.m += clamp(wrap(this.h - this.m) * (1 - Math.exp(-T.driftGrip * dt)), -mCap, mCap);
+      const k = held ? T.driftGrip : T.driftRelease * (1 + 2.5 * (1 - commit));
+      this.m += wrap(this.h - this.m) * (1 - Math.exp(-k * dt));
       let a = wrap(this.h - this.m);
-      if (Math.abs(a) > T.maxDrift) { this.h = this.m + Math.sign(a) * T.maxDrift; a = Math.sign(a) * T.maxDrift; }
+      if (Math.abs(a) > T.maxDrift) { this.m = this.h - Math.sign(a) * T.maxDrift; a = Math.sign(a) * T.maxDrift; }
       this.slip = a;
       const sa = Math.abs(Math.sin(a));
       if (ground) {
-        // 侧滑的减速和刹车加起来不超过轮胎能给的（≈ ABS 刹车），漂移不是更猛的刹车，只是能拐得更急
-        const drag = T.driftDrag + T.driftDragAngle * sa + T.driftDragSpeed * this.s * sa;
-        this.s -= Math.max(0, Math.min(drag, T.driftDecelMax - this.brakeDec)) * dt;
+        this.s -= (T.driftDrag + T.driftDragAngle * sa + T.driftDragSpeed * this.s * sa) * dt;
         // 集气只看真正的漂移：角度小于 ~6° 不集气、点一下（0.25 s 以内）不集气；角度越大越快，同时也掉速越多
         this.gauge += dt * T.gaugeRate * 2.2 * clamp((sa - 0.1) / 0.5, 0, 1) * clamp((this.driftT - 0.25) / 0.3, 0, 1) * clamp(this.s / 34, 0.3, 1.1);
         while (this.gauge >= 1) {
@@ -231,27 +217,14 @@ export class PlayerCar {
         }
       }
       this.driftT += dt;
-      if (this.s < 7) { this.endDrift(false); this.m = this.h; this.slip = 0; }
+      if ((!held && (Math.abs(a) < 0.09 + 0.07 * (1 - commit) || (align < 0 && Math.abs(a) < 0.25))) || this.s < 7) this.endDrift(this.s >= 7);
     } else {
       this.slip = damp(this.slip, 0, 10, dt);
       const dir = this.s >= 0 ? 1 : -1, sp = Math.abs(this.s);
-      // 方向盘能给的转向（低速时的手感），和轮胎能给的横向力：v·ω ≤ 横向抓地。刹车占掉一部分抓地（摩擦圆，ABS 留一点转向）
-      const turn = T.turn * clamp(sp / 9, 0, 1) * (nitro ? T.nitroTurn : 1);
-      const latCap = T.latGrip;
-      const wCap = latCap / Math.max(sp, 1), want = this.steer * turn;
-      const w = clamp(want, -wCap, wCap);
-      this.latUse = Math.abs(w) * sp / T.latGrip;
-      this.h += w * dt * dir * (ground ? 1 : 0.35);
-      // 推头：方向打得比轮胎能给的多，车不会更急地拐，只会尖叫、掉速
-      if (ground && sp > 8 && Math.abs(want) > wCap * 1.05) {
-        this.under = clamp((Math.abs(want) - wCap) / wCap, 0, 1);
-        this.s -= Math.sign(this.s) * T.understeerDrag * this.under * dt;
-      }
-      // 喷气时轮胎完全咬住：车往车头方向走，没有甩尾摆动；其余时候行进方向同样受横向抓地限制
-      if (this.s >= 0) {
-        const mCap = (latCap + 2) / Math.max(sp, 4) * dt;
-        this.m += nitro ? wrap(this.h - this.m) : clamp(wrap(this.h - this.m) * (1 - Math.exp(-T.grip * dt)), -mCap, mCap);
-      } else this.m = this.h;
+      const turn = T.turn * clamp(sp / 9, 0, 1) * (1 - 0.5 * clamp(sp / T.vmax, 0, 1.3)) * (nitro ? T.nitroTurn : 1);
+      this.h += this.steer * turn * dt * dir * (ground ? 1 : 0.35);
+      // 喷气时轮胎完全咬住：车往车头方向走，没有甩尾摆动
+      if (this.s >= 0) this.m += wrap(this.h - this.m) * (nitro ? 1 : 1 - Math.exp(-T.grip * dt)); else this.m = this.h;
     }
 
     // 平面积分
@@ -261,41 +234,28 @@ export class PlayerCar {
     const p = tr.project(this.x, this.z, this.hint, this.proj);
     this.hint = p.i; this.d = p.d;
 
-    // 护栏：推回路内，去掉法向速度，保留切向速度，不再让浅角擦墙突然减速。
+    // 护栏：把车推回路内，去掉撞墙方向的速度，车头顺着墙摆正
     const lim = tr.halfW - 1.15;
     this.impact = 0;
     if (Math.abs(p.lat) > lim) {
-      this.wallT += dt;
       const sg = Math.sign(p.lat), nx = p.rx * sg, nz = p.rz * sg, over = Math.abs(p.lat) - lim;
       this.x -= nx * over; this.z -= nz * over;
       const vn = vx * nx + vz * nz;
       if (vn > 0) {
-        const sp = Math.max(1, Math.hypot(vx, vz)), hit = clamp(vn / sp, 0, 1);
-        // 去掉穿墙的法向速度，但保留沿墙的切向速度；斜擦墙应还能快速前进。
-        const tx = vx - nx * vn, tz = vz - nz * vn;
-        const tangentSpeed = Math.hypot(tx, tz);
-        const impactLoss = this.wallContact ? 0 : T.wallFriction * hit;
-        // 留出短暂擦碰的宽容期；长时间压墙才逐渐增加摩擦，不重复扣首次碰撞百分比。
-        const rubLoss = T.wallRub * clamp((this.wallT - T.wallRubDelay) / 0.4, 0, 1) * dt;
-        const slideSpeed = Math.max(0, tangentSpeed * (1 - impactLoss) - T.wallDrag * dt - rubLoss);
-        const keep = tangentSpeed > 1e-6 ? slideSpeed / tangentSpeed : 0;
-        vx = tx * keep; vz = tz * keep;
+        const sp = Math.max(1, Math.hypot(vx, vz)), hit = vn / sp;
+        vx -= nx * vn * 1.25; vz -= nz * vn * 1.25;
+        const keep = 1 - 0.42 * hit; vx *= keep; vz *= keep;
         const ns = Math.hypot(vx, vz);
         if (this.s >= 0) {
           this.s = ns; if (ns > 0.5) this.m = Math.atan2(vx, vz);
           const th = Math.abs(wrap(this.h - p.hd)) < Math.PI / 2 ? p.hd : p.hd + Math.PI;
-          const align = Math.min(0.55, 0.14 + 0.5 * hit);
-          this.h += wrap(th - this.h) * (1 - (1 - align) ** (dt * 60));
+          this.h += wrap(th - this.h) * Math.min(1, 0.6 * hit + 0.05);
         } else this.s = -ns;
         this.impact = hit * sp;
-        if (hit > 0.35 && this.drift) this.endDrift(false);
+        if (hit > 0.3 && this.drift) this.endDrift(false);
         this.emit(hit * sp > 6 ? 'crash' : 'scrape', { power: hit * sp, side: sg });
       }
-      this.wallContact = true;
       p.lat = sg * lim;
-    } else {
-      this.wallContact = false;
-      this.wallT = Math.max(0, this.wallT - 2 * dt);
     }
     this.lat = p.lat;
 
