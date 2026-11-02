@@ -1,7 +1,7 @@
 ---
 // The classic person page (/people/<slug>; src/pages/people/[slug].astro
 // picks it for people without a life grid), on the tab frame. Left: who they
-// are, the take (蜗牛说), the one moment to look at (如果只看一件事), every turning
+// are, the one moment to look at (如果只看一件事), every turning
 // point, controversy and low point in order, and their posts from the feed's
 // 24 hours. Right: counts, facts, record, the labels others give them (each
 // with who says so), where they stand on the field's arguments, and who to
@@ -42,12 +42,12 @@ const sourceLabel = (s: Source) => s.title;
 const name = p.name_zh ? `${p.name}（${p.name_zh}）` : p.name;
 const pageTitle = siteTitle(`${name} · 人物`);
 const pageDesc = written
-  ? `${p.take!.text} ${p.name}：${p.role}。看他人生里的转折、争议和低谷。`
+  ? `${p.name}：${p.role}。看他人生里的转折、争议和低谷。`
   : `${p.name}：${p.role}。`;
 const canonical = `${SITE_URL}${PEOPLE_PATH}/${p.slug}`;
 const sideText = written
   ? '疾风知劲草，大事上才看得清一个人。他的转折、争议和低谷在时间线里；这里是他做成过什么、别人给的标签和他的立场。'
-  : '这个人的评价还没写，这里先放他的公开身份和最近的动态。';
+  : '这里先放他的公开身份和最近的动态。';
 const others = [...new Map(p.stances.flatMap((s) => s.others ?? []).map((o) => [o.name, o])).values()];
 ---
 
@@ -65,16 +65,6 @@ const others = [...new Map(p.stances.flatMap((s) => s.others ?? []).map((o) => [
       </div>
     </div>
   </header>
-
-  {written ? (
-    <section class="person-take" aria-label="蜗牛说">
-      <div class="people-k">蜗牛说 / My take</div>
-      <p>{p.take!.text}</p>
-      <div class="people-note">蜗牛 · 改写于 {dotDate(p.take!.updated_at)}{p.tier && <> · <b>关注建议：{p.tier}</b></>}</div>
-    </section>
-  ) : (
-    <p class="person-unwritten">评价待写。先看看他最近在说什么。</p>
-  )}
 
   {pinned && (
     <section class="person-one" aria-labelledby="person-one-h">
