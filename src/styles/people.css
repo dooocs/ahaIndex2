@@ -87,15 +87,6 @@
   color: var(--ink);
 }
 
-.pd-intro {
-  max-width: 560px;
-  margin-top: 10px;
-  font-family: var(--fs);
-  font-size: 14px;
-  line-height: 1.8;
-  color: rgba(26, 22, 18, 0.65);
-}
-
 .pd-count { flex: none; font-family: var(--font-mono); color: var(--muted); white-space: nowrap; }
 .pd-count b { margin-right: 6px; font-size: 30px; font-weight: 400; color: var(--ink); }
 .pd-count span { font-size: 12px; }
@@ -243,35 +234,6 @@
 }
 
 .person-sub a { font-family: var(--font-mono); font-size: 11px; color: var(--accent); text-decoration: none; }
-
-.person-take {
-  margin-top: 24px;
-  padding: 20px 0;
-  border-top: 2px solid var(--ink);
-  border-bottom: 1px solid var(--border);
-}
-
-.person-take p {
-  margin-top: 12px;
-  font-family: var(--fs);
-  font-size: 20px;
-  line-height: 1.6;
-  font-weight: 700;
-  color: var(--ink);
-}
-
-.person-take .people-note { margin-top: 10px; }
-.person-take .people-note b { color: var(--ink); font-weight: 400; }
-
-.person-unwritten {
-  margin-top: 24px;
-  padding: 16px 0;
-  border-top: 2px solid var(--ink);
-  border-bottom: 1px solid var(--border);
-  font-family: var(--fs);
-  font-size: 13px;
-  color: rgba(26, 23, 20, 0.65);
-}
 
 .person-one {
   margin-top: 28px;
@@ -530,6 +492,5 @@
 
   .person-event-item { grid-template-columns: minmax(0, 1fr); }
   .person-event-item .person-date { padding-top: 0; }
-  .person-take p { font-size: 18px; }
   .person-one { padding: 18px 16px; }
 }
