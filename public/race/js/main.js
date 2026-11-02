@@ -161,7 +161,6 @@ function resetRace() {
   player.prog = g.d - D_START; player.lastD = player.d; player.finished = false; player.time = 0;
   raceT = 0; lapStart = 0; bestLap = Infinity; lastLap = Infinity; finishOrder = []; spotIdx = -1; player.lapSeen = 0; player.laps = [];
   cam.yaw = player.h; cam.pos.set(0, 0, 0);
-  cam.targetYaw = player.h; cam.releaseYaw = 0; cam.wasDrifting = false;
   smoke && smoke.p.forEach(p => { p.life = 0; });
 }
 function progressOf(c) { return c === player ? player.prog : c.dist - D_START; }
@@ -291,7 +290,7 @@ function autopilot() {
 }
 
 // ---------- 相机 ----------
-const cam = { yaw: 0, targetYaw: null, releaseYaw: 0, wasDrifting: false, mode: 0, pos: new THREE.Vector3(), look: new THREE.Vector3(), fov: 62, shake: 0, fly: 0 };
+const cam = { yaw: 0, pos: new THREE.Vector3(), look: new THREE.Vector3(), fov: 62, shake: 0, fly: 0 };
 // ?cam=x,y,z,lx,ly,lz：固定机位（截图、检查建模用）
 const CAM_PIN = Q.get('cam') ? Q.get('cam').split(',').map(Number) : null;
 function updateCamera(dt) {
@@ -314,16 +313,7 @@ function updateCamera(dt) {
   }
   const p = player;
   // 偏向运动方向，漂移时能看到车身甩出去
-  let yawT = camMode === 1 ? p.h : p.m + wrapA(p.h - p.m) * 0.35;
-  if (cam.mode !== camMode) { cam.releaseYaw = 0; cam.targetYaw = null; }
-  // 收漂时 m 当帧对齐 h；镜头保留上一帧的显示目标，再渐进消除偏差。
-  // 只平滑这个状态切换，正常转弯沿用原来的镜头响应。
-  if (camMode === 0 && cam.wasDrifting && !p.drift && cam.targetYaw !== null) {
-    cam.releaseYaw = wrapA(cam.targetYaw - yawT);
-  }
-  cam.releaseYaw = damp(cam.releaseYaw, 0, 12, dt);
-  yawT += cam.releaseYaw;
-  cam.targetYaw = yawT; cam.wasDrifting = p.drift; cam.mode = camMode;
+  const yawT = camMode === 1 ? p.h : p.m + wrapA(p.h - p.m) * 0.35;
   cam.yaw += wrapA(yawT - cam.yaw) * (1 - Math.exp(-(p.drift ? 4 : 6) * dt));
   const dist = camMode === 1 ? 6.5 : 9.5 + clamp(p.s / 70, 0, 1) * 1.5, hgt = camMode === 1 ? 2.6 : 3.7;
   const tx = p.x - Math.sin(cam.yaw) * dist, tz = p.z - Math.cos(cam.yaw) * dist;
@@ -598,7 +588,6 @@ build().then(() => {
       player.reset(D_START + d, lat); player.prog = d; player.lastD = player.d; player.lapSeen = 0;
       ais.forEach((a, k) => { a.reset(D_START + d + 18 + k * 9, (k % 2 ? 5 : -5)); a.s = 40; });
       player.s = 40; cam.pos.set(0, 0, 0); cam.yaw = player.h;
-      cam.targetYaw = player.h; cam.releaseYaw = 0; cam.wasDrifting = false;
     },
   };
 }).catch(err => { console.error(err); $('loadmsg').textContent = `加载失败：${err.message}`; });
