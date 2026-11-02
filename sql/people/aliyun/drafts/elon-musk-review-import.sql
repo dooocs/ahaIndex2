@@ -10,6 +10,9 @@
 -- 不会调用 publish_row / publish_changeset / set_featured_people / 同步任务。
 -- 执行前请确认连接到阿里云数据库。整段一次执行；任何错误事务回滚。
 -- 本文件为“一次性导入”，成功后再次执行会拒绝而非重复创建数据。
+-- 修复 2026-11-02 用户执行报错 23514 (tl_events_sides_check):
+-- JSON 字面 null (jsonb 'null') 不是 SQL NULL；非争议事件 sides 必须写 SQL NULL。
+-- steps 字段同样规范化；争议事件继续使用包含各方观点的合法 JSON 数组。
 -- =====================================================================
 
 BEGIN;
@@ -76,6 +79,24 @@ BEGIN
      OR jsonb_array_length(v_payload->'states') <> 18 THEN
     RAISE EXCEPTION '审核稿版本不一致，拒绝导入';
   END IF;
+  -- 数据质量预检：非争议事件不得有双方辩论数组；争议事件至少两方。
+  -- JSON 对象里的 null 是 jsonb 'null'，INSERT 时必须转成数据库 SQL NULL。
+  IF EXISTS (
+    SELECT 1 FROM jsonb_array_elements(v_payload->'events') AS item(e)
+    WHERE CASE
+      WHEN item.e->>'valence' = 'dispute' THEN
+        CASE WHEN jsonb_typeof(item.e->'sides') = 'array'
+          THEN jsonb_array_length(item.e->'sides') < 2
+          ELSE true
+        END
+      ELSE item.e->'sides' IS NOT NULL
+           AND item.e->'sides' <> 'null'::jsonb
+           AND item.e->'sides' <> '[]'::jsonb
+    END
+  ) THEN
+    RAISE EXCEPTION '事件 sides 数据无效：争议事件需要至少两方，非争议事件必须为空';
+  END IF;
+
   IF EXISTS (SELECT 1 FROM public.changesets WHERE title = 'AI 草稿｜马斯克人生网格 2026-11-02（PR #111）') THEN
     RAISE EXCEPTION '同名审核稿变更集已存在：请先检查，不要重复执行';
   END IF;
@@ -196,6 +217,8 @@ BEGIN
     IF v_eid IS NOT NULL THEN
       v_count_reused := v_count_reused + 1;
     ELSE
+      -- 注意: v_e->'sides' 为 jsonb 值，JSON null 与 SQL NULL 不同。
+      -- 这两个 NULLIF 防止违反 tl_events_sides_check / tl_events_steps_check。
       INSERT INTO public.tl_events (
         event_date, date_prec, is_approx, title, valence, importance, place,
         then_text, later_text, commentary, sides, steps, pinned, status, changeset_id
@@ -204,7 +227,7 @@ BEGIN
         coalesce((v_e->>'is_approx')::boolean,false),
         v_e->>'title', v_e->>'valence', (v_e->>'importance')::smallint,
         v_e->>'place', v_e->>'then_text', v_e->>'later_text',
-        v_e->>'commentary', v_e->'sides', v_e->'steps',
+        v_e->>'commentary', NULLIF(v_e->'sides', 'null'::jsonb), NULLIF(v_e->'steps', 'null'::jsonb),
         coalesce((v_e->>'pinned')::boolean,false), 'draft', v_cs
       ) RETURNING id INTO v_eid;
 
