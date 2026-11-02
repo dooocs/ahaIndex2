@@ -5,7 +5,7 @@
 // full-screen styles, keyboard handling and render loop stay out of the site's layout.
 // It reuses 梦想人生's look (toon shading, ink lines, paper grain) on a flat world: a 3.7 km lap
 // round West Lake — 湖滨, 断桥, 白堤, 孤山, 西泠桥, 杨公堤's six bridges, the 三台山 hairpins, 雷峰塔, 南山路.
-// Add ?debug to app.html for the fps counter, ?auto for the autopilot. Structure: docs/race.md.
+// /race?advanced=1 opens live handling controls. Structure: docs/race.md.
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Masthead from '../components/Masthead.astro';
 import { SITE_URL, siteTitle } from '../lib/site';
@@ -35,7 +35,8 @@ const rest = community ? { url: community.url, key: community.key } : null;
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 </style>
 
-<script is:inline define:vars={{ rest }}>
+<script is:inline type="module" define:vars={{ rest }}>
+  import { advancedSearch } from '/race/js/tuning.js';
   // Tell the game how tall the masthead over it is (it keeps its HUD clear of it), hand it the leaderboard's
   // REST config, and give it the keyboard.
   (() => {
@@ -49,6 +50,8 @@ const rest = community ? { url: community.url, key: community.key } : null;
       frame.contentWindow.focus();
     };
     frame.addEventListener('load', ready);
+    const search = advancedSearch(location.search);
+    if (search) frame.src = `/race/app.html${search}`;
     if (frame.contentDocument && frame.contentDocument.readyState === 'complete' && frame.contentDocument.URL !== 'about:blank') ready();
     if (window.ResizeObserver) new ResizeObserver(send).observe(head);
     window.addEventListener('resize', send);

@@ -14,9 +14,12 @@ import { Smoke, Skids } from './effects.js';
 import { Sound } from './audio.js';
 import { damp, makeRand, slice } from './noise.js';
 import * as LB from './board.js';
+import { TUNE, isAdvanced, applyTuning } from './tuning.js';
 
 THREE.ColorManagement.enabled = false;
 const Q = new URLSearchParams(location.search);
+const ADVANCED = isAdvanced(Q);
+applyTuning(Q);
 const DEBUG = Q.has('debug'), AUTO = Q.has('auto'), PIN = Q.get('quality') === 'high';
 const LAPS = Math.max(1, Math.min(5, +(Q.get('laps') || 2)));
 const $ = id => document.getElementById(id);
@@ -68,7 +71,7 @@ resize();
 const keys = new Set(), pressed = new Set();
 const MAP = { ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right',
   ShiftLeft: 'drift', ShiftRight: 'drift', ControlLeft: 'nitro', ControlRight: 'nitro', Space: 'nitro', KeyR: 'reset', Escape: 'pause', KeyP: 'pause', KeyM: 'mute', KeyC: 'cam' };
-const typing = e => e.target && e.target.closest && e.target.closest('input, textarea');
+const typing = e => e.target && e.target.closest && e.target.closest('input, textarea, #tuning-panel, #tuning-toggle');
 addEventListener('keydown', e => {
   if (typing(e)) return;
   if (e.code === 'Escape' && !$('lb').hidden) { closeBoard(); return; }
@@ -77,8 +80,9 @@ addEventListener('keydown', e => {
   if (!keys.has(k)) pressed.add(k);
   keys.add(k);
 });
-addEventListener('keyup', e => { if (typing(e)) return; const k = MAP[e.code]; if (k) keys.delete(k); });
+addEventListener('keyup', e => { const k = MAP[e.code]; if (k) keys.delete(k); });
 addEventListener('blur', () => keys.clear());
+addEventListener('focusin', e => { if (e.target.closest?.('#tuning-panel, #tuning-toggle')) { keys.clear(); pressed.clear(); } });
 // 触屏：左边 ◀ ▶，右边 漂移 / 氮气 / 刹车，油门自动
 const touch = { on: false };
 if (matchMedia('(pointer: coarse)').matches) {
@@ -92,6 +96,7 @@ if (matchMedia('(pointer: coarse)').matches) {
   });
 }
 function readInput() {
+  if (ADVANCED && document.activeElement?.closest('#tuning-panel, #tuning-toggle')) return { ...IDLE };
   const inp = {
     up: keys.has('up') || (touch.on && !keys.has('down')), down: keys.has('down'), left: keys.has('left'), right: keys.has('right'),
     drift: keys.has('drift'), upPressed: pressed.has('up'), nitroPressed: pressed.has('nitro'),
@@ -274,7 +279,7 @@ function updateHud() {
     el.classList.toggle('full', full);
     el.querySelector('.liq').setAttribute('y', (61 - 48 * f).toFixed(1));
   });
-  $('nburn').style.width = player.nitroT > 0 ? `${Math.min(100, player.nitroT / 2.6 * 100).toFixed(1)}%` : '0';
+  $('nburn').style.width = player.nitroT > 0 ? `${Math.min(100, player.nitroT / TUNE.nitroTime * 100).toFixed(1)}%` : '0';
   $('nitro').classList.toggle('burn', player.nitroT > 0);
   $('nitro').classList.toggle('max', n >= 3);
   $('nlabel').textContent = player.nitroT > 0 ? '氮气中！' : n >= 3 ? '氮气已满 · 按空格' : n > 0 ? `氮气 ×${n} · 按空格` : '漂移集气';
@@ -313,20 +318,20 @@ function updateCamera(dt) {
   }
   const p = player;
   // 偏向运动方向，漂移时能看到车身甩出去
-  const yawT = camMode === 1 ? p.h : p.m + wrapA(p.h - p.m) * 0.35;
-  cam.yaw += wrapA(yawT - cam.yaw) * (1 - Math.exp(-(p.drift ? 4 : 6) * dt));
-  const dist = camMode === 1 ? 6.5 : 9.5 + clamp(p.s / 70, 0, 1) * 1.5, hgt = camMode === 1 ? 2.6 : 3.7;
+  const yawT = camMode === 1 ? p.h : p.m + wrapA(p.h - p.m) * TUNE.camDriftLook;
+  cam.yaw += wrapA(yawT - cam.yaw) * (1 - Math.exp(-(p.drift ? TUNE.camDriftYaw : TUNE.camYaw) * dt));
+  const dist = camMode === 1 ? TUNE.camNearDistance : TUNE.camDistance + clamp(p.s / 70, 0, 1) * TUNE.camSpeedDistance, hgt = camMode === 1 ? TUNE.camNearHeight : TUNE.camHeight;
   const tx = p.x - Math.sin(cam.yaw) * dist, tz = p.z - Math.cos(cam.yaw) * dist;
   const ty = Math.max(p.y + hgt, p.y + hgt);
   if (cam.pos.lengthSq() === 0) cam.pos.set(tx, ty, tz);
-  cam.pos.x = damp(cam.pos.x, tx, 14, dt); cam.pos.z = damp(cam.pos.z, tz, 14, dt); cam.pos.y = damp(cam.pos.y, ty, 7, dt);
+  cam.pos.x = damp(cam.pos.x, tx, TUNE.camFollow, dt); cam.pos.z = damp(cam.pos.z, tz, TUNE.camFollow, dt); cam.pos.y = damp(cam.pos.y, ty, TUNE.camFollowY, dt);
   cam.shake = Math.max(0, cam.shake - dt * 3);
-  const sh = cam.shake * 0.35;
+  const sh = cam.shake * TUNE.camShake;
   camera.position.set(cam.pos.x + (Math.random() - 0.5) * sh, cam.pos.y + (Math.random() - 0.5) * sh, cam.pos.z + (Math.random() - 0.5) * sh);
-  cam.look.set(p.x + Math.sin(cam.yaw) * 6, p.y + 1.4, p.z + Math.cos(cam.yaw) * 6);
+  cam.look.set(p.x + Math.sin(cam.yaw) * TUNE.camLookAhead, p.y + 1.4, p.z + Math.cos(cam.yaw) * TUNE.camLookAhead);
   camera.lookAt(cam.look);
-  const fovT = 60 + clamp(p.s / 52, 0, 1.2) * 9 + (p.nitroT > 0 ? 8 : 0);
-  cam.fov = damp(cam.fov, fovT, 4, dt);
+  const fovT = TUNE.camFov + clamp(p.s / 52, 0, 1.2) * TUNE.camSpeedFov + (p.nitroT > 0 ? TUNE.camNitroFov : 0);
+  cam.fov = damp(cam.fov, fovT, TUNE.camFovResponse, dt);
   camera.fov = cam.fov; camera.updateProjectionMatrix();
 }
 
@@ -358,7 +363,7 @@ function step(dt) {
     if (countT <= 0.6) {
       state = 'race'; lapStart = 0;
       // 起步加速：倒计时结束那一刻按住油门
-      if (keys.has('up') || touch.on || AUTO) { player.startT = 1.2; toast('起步加速！', 'good'); }
+      if (keys.has('up') || touch.on || AUTO) { player.startT = TUNE.startTime; toast('起步加速！', 'good'); }
     }
   }
   if (countT < 0 && state === 'race') $('count').className = 'count';
@@ -384,7 +389,7 @@ function step(dt) {
       const push = (3.1 - d) * 0.5, nx = dx / d, nz = dz / d;
       player.x -= nx * push; player.z -= nz * push;
       a.lat += (nx * track.rx[player.hint] + nz * track.rz[player.hint]) * push;
-      const rel = (player.s - a.s) * 0.3; player.s -= rel; a.s += rel;
+      const rel = (player.s - a.s) * TUNE.carCollision; player.s -= rel; a.s += rel;
       if (Math.abs(rel) > 1.2) { sound.thud(Math.abs(rel) * 3); cam.shake = Math.min(1, cam.shake + 0.4); }
     }
   }
@@ -463,7 +468,7 @@ function step(dt) {
 }
 let finishT = 0, tainted = false;
 // 只有正常跑完两圈的成绩才上榜：自动驾驶、改圈数、测试钩子跳过的都不算
-const canUpload = () => !AUTO && LAPS === 2 && !tainted && (player.laps || []).length === 2;
+const canUpload = () => !ADVANCED && !AUTO && LAPS === 2 && !tainted && (player.laps || []).length === 2;
 function showResult() {
   const rk = ranking();
   $('result').hidden = false;
@@ -480,7 +485,7 @@ const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;'
 let lastRun = null;
 function afterRace() {
   $('up').hidden = true; status('');
-  if (!canUpload()) { if (AUTO) status('自动驾驶的成绩不上榜'); return; }
+  if (!canUpload()) { if (ADVANCED) status('高级模式试跑：不计个人纪录，也不上传总榜。可继续调参后重新试跑。'); else if (AUTO) status('自动驾驶的成绩不上榜'); return; }
   const laps = player.laps.slice(0, 2), total = laps[0] + laps[1];
   const { newTotal } = LB.saveLocalBest(total, Math.min(...laps));
   lastRun = { laps, total, uploaded: false };
@@ -515,6 +520,7 @@ $('up').addEventListener('submit', e => {
   upload(nick);
 });
 async function updatePB() {
+  if (ADVANCED) { $('pb').textContent = '高级模式 · 参数仅当前页面有效，试跑不计个人纪录和总榜'; return; }
   const lb = LB.localBest();
   let text = lb && isFinite(lb.total) ? `个人最佳：<b>${fmt(lb.total)}</b> · 最快单圈 ${fmt(lb.lap)}` : '个人最佳：还没有成绩，跑完两圈就有了';
   $('pb').innerHTML = text;
@@ -542,6 +548,21 @@ $('lb-open2').addEventListener('click', openBoard);
 $('lb-close').addEventListener('click', closeBoard);
 $('lb').addEventListener('click', e => { if (e.target === $('lb')) closeBoard(); });
 updatePB();
+
+if (ADVANCED) import('./advanced.js').then(({ mountTuning }) => mountTuning({
+  canvas,
+  onChange() {
+    // Cached AI and autopilot speed profiles depend on live grip, braking and top speed.
+    pilot = null;
+    for (const key of Object.keys(track)) if (key.startsWith('aiProf')) delete track[key];
+  },
+  restart() {
+    if (!player || state === 'loading') return;
+    paused = false; $('paused').hidden = true; $('result').hidden = true;
+    resetRace(); startRace();
+  },
+  telemetry: () => player,
+})).catch(err => console.error('高级调参面板加载失败', err));
 
 function render(dt) {
   updateCamera(dt);

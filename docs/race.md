@@ -99,6 +99,23 @@ talks to PostgREST directly with the public publishable key, which `race.astro` 
 
 ## Checking it
 
+### 高级模式（只在当前页面调参）
+
+- 普通 `/race` 保留原有界面和操控数值；`/race?advanced=1`（也支持 `?advanced`）显示高级调参面板。
+  独立游戏入口 `/race/app.html?advanced=1` 同样可用，外层静态页会将高级模式和参数转交给 iframe。
+- 面板覆盖动力/刹车、转向/抓地、漂移/集气、氮气/双喷、小喷/落地喷、加速带/起步、腾空/碰撞、跟车镜头和 AI。
+  滑杆拖动实时生效，数值框输入后按 Enter 或离开输入框生效，速度以 km/h 显示；`latGrip` 仅影响自动驾驶车手。
+  点赛道继续驾驶，可收起面板；“重新试跑”重置比赛并保留本页刚调的参数。
+- 参数只存在本页 JS 内存，不写 localStorage、不自动改 URL、不发请求保存，也不写数据库。
+  刷新页面重新按入口链接初始化（普通高级链接回到默认值，复制的参数链接恢复其中明确指定的初始值）。
+  每项有复位按钮，也可以“恢复默认”。高级试跑不写本机个人最佳，也不上传总榜。
+- “复制参数”复制当前完整 JSON，方便记录和交流；“复制参数链接”复制 `/race?advanced=1&t.turn=...`，
+  打开即可复现这份设置。只有显式开启高级模式时才接受 `t.*`，未知字段、空值和非有限数会被忽略，超出范围会限幅。
+- 参数定义和默认值统一在 `js/tuning.js`，交互面板在 `js/advanced.js` / `advanced.css`。
+  默认值保持当前公开版本不变；调参时会使 AI/自动驾驶缓存的限速剖面失效，下一帧按新参数重算。
+
+### 原有检查入口
+
 - `?debug` shows fps, draw calls and triangles; `?auto` drives the player's car; `?skipcount` skips the countdown;
   `?quality=high` pins quality (no automatic downgrade); `?laps=1..5`; `?cam=x,y,z,lx,ly,lz` pins the camera.
 - Drift economy check: on a 2 km straight, drifting left and right all the way (taking every 小喷 and nitro it earns)
