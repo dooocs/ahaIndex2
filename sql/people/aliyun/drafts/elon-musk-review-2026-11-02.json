@@ -77,13 +77,13 @@
       {
         "label": "南非成长",
         "start": "1971-06-28",
-        "end": "1989-01-01",
+        "end": "1988-12-01",
         "lane": 0,
         "color": "gray",
         "summary": "少年学习编程；成年后前往北美求学。",
         "role_text": "学生",
         "start_prec": "day",
-        "end_prec": "year",
+        "end_prec": "month",
         "entity": null,
         "sources": [
           {
@@ -104,13 +104,13 @@
       {
         "label": "北美求学",
         "start": "1989-01-01",
-        "end": "1995-01-01",
+        "end": "1994-12-01",
         "lane": 0,
         "color": "gray",
         "summary": "女王大学、宾夕法尼亚大学，短暂进入斯坦福后投身创业。",
         "role_text": "学生",
         "start_prec": "year",
-        "end_prec": "year",
+        "end_prec": "month",
         "entity": null,
         "sources": [
           {
@@ -171,12 +171,12 @@
       {
         "label": "X.com / PayPal",
         "start": "1999-03-01",
-        "end": "2002-05-01",
-        "lane": 0,
+        "end": "2002-10-01",
+        "lane": 2,
         "color": "violet",
         "summary": "X.com、合并PayPal、CEO变更，2002年10月出售持股。",
         "role_text": "联合创始人 · 股东",
-        "start_prec": "day",
+        "start_prec": "month",
         "end_prec": "month",
         "entity": null,
         "sources": [
@@ -216,7 +216,7 @@
         "color": "orange",
         "summary": "从Falcon 1到火箭回收、载人飞行、Starlink，2026年IPO。",
         "role_text": "创始人 · CEO",
-        "start_prec": "day",
+        "start_prec": "month",
         "end_prec": null,
         "entity": null,
         "sources": [
@@ -256,7 +256,7 @@
         "color": "blue",
         "summary": "早期融资、董事长、2008年CEO，走过IPO与Model 3量产难关。",
         "role_text": "早期投资人 → CEO",
-        "start_prec": "day",
+        "start_prec": "month",
         "end_prec": null,
         "entity": null,
         "sources": [
@@ -329,15 +329,15 @@
         ]
       },
       {
-        "label": "Twitter / X",
+        "label": "X / xAI",
         "start": "2022-10-27",
-        "end": "2023-07-12",
+        "end": null,
         "lane": 2,
         "color": "red",
-        "summary": "收购Twitter并推动组织重组，随后平台改用X品牌。",
-        "role_text": "收购方",
+        "summary": "2022年收购Twitter并改造成X平台，2023年创办xAI，2025年完成平台与AI业务整合，2026年归属SpaceX控股体系。",
+        "role_text": "平台拥有者 · AI创始人",
         "start_prec": "day",
-        "end_prec": "month",
+        "end_prec": null,
         "entity": null,
         "sources": [
           {
@@ -365,33 +365,6 @@
             "quote": null,
             "excerpt": null,
             "outlet_domain": "finance.yahoo.com"
-          }
-        ]
-      },
-      {
-        "label": "xAI",
-        "start": "2023-07-12",
-        "end": null,
-        "lane": 2,
-        "color": "teal",
-        "summary": "Grok、与X整合、2026年进入SpaceX控股体系。",
-        "role_text": "创始人",
-        "start_prec": "day",
-        "end_prec": null,
-        "entity": null,
-        "sources": [
-          {
-            "title": "xAI官方网站",
-            "url": "https://x.ai/company",
-            "outlet": "xAI",
-            "published_at": null,
-            "pub_prec": "day",
-            "kind": "official",
-            "lang": "en",
-            "phase": null,
-            "quote": null,
-            "excerpt": null,
-            "outlet_domain": "x.ai"
           },
           {
             "title": "SpaceX 2026年第三季度SEC文件",
@@ -611,8 +584,8 @@
     ],
     "events": [
       {
-        "date": "1971-01-01",
-        "prec": "year",
+        "date": "1971-06-28",
+        "prec": "day",
         "title": "出生于南非比勒陀利亚",
         "valence": "turn",
         "importance": 1,
@@ -2051,6 +2024,83 @@
             "quote": null,
             "excerpt": null,
             "outlet_domain": "sec.gov"
+          }
+        ],
+        "people": [],
+        "links": []
+      },
+      {
+        "date": "2022-11-04",
+        "prec": "day",
+        "title": "Twitter大规模裁员引发平台治理争议",
+        "valence": "dispute",
+        "importance": 3,
+        "place": "美国",
+        "then_text": "Twitter收购完成后启动大规模裁员。公司安全与诚信主管公开称全公司约50%的员工受到裁员影响，信任和安全团队约15%的员工受到影响。",
+        "commentary": "削减成本可能迅速改善现金流，却也将内容治理、人才流失和平台安全风险推向公众讨论。",
+        "later_text": null,
+        "sides": [
+          {
+            "who": "公司经营方",
+            "text": "认为平台正承受收入下滑与成本压力，需要迅速调整结构，并主张内容审核仍会继续。"
+          },
+          {
+            "who": "员工和质疑者",
+            "text": "担心裁员削弱内容审核、平台安全和组织延续性，并质疑改革程序。"
+          }
+        ],
+        "short_id": "emnew20221104",
+        "is_approx": false,
+        "pinned": false,
+        "steps": null,
+        "my_role": "protagonist",
+        "sources": [
+          {
+            "title": "Reuters：Twitter裁员约50%并说明内容审核安排",
+            "url": "https://www.investing.com/news/stock-market-news/twitter-exec-says-50-employees-lost-jobs-following-acquisition-2933532",
+            "outlet": "Reuters",
+            "published_at": "2022-11-04",
+            "pub_prec": "day",
+            "kind": "report",
+            "lang": "en",
+            "phase": null,
+            "quote": null,
+            "excerpt": null,
+            "outlet_domain": "investing.com"
+          }
+        ],
+        "people": [],
+        "links": []
+      },
+      {
+        "date": "2023-04-20",
+        "prec": "day",
+        "title": "Starship首次完整组合试飞中爆炸",
+        "valence": "down",
+        "importance": 2,
+        "place": "美国得州Starbase",
+        "then_text": "Starship与Super Heavy首次组合试飞离开发射台后在空中解体，未完成原定的全部飞行目标。",
+        "commentary": "新型火箭研发在公开试验中经历失败，随后需在数据、技术和安全审查中继续改进。",
+        "later_text": null,
+        "sides": null,
+        "short_id": "emnew20230420",
+        "is_approx": false,
+        "pinned": false,
+        "steps": null,
+        "my_role": "protagonist",
+        "sources": [
+          {
+            "title": "Reuters：Starship首次组合试飞爆炸",
+            "url": "https://www.investing.com/news/stock-market-news/elon-musks-spacex-set-to-launch-first-test-flight-of-starship-rocket-system-3060289",
+            "outlet": "Reuters",
+            "published_at": "2023-04-20",
+            "pub_prec": "day",
+            "kind": "report",
+            "lang": "en",
+            "phase": null,
+            "quote": null,
+            "excerpt": null,
+            "outlet_domain": "investing.com"
           }
         ],
         "people": [],
