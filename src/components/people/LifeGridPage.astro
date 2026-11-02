@@ -58,19 +58,16 @@ const canonical = `${SITE_URL}${PEOPLE_PATH}/${g.slug}`;
     </dl>
   </header>
 
-  {(g.labels.length > 0 || g.take) && (
+  {g.labels.length > 0 && (
     <div class="lg-about">
-      {g.labels.length > 0 && (
-        <ul class="lg-labels" aria-label="别人怎么叫他">
-          {g.labels.map((l) => (
-            <li>
-              {l.url ? <a href={l.url} target="_blank" rel="noopener nofollow">「{l.text}」</a> : <span>「{l.text}」</span>}
-              {l.by && <small>{l.by}</small>}
-            </li>
-          ))}
-        </ul>
-      )}
-      {g.take && <p class="lg-take"><b>蜗牛说</b>{g.take}</p>}
+      <ul class="lg-labels" aria-label="别人怎么叫他">
+        {g.labels.map((l) => (
+          <li>
+            {l.url ? <a href={l.url} target="_blank" rel="noopener nofollow">「{l.text}」</a> : <span>「{l.text}」</span>}
+            {l.by && <small>{l.by}</small>}
+          </li>
+        ))}
+      </ul>
     </div>
   )}
 
@@ -159,7 +156,6 @@ const canonical = `${SITE_URL}${PEOPLE_PATH}/${g.slug}`;
                       </section>
                     )}
 
-                    {e.commentary && <div class="sc-block sc-take"><div class="sc-k">蜗牛说</div><p>{e.commentary}</p></div>}
                     {e.people.length > 0 && (
                       <div class="sc-block">
                         <div class="sc-k">一起出现的人</div>
