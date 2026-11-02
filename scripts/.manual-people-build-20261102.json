@@ -1,0 +1,12 @@
+{
+  "purpose": "Trigger the existing Build & Deploy workflow to rebuild published /people pages after an Aliyun Supabase content publish",
+  "requested_on": "2026-11-02",
+  "site": "amazingindex.com",
+  "affected_pages": [
+    "/people",
+    "/people/elon-musk"
+  ],
+  "code_change": false,
+  "pr_111_merge": false,
+  "note": "This file is a non-runtime build trigger only. The website reads people data from the synced published snapshot, not from this file."
+}
