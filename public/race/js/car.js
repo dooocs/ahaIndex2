@@ -17,10 +17,10 @@ export const TUNE = {
   latGrip: 22, brakeWhileTurning: 0.7, understeerDrag: 1.6,
   turn: 2.1, grip: 18, nitroTurn: 0.85,
   // 漂移比普通抓地转得更紧，但会损失速度；高手可反打方向控角度。
-  driftLat: 42, driftDecelMax: 13, driftMin: 10,
-  driftYaw: 2.0, driftYawAlign: 1.0, driftGrip: 3.6, maxDrift: 1.0,
+  driftLat: 31, driftDecelMax: 11.5, driftMin: 10,
+  driftYaw: 1.55, driftYawAlign: 0.35, driftGrip: 3.6, maxDrift: 0.68,
   driftDrag: 3.0, driftDragAngle: 9, driftDragSpeed: 0.2,
-  driftThrottle: 0.35, gaugeRate: 0.38, nitroTime: 2.6, smallWindow: 0.5,
+  driftThrottle: 0.55, gaugeRate: 0.38, nitroTime: 2.6, smallWindow: 0.5,
   // 首次斜擦保速；持续压墙时摩擦逐渐增加，不能借护栏全油门过弯。
   wallDrag: 2.0, wallFriction: 0.1, wallRub: 18, wallRubDelay: 0.3, gravity: 30,
 };
@@ -87,18 +87,11 @@ export function buildCarModel(body, trim = 0xf3efe6, helmet = 0xffffff) {
   return g;
 }
 const FLAME_ORANGE = new THREE.Color(0xff9a3c), FLAME_BLUE = new THREE.Color(0x3fa8ff), FLAME_ORANGE_MID = new THREE.Color(0xffc46b), FLAME_BLUE_MID = new THREE.Color(0x9fe4ff);
-export function animateCar(model, { speed, steer, drifting, driftDir, nitro, small, dt, lean = 0, pitch = 0, wheelEase = 0 }) {
+export function animateCar(model, { speed, steer, drifting, driftDir, nitro, small, dt, lean = 0, pitch = 0 }) {
   const u = model.userData;
   for (const w of u.wheels) {
     w.spin.rotation.x += speed * dt / 0.44;
-    if (w.front) {
-      const target = drifting ? -driftDir * 0.35 : steer * 0.42;
-      // 只缓动显示角，抓地/转向物理仍在当前帧生效。
-      if (wheelEase) {
-        const delta = damp(w.steer.rotation.y, target, wheelEase, dt) - w.steer.rotation.y;
-        w.steer.rotation.y += clamp(delta, -6 * dt, 6 * dt);
-      } else w.steer.rotation.y = target;
-    }
+    if (w.front) w.steer.rotation.y = drifting ? -driftDir * 0.35 : steer * 0.42;
   }
   u.root.rotation.z = damp(u.root.rotation.z, lean, 8, dt);
   u.root.rotation.x = damp(u.root.rotation.x, pitch, 6, dt);
@@ -218,8 +211,8 @@ export class PlayerCar {
     if (this.drift) {
       this.latUse = 1;
       const align = steerIn * this.driftDir;
-      // 漂移方向在入弯时锁定：顺打加深，松方向继续转入，反打减小转入而非掉头反向。
-      const yaw = T.driftYaw + T.driftYawAlign * align;
+      // 顺打加深弯度、放开方向盘维持小角度、反打则主动收住甩尾。
+      const yaw = T.driftYaw * align + T.driftYawAlign;
       this.h += this.driftDir * yaw * clamp(this.s / 26, 0.35, 1) * dt * (ground ? 1 : 0.4);
       const mCap = T.driftLat / Math.max(Math.abs(this.s), 4) * dt;
       this.m += clamp(wrap(this.h - this.m) * (1 - Math.exp(-T.driftGrip * dt)), -mCap, mCap);
@@ -349,7 +342,6 @@ export class PlayerCar {
     const sp = Math.abs(this.s);
     animateCar(mdl, {
       speed: this.s, steer: this.steer, drifting: this.drift, driftDir: this.driftDir, dt,
-      wheelEase: 18,
       nitro: this.nitroT > 0, small: this.smallT > 0 || this.padT > 0 || this.startT > 0,
       lean: this.drift ? this.driftDir * 0.07 : this.steer * 0.05 * clamp(sp / 30, 0, 1),
       pitch: this.nitroT > 0 ? -0.03 : 0,
