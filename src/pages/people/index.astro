@@ -15,9 +15,8 @@ import '../../styles/people.css';
 const { people, grids, featured } = await getPeople();
 const others = people.length + grids.length - featured.length;
 
-const intro = '一个人能认真看的人不过百位。这里只放值得细看的人，每个人的材料都精心梳理过：他们在关键时刻怎么选，后来又怎样。';
 const pageTitle = siteTitle('人物 · 以人为镜');
-const metaIntro = `以人为镜，可以明得失。${intro}`;
+const metaIntro = '以人为镜，可以明得失。';
 const pageDesc = featured.length > 0
   ? `${metaIntro}现在收录：${featured.slice(0, 5).map((c) => c.name).join('、')}${featured.length > 5 ? ` 等 ${featured.length} 人` : ''}。`
   : metaIntro;
@@ -30,7 +29,6 @@ const no = (rank: number) => String(rank).padStart(2, '0');
     <div>
       <div class="people-k">人物 / People</div>
       <h1 class="pd-title">以人为镜，可以明得失</h1>
-      <p class="pd-intro">{intro}</p>
     </div>
     <div class="pd-count"><b>{featured.length}</b><span>/ {FEATURED_LIMIT} 人</span></div>
   </header>
