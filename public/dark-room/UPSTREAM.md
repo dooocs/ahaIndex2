@@ -11,5 +11,7 @@ localized mobile warning with opt-in continuation, and source/license/home links
 Game logic and translations otherwise remain upstream. All covered modifications
 are distributed as readable source under MPL-2.0 in this directory.
 
-Trial URL: /dark-room/ (no navigation tab). Saves are browser-local, with the
+Trial URL: /dark-room (no navigation tab). The Astro shell reuses the site masthead;
+the original game runs in app.html on the same origin to preserve existing saves.
+Site utility links and author/license credits live in the collapsed settings menu. Saves are browser-local, with the
 original import/export menu. Restart only removes amazingindex.dark-room.* keys.
