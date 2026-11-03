@@ -19,3 +19,49 @@
 /* A little breathing room below the site masthead, for every game column. */
 div#wrapper { top: 28px; }
 @media (max-width: 768px) { div#wrapper { top: 18px; } }
+
+/* Balanced reading / action / inventory columns. Keep the original 700px
+   slider coordinate system used by travel, exploration and the ending. */
+html { overflow-x: auto; }
+body { min-width: 992px; }
+div#wrapper { width: 700px; padding-left: 260px; }
+div#notifications { width: 220px; line-height: 1.65; }
+div#notifications .notification { margin-bottom: 14px; }
+div#content, div#outerSlider > div { height: var(--game-stage-height, 700px); }
+div.location, div#outerSlider > #worldPanel { height: auto; min-height: 700px; }
+div#header { height: auto; min-height: 24px; padding-bottom: 24px; }
+div.headerButton { line-height: 24px; }
+
+/* Explicit sizes include padding and borders. Cost tooltips and cooldowns
+   remain attached to their original elements. Arrow/worker controls are untouched. */
+div.button, #outsidePanel div.button, .eventPanel div.button {
+  box-sizing: border-box;
+  width: 136px !important;
+  min-height: 44px;
+  padding: 10px 12px;
+  line-height: 22px;
+  margin-bottom: 10px;
+}
+div#roomPanel { display: grid; grid-template-columns: repeat(3, 136px) 1fr; column-gap: 16px; row-gap: 24px; align-content: start; align-items: start; }
+#roomPanel > #lightButton, #roomPanel > #stokeButton { grid-column: 1 / 4; justify-self: center; margin-bottom: 0; }
+div#buildBtns, div#craftBtns, div#buyBtns { position: relative; top: auto; left: auto; }
+div#buildBtns { grid-column: 1; }
+div#craftBtns { grid-column: 2; }
+div#buyBtns { grid-column: 3; }
+div#buildBtns:before, div#craftBtns:before, div#buyBtns:before, div#fabricateButtons:before { display: block; top: auto; margin-bottom: 12px; line-height: 22px; }
+#roomPanel .button .tooltip { left: 136px; }
+div#stores, div#weapons, div#village, div#perks, div#blueprints, #outfitting { line-height: 1.55; padding-top: 10px; padding-bottom: 10px; }
+div#workers { left: 160px; width: 250px; }
+#pathScroller { max-height: none; }
+div#fabricateButtons { top: 0; }
+
+/* Dialogs use the viewport centre, not the old wrapper's left offset. */
+.eventPanel { position: fixed; box-sizing: border-box; width: 420px; max-width: calc(100vw - 32px); left: max(16px, calc(50% - 210px)); top: 64px; }
+.eventPanel:before { position: fixed; inset: 0; width: 100vw; height: 100vh; }
+#buttons { display: flex; flex-wrap: wrap; gap: 10px; }
+.eventPanel #buttons > .button { float: none; margin: 0; }
+@media (max-width: 991px) {
+  /* Preserve map and slider geometry on narrow windows; allow horizontal
+     scrolling rather than shrinking text, controls or inventory. */
+  div#wrapper { margin-left: 16px; margin-right: 16px; }
+}
