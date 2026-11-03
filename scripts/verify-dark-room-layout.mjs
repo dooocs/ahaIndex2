@@ -67,9 +67,11 @@ try {
   assert(await page.locator('#wrapper').evaluate(e=>Math.abs(e.getBoundingClientRect().left-32)<1),'1024px: centered 960px stage');
   await page.setViewportSize({width:768,height:768});await page.goto(`${origin}/__layout_fixture?scene=room`);
   assert(await page.locator('#stokeButton').evaluate(e=>e.getBoundingClientRect().height>=44),'narrow window keeps usable buttons');
-  await page.setViewportSize({width:1657,height:900});await page.goto(`${origin}/dark-room/app.html?ignorebrowser=true`);
+  await page.setViewportSize({width:1657,height:787});await page.goto(`${origin}/dark-room/app.html?ignorebrowser=true`);
   await page.locator('#lightButton').waitFor({state:'visible'});
   assert(await page.locator('#lightButton').evaluate(e=>e.getBoundingClientRect().height>=44),'real app fresh boot');
+  await page.waitForFunction(()=>document.documentElement.style.getPropertyValue('--game-stage-height'));
+  assert(await page.evaluate(()=>document.documentElement.scrollHeight===innerHeight),'fresh game has no unnecessary vertical scrolling');
   assert.deepEqual(errors,[],'no page errors');
   console.log('PASS real first visit, 1024px and narrow-window layout');
 } catch(error) { console.error(error);process.exitCode=1; }
