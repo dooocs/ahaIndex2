@@ -1,0 +1,41 @@
+---
+// Keep the text game's styles and keyboard handlers inside its own document,
+// while sharing the same masthead as 梦想人生 and 西湖飞车. No navigation tab yet.
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Masthead from '../components/Masthead.astro';
+import { SITE_URL, siteTitle } from '../lib/site';
+const canonical = `${SITE_URL}/dark-room`;
+---
+<BaseLayout title={siteTitle('小黑屋')} description="从一间寒冷的小黑屋开始，生火、建造、探索。" canonicalUrl={canonical} ogUrl={canonical} noindex>
+  <Masthead showScore={false} overlay />
+  <main class="dark-room-page">
+    <h1 class="sr-only">小黑屋</h1>
+    <iframe id="dark-room-app" src="/dark-room/app.html?v=20261103-layout" title="小黑屋 · 文字冒险" allow="autoplay; fullscreen"></iframe>
+    <noscript><p>小黑屋需要开启 JavaScript 才能游玩。</p></noscript>
+  </main>
+</BaseLayout>
+<style>
+  :global(html:has(.dark-room-page)), :global(body:has(.dark-room-page)) { overflow: hidden; scrollbar-gutter: auto; }
+  .dark-room-page { margin: 0; padding: 0; }
+  iframe { position: fixed; top: var(--game-top, 180px); left: 0; width: 100%; height: calc(100dvh - var(--game-top, 180px)); border: 0; background: white; }
+  noscript { position: relative; z-index: 11; display: block; padding: 200px 24px 48px; text-align: center; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+</style>
+<script is:inline>
+  (() => {
+    const frame = document.getElementById('dark-room-app');
+    const head = document.querySelector('.masthead');
+    if (!frame || !head) return;
+    const params = new URLSearchParams(location.search);
+    const src = new URL(frame.src);
+    for (const key of ['lang', 'ignorebrowser']) {
+      if (params.has(key)) src.searchParams.set(key, params.get(key));
+    }
+    if (src.href !== frame.src) frame.src = src.href;
+    const resize = () => frame.style.setProperty('--game-top', `${Math.ceil(head.getBoundingClientRect().bottom)}px`);
+    resize();
+    if (window.ResizeObserver) new ResizeObserver(resize).observe(head);
+    window.addEventListener('resize', resize);
+    frame.addEventListener('load', () => frame.contentWindow?.focus());
+  })();
+</script>

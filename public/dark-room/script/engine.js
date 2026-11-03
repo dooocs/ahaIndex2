@@ -167,7 +167,7 @@
         .appendTo(menu);
 
       $('<span>')
-        .addClass('menuBtn')
+        .addClass('restart menuBtn')
         .text(_('restart.'))
         .click(Engine.confirmDelete)
         .appendTo(menu);
@@ -179,7 +179,7 @@
         .appendTo(menu);
 
       $('<span>')
-        .addClass('menuBtn')
+        .addClass('save menuBtn')
         .text(_('save.'))
         .click(Engine.exportImport)
         .appendTo(menu);
