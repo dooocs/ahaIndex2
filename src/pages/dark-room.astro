@@ -10,14 +10,32 @@ const canonical = `${SITE_URL}/dark-room`;
   <Masthead showScore={false} overlay />
   <main class="dark-room-page">
     <h1 class="sr-only">小黑屋</h1>
-    <iframe id="dark-room-app" src="/dark-room/app.html?v=20261103-layout" title="小黑屋 · 文字冒险" allow="autoplay; fullscreen"></iframe>
+    <iframe id="dark-room-app" src="/dark-room/app.html?v=20261103-theme" title="小黑屋 · 文字冒险" allow="autoplay; fullscreen"></iframe>
     <noscript><p>小黑屋需要开启 JavaScript 才能游玩。</p></noscript>
   </main>
 </BaseLayout>
 <style>
   :global(html:has(.dark-room-page)), :global(body:has(.dark-room-page)) { overflow: hidden; scrollbar-gutter: auto; }
+  :global(body:has(.dark-room-page)) {
+    --dark-room-bg: #fff; --dark-room-ink: #1a1612; --dark-room-muted: #777;
+    --ink: var(--dark-room-ink); --muted: var(--dark-room-muted);
+    background: var(--dark-room-bg);
+  }
+  :global(body:has(.dark-room-page[data-theme="dark"])) {
+    --dark-room-bg: #272823; --dark-room-ink: #eee; --dark-room-muted: #aaa;
+  }
+  :global(body:has(.dark-room-page)::before) { display: none; }
+  :global(body:has(.dark-room-page) .masthead),
+  :global(body:has(.dark-room-page) .masthead .nav-bar) {
+    background: var(--dark-room-bg); box-shadow: none;
+  }
+  :global(body:has(.dark-room-page) .masthead .logo-text) { color: var(--dark-room-ink); }
+  :global(body:has(.dark-room-page) .masthead-tagline),
+  :global(body:has(.dark-room-page) .masthead-subtitle),
+  :global(body:has(.dark-room-page) .masthead-vol) { color: var(--dark-room-muted); }
+  :global(body:has(.dark-room-page[data-theme="dark"]) .masthead .logo-icon path:last-child) { fill: #eee; }
   .dark-room-page { margin: 0; padding: 0; }
-  iframe { position: fixed; top: var(--game-top, 180px); left: 0; width: 100%; height: calc(100dvh - var(--game-top, 180px)); border: 0; background: white; }
+  iframe { position: fixed; top: var(--game-top, 180px); left: 0; width: 100%; height: calc(100dvh - var(--game-top, 180px)); border: 0; background: var(--dark-room-bg); }
   noscript { position: relative; z-index: 11; display: block; padding: 200px 24px 48px; text-align: center; }
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 </style>
@@ -26,6 +44,22 @@ const canonical = `${SITE_URL}/dark-room`;
     const frame = document.getElementById('dark-room-app');
     const head = document.querySelector('.masthead');
     if (!frame || !head) return;
+    const page = document.querySelector('.dark-room-page');
+    const setTheme = (dark) => { page.dataset.theme = dark ? 'dark' : 'light'; };
+    // Match the saved theme before the iframe finishes loading, then follow
+    // the game's actual computed background (including subsequent light toggles).
+    try { setTheme(Boolean(JSON.parse(localStorage.getItem('amazingindex.dark-room.gameState'))?.config?.lightsOff)); } catch (_) {}
+    const syncTheme = () => {
+      const body = frame.contentDocument?.body;
+      if (body) setTheme(frame.contentWindow.getComputedStyle(body).backgroundColor === 'rgb(39, 40, 35)');
+    };
+    const ready = () => {
+      syncTheme();
+      const doc = frame.contentDocument;
+      doc?.addEventListener('load', syncTheme, true);
+      doc?.addEventListener('click', () => requestAnimationFrame(syncTheme));
+      frame.contentWindow?.focus();
+    };
     const params = new URLSearchParams(location.search);
     const src = new URL(frame.src);
     for (const key of ['lang', 'ignorebrowser']) {
@@ -36,6 +70,7 @@ const canonical = `${SITE_URL}/dark-room`;
     resize();
     if (window.ResizeObserver) new ResizeObserver(resize).observe(head);
     window.addEventListener('resize', resize);
-    frame.addEventListener('load', () => frame.contentWindow?.focus());
+    frame.addEventListener('load', ready);
+    if (frame.contentDocument?.readyState === 'complete' && frame.contentDocument.URL !== 'about:blank') ready();
   })();
 </script>

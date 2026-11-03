@@ -1,6 +1,6 @@
 /* AmazingIndex adaptation, MPL-2.0. The original game remains isolated. */
 .menu { display: none !important; }
-.game-settings { position: fixed; top: 14px; right: 20px; z-index: 15; color: #555; font: 13px/1.6 system-ui, sans-serif; }
+.game-settings { position: fixed; top: 14px; right: 20px; z-index: 15; color: inherit; font: 13px/1.6 system-ui, sans-serif; }
 .game-settings summary { display: grid; place-items: center; width: 34px; height: 34px; cursor: pointer; list-style: none; border-radius: 50%; }
 .game-settings summary::-webkit-details-marker { display: none; }
 .game-settings summary:hover, .game-settings[open] summary { background: #f2f0ec; color: #2b2117; }
@@ -15,3 +15,7 @@
 .settings-links a { font-size: 11px; color: #777; text-decoration: none; }
 .settings-links a:hover { color: #d0461e; }
 #saveNotify { right: 70px !important; top: 23px !important; font-size: 12px; }
+
+/* A little breathing room below the site masthead, for every game column. */
+div#wrapper { margin-top: 28px; }
+@media (max-width: 768px) { div#wrapper { margin-top: 18px; } }
