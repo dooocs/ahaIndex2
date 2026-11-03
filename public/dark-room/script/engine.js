@@ -285,6 +285,11 @@
     loadGame: function() {
       try {
         var savedState = JSON.parse(GameStorage.gameState);
+        // A missing Storage.getItem() value is null, which JSON.parse accepts.
+        // Treat missing or invalid saves as a new game before state-manager init.
+        if(!savedState || typeof savedState !== 'object' || Array.isArray(savedState)) {
+          throw new Error('No valid saved game');
+        }
         if(savedState) {
           State = savedState;
           $SM.updateOldState();
