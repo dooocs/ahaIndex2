@@ -17,5 +17,5 @@
 #saveNotify { right: 70px !important; top: 23px !important; font-size: 12px; }
 
 /* A little breathing room below the site masthead, for every game column. */
-div#wrapper { margin-top: 28px; }
-@media (max-width: 768px) { div#wrapper { margin-top: 18px; } }
+div#wrapper { top: 28px; }
+@media (max-width: 768px) { div#wrapper { top: 18px; } }
