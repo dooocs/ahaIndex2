@@ -29,6 +29,7 @@ div#notifications { width: 220px; line-height: 1.65; }
 div#notifications .notification { margin-bottom: 14px; }
 div#content, div#outerSlider > div { height: var(--game-stage-height, 700px); }
 div.location, div#outerSlider > #worldPanel { height: auto; min-height: 700px; }
+#locationSlider > div.location { min-height: 0; }
 div#header { height: auto; min-height: 24px; padding-bottom: 24px; }
 div.headerButton { line-height: 24px; }
 
