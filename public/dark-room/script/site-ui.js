@@ -25,6 +25,38 @@ $(function () {
     settings.querySelector('.settings-actions').appendChild(button);
   });
   document.body.appendChild(settings);
+  // Crafting lists grow as the game progresses. Grow the viewport vertically
+  // without changing the fixed horizontal offsets used by the original engine.
+  var stageQueued = false;
+  var seenPanels = new WeakSet();
+  var sizeObserver = new ResizeObserver(queueStage);
+  function queueStage() {
+    if (stageQueued) return;
+    stageQueued = true;
+    requestAnimationFrame(function () {
+      stageQueued = false;
+      document.querySelectorAll('.location').forEach(function (panel) {
+        if (!seenPanels.has(panel)) { seenPanels.add(panel); sizeObserver.observe(panel); }
+      });
+      var active = Engine.activeModule && Engine.activeModule.panel;
+      var panel = active && active[0];
+      var height = panel ? panel.getBoundingClientRect().height : 700;
+      if (panel && panel.parentElement.id === 'locationSlider') {
+        var panelTop = panel.getBoundingClientRect().top;
+        document.querySelectorAll('#storesContainer, #village, #workers, #perks, #blueprints, #outfitting').forEach(function (box) {
+          var rect = box.getBoundingClientRect();
+          if (rect.height) height = Math.max(height, rect.bottom - panelTop);
+        });
+      }
+      var header = document.getElementById('header');
+      var headerHeight = panel && panel.parentElement.id === 'locationSlider' ? header.getBoundingClientRect().height : 0;
+      document.documentElement.style.setProperty('--game-stage-height', Math.ceil(Math.max(700, height + headerHeight + 16)) + 'px');
+    });
+  }
+  new MutationObserver(queueStage).observe(document.getElementById('outerSlider'), {
+    childList: true, subtree: true, attributes: true, attributeFilter: ['style']
+  });
+  queueStage();
   document.addEventListener('click', function (event) {
     if (!settings.contains(event.target)) settings.open = false;
   });

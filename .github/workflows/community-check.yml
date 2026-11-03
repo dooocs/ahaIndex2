@@ -21,6 +21,8 @@ jobs:
       - run: npm test
       - run: npm run astro -- check
       - run: npx playwright install --with-deps chromium
+      - name: Dark Room layout and isolated first visit
+        run: node scripts/verify-dark-room-layout.mjs
       - name: Browser flow with isolated mock APIs
         env:
           PUBLIC_COMMUNITY_ENABLED: 'true'
