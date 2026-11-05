@@ -1,26 +1,27 @@
 # 小黑屋账号存档表（阿里云）
 
-`001_saves.sql` creates `public.dark_room_saves` and
-`public.dark_room_save_backups` in the existing amazingindex project.
-Each game has its own tables. No `game_id` multiplexing is used.
+Apply `001_saves.sql` and then `002_manual_slot.sql` in the existing amazingindex
+project. For a database that already has the initial tables, apply only
+`002_manual_slot.sql`. Both tables are dedicated to Dark Room.
 
-This release prepares storage only. The game still saves locally and does not
-upload any existing progress. Authenticated users can SELECT their own records
-through RLS; anon has no access and authenticated has no write privileges.
-The future save API must authenticate the owner, implement atomic expected-
-revision checks, validate schema compatibility and scope all server-role writes
-by the verified user ID. Service-role keys never belong in the browser.
+- `dark_room_saves` holds one latest save per account.
+- `dark_room_save_backups` holds the ten latest historical checkpoints and one
+  protected manual snapshot, identified by `is_manual_slot`.
 
-The trigger provides server timestamps, incrementing revisions, content hashes,
-last-request retry suppression and checkpoints of the previous state. Autosave
-checkpoints are throttled to one per ten minutes; manual/import/reset/restore/
-conflict operations checkpoint immediately. Only the latest ten checkpoints per
-user are retained. A restore must write a new current revision, not roll one back.
+A server-side write with `last_operation = 'manual'` records the **new** snapshot
+in the manual slot in the same transaction as the main save. The previous manual
+snapshot enters ordinary history retention. Historical checkpoints preserve the
+previous state. Automatic writes create historical checkpoints at most every ten
+minutes. Manual, import, reset, restore and conflict operations checkpoint the
+previous state immediately. Restoring a snapshot creates a new revision.
 
-Run `001_saves.test.sql` after installation. It exercises actual table privileges,
-RLS, revision generation, JSON validation, retry handling and ten-backup retention.
-It uses one existing auth user UUID only as an FK target and refuses to touch an
-existing save. All fixture writes are rolled back; no auth user is changed.
+The two tables allow signed-in users to read their own rows under RLS. Writes
+require server credentials. The save API must authenticate the owner and check
+the expected revision atomically on writes. Autosave scheduling, account binding
+and the save picker belong to the game integration.
 
-Browser sync, account-local slots, multi-tab locking and conflict-selection UI
-are separate work and are not enabled by creating these tables.
+Run `001_saves.test.sql` against the initial schema before applying the second
+migration. Run `002_manual_slot.test.sql` after upgrading. The latter checks the
+first manual save, automatic rotation and manual replacement with the server role.
+Both tests use a spare auth account as a foreign-key target and roll back every
+fixture write.
