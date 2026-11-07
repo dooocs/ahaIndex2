@@ -155,6 +155,12 @@ try {
   for (const width of [1920, 1365, 1024]) {
     await page.setViewportSize({ width, height: 900 });
     await page.clock.runFor(100);
+    await page.waitForFunction(() => {
+      const frame = document.querySelector('iframe'), doc = frame.contentDocument;
+      const nav = document.querySelector('.nav-tab').getBoundingClientRect();
+      const settings = document.querySelector('#dark-room-settings-host summary').getBoundingClientRect();
+      return Math.abs(doc.getElementById('notifications').getBoundingClientRect().left + frame.getBoundingClientRect().left - nav.left) < 1 && Math.abs(doc.getElementById('village').getBoundingClientRect().right + frame.getBoundingClientRect().left - settings.right) < 1;
+    });
     const edges = await page.evaluate(() => {
       const frame = document.querySelector('iframe'), doc = frame.contentDocument;
       const nav = document.querySelector('.nav-tab').getBoundingClientRect();
@@ -169,7 +175,7 @@ try {
       doc.documentElement.setAttribute('data-site-edges', '');
       return { left: notifications.left + frame.getBoundingClientRect().left - nav.left, inventoryRight: inventory.right + frame.getBoundingClientRect().left - settings.right, villageRight: village.right + frame.getBoundingClientRect().left - settings.right, unchanged: action.left === original.left && action.width === original.width, clear: !workers || workers.right < village.left, stacked: inventory.top > village.bottom };
     });
-    assert(Math.abs(edges.left) < 1 && Math.abs(edges.inventoryRight) < 1 && Math.abs(edges.villageRight) < 1, `game columns align with navigation and settings at ${width}px`);
+    assert(Math.abs(edges.left) < 1 && Math.abs(edges.inventoryRight) < 1 && Math.abs(edges.villageRight) < 1, `game columns align with navigation and settings at ${width}px: ${JSON.stringify(edges)}`);
     assert(edges.unchanged && edges.clear && edges.stacked, `middle stays in place and village remains above inventory at ${width}px`);
   }
   assert.deepEqual(errors, []);
