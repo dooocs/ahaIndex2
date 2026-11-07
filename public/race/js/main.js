@@ -370,6 +370,8 @@ function updateCamera(dt) {
     tourPos.fromArray(shot.position); tourLook.fromArray(shot.look);
     // 高空视角下保持地图平整、远处清晰；比赛恢复原来的弧面和雾气。
     G.uBend.value = 0; camera.far = 6000;
+    post.post.uniforms.uTourReveal.value = shot.reveal;
+    post.post.uniforms.uTourBounds.value = tour.bounds;
     if (!tourInitialized || reducedMotion.matches) {
       camera.position.copy(tourPos); tourAim.copy(tourLook); tourInitialized = true;
     } else {
@@ -378,10 +380,11 @@ function updateCamera(dt) {
     }
     camera.lookAt(tourAim);
     camera.fov = 58; camera.updateProjectionMatrix();
-    $('tour-phase').textContent = shot.phase === 'overview' ? '西湖全景' : '沿赛道巡游';
+    $('tour-phase').textContent = shot.phase === 'overview' ? '西湖全景' : '环湖巡游';
     return;
   }
   G.uBend.value = 1 / 3400; camera.far = 2600;
+  post.post.uniforms.uTourReveal.value = 0;
   const p = player;
   // 偏向运动方向，漂移时能看到车身甩出去
   const yawT = camMode === 1 ? p.h : p.m + wrapA(p.h - p.m) * TUNE.camDriftLook;

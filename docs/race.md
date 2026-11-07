@@ -44,13 +44,15 @@ speed. Physics, AI and the camera all live on the plane; only the picture curves
 | `ai.js` | five AI drivers: corner speed from curvature ahead, racing line, overtaking, visual drifts, occasional nitro |
 | `effects.js`, `audio.js` | drift smoke, flame puffs and skid marks; an original pentatonic 江南-style background loop (plucked lead with echo, pad, bass, light percussion) mixed above the synthesized engine, tyres and wind (WebAudio, no files) |
 | `main.js` | wiring: build, race states, camera, HUD (analog speedometer 0–280 km/h with the 180+ boost zone in red, three nitro bottles under the car that fill as you drift, burn-time bar), minimap, captions, adaptive quality |
-| `tour.js` | title-only drone tour: north-up aerial overview, smooth descent, one complete lap following the actual track, return to overview; landmark anchors reuse the scenery coordinates |
+| `tour.js` | title-only drone tour: north-up aerial overview fitted to the circuit, smooth descent, one rounded rectangular loop, return to overview; landmark anchors reuse the scenery coordinates |
 
-The title opens with a five-second overview, then descends for seven seconds and follows the circuit for
+The title opens with a one-second overview, then descends for three seconds and flies a rounded rectangle for
 62 seconds before returning to the overview. Start is always available and immediately switches to the
 original race countdown/chase camera. Landmark labels (断桥、雷峰塔、苏堤、三潭印月、龙翔桥) project from world
 coordinates and hide outside the view or behind menu/control overlays. Instructions expand on demand.
 Reduced-motion users keep a static overview. The title view disables world curvature and reduces haze;
+the overview fits the actual circuit bounds and veils the surrounding forest/city in mist, without an
+extra dwell when the loop returns to the overview.
 the race restores its original renderer settings and handling. No new models, textures or render passes.
 
 Handling: the car's facing `h` and its direction of travel `m` are separate. Braking and cornering follow real cars

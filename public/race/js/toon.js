@@ -263,12 +263,14 @@ export function createPost(camera) {
       uInvProj: { value: new THREE.Matrix4() }, uCamWorld: { value: new THREE.Matrix4() },
       uTime: { value: 0 }, uLine: { value: 1 }, uLineW: { value: 1.2 }, uGrain: { value: 1 },
       uInk: G.uInk, uSpeed: { value: 0 }, uHaze: { value: new THREE.Color(0.80, 0.91, 0.90) }, uHazeScale: { value: 1 },
+      uTourReveal: { value: 0 }, uTourBounds: { value: [0, 0, 0, 0] },
     },
     vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
     fragmentShader: /* glsl */`
       uniform sampler2D tColor, tNormal, tDepth;
       uniform vec2 uRes; uniform float uNear, uFar, uTime, uLine, uLineW, uGrain, uSpeed, uHazeScale;
       uniform mat4 uInvProj, uCamWorld; uniform vec3 uInk, uHaze;
+      uniform float uTourReveal; uniform vec4 uTourBounds;
       varying vec2 vUv;
       ${NOISE_GLSL}
       float lin(float d){ float z = d * 2.0 - 1.0; return (2.0 * uNear * uFar) / (uFar + uNear - z * (uFar - uNear)); }
@@ -322,6 +324,14 @@ export function createPost(camera) {
           float streak = step(0.82, vn(vec3(a * 38.0, uTime * 9.0, 0.0)));
           float ring = smoothstep(0.32, 0.62, rr);
           c = mix(c, vec3(0.97, 0.99, 0.98), streak * ring * uSpeed * 0.55);
+        }
+        // 片头的赛道外围渐隐入雾；按世界位置裁取，宽屏也不会露出大片城区。
+        if (uTourReveal > 0.001 && isGeo > 0.5) {
+          vec4 view = uInvProj * vec4(uv * 2.0 - 1.0, texture2D(tDepth, uv).r * 2.0 - 1.0, 1.0);
+          vec2 world = (uCamWorld * vec4(view.xyz / view.w, 1.0)).xz;
+          vec2 outside = max(uTourBounds.xy - world, world - uTourBounds.zw);
+          float veil = smoothstep(0.0, 120.0, max(outside.x, outside.y));
+          c = mix(c, uHaze, veil * uTourReveal);
         }
         if (uGrain > 0.5) {
           float g = hash2(floor(uv * uRes) + floor(uTime * 12.0) * 17.0) - 0.5;
