@@ -45,7 +45,7 @@ try {
    if (url.pathname.endsWith('/verify')) {
      assert.equal(body.type, 'email');
      assert.equal(body.email, user.email);
-     if (body.token !== '123456') return route.fulfill({status:403,contentType:'application/json',headers:{'x-supabase-api-version':'2024-01-01'},body:JSON.stringify({code:'otp_expired',msg:'Token has expired or is invalid'})});
+     if (body.token !== '123456') return route.fulfill({status:403,contentType:'application/json',headers:{'x-supabase-api-version':'2024-01-01','access-control-expose-headers':'x-supabase-api-version'},body:JSON.stringify({code:'otp_expired',msg:'Token has expired or is invalid'})});
      return ok({access_token:token,refresh_token:'test-refresh-token',expires_in:3600,token_type:'bearer',user});
    }
    if (url.pathname.endsWith('/user')) return ok(user);

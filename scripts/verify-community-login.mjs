@@ -32,7 +32,7 @@ try {
         assert.equal(body.email, 'login-regression@example.test');
         assert.equal(body.type, 'email');
         await new Promise(resolve => setTimeout(resolve, 100));
-        return route.fulfill({ status: 403, contentType: 'application/json', headers: { 'x-supabase-api-version': '2024-01-01' }, body: JSON.stringify({ code: 'otp_expired', msg: 'Token has expired or is invalid' }) });
+        return route.fulfill({ status: 403, contentType: 'application/json', headers: { 'x-supabase-api-version': '2024-01-01', 'access-control-expose-headers': 'x-supabase-api-version' }, body: JSON.stringify({ code: 'otp_expired', msg: 'Token has expired or is invalid' }) });
       }
       calls++;
       await new Promise(resolve => setTimeout(resolve, 100));
