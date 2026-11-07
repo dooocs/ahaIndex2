@@ -28,6 +28,7 @@ export async function handleDarkRoom(request: Request, env: (name: string) => st
     const auth = await fetcher(`${url}/auth/v1/user`, {
       headers: { apikey: key, Authorization: token }, signal: AbortSignal.timeout(10000),
     });
+    if (auth.status >= 500 || auth.status === 429) return reply({ error: 'service_unavailable' }, 503);
     if (!auth.ok) return reply({ error: 'login_required' }, 401);
     const user = await auth.json();
     if (!user.id || !user.email_confirmed_at || user.is_anonymous || (user.banned_until && Date.parse(user.banned_until) > Date.now())) return reply({ error: 'login_required' }, 401);

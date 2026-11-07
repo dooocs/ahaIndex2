@@ -37,14 +37,14 @@
       } else window.DarkRoomGame.start(null);
     },
     clear: function () {
-      ['gameState', 'lang'].forEach(function (key) { localStorage.removeItem(prefix + key); });
+      ['gameState', 'lang'].forEach(function (key) { localStorage.removeItem((key === 'lang' ? guestPrefix : prefix) + key); });
     }
   };
   GameStorage.markImport = function () { localStorage.setItem(prefix + 'gameState.operation', 'import'); };
   ['gameState', 'lang'].forEach(function (key) {
     Object.defineProperty(GameStorage, key, {
-      get: function () { return localStorage.getItem(prefix + key); },
-      set: function (value) { localStorage.setItem(prefix + key, value); }
+      get: function () { return localStorage.getItem((key === 'lang' ? guestPrefix : prefix) + key); },
+      set: function (value) { localStorage.setItem((key === 'lang' ? guestPrefix : prefix) + key, value); }
     });
   });
 }());
