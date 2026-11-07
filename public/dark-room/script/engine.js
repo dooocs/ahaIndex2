@@ -194,12 +194,6 @@
           .appendTo(menu);
       }
 
-      $('<span>')
-        .addClass('menuBtn')
-        .text(_('github.'))
-        .click(function() { window.open('https://github.com/doublespeakgames/adarkroom'); })
-        .appendTo(menu);
-
       // Register keypress handlers
       $('body').off('keydown').keydown(Engine.keyDown);
       $('body').off('keyup').keyup(Engine.keyUp);

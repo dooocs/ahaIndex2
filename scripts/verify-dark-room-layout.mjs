@@ -108,6 +108,9 @@ try {
   assert(await page.locator('#lightButton').evaluate(e=>e.getBoundingClientRect().height>=44),'real app fresh boot');
   await page.waitForFunction(()=>document.documentElement.style.getPropertyValue('--game-stage-height'));
   assert(await page.evaluate(()=>document.documentElement.scrollHeight===innerHeight),'fresh game has no unnecessary vertical scrolling');
+  assert(await page.evaluate(() => Events.EventPool.length > 0 && [...Events.Global, ...Events.Room, ...Events.Outside].every(event => Events.EventPool.includes(event))), 'ordinary gameplay events remain available');
+  assert(await page.evaluate(() => Events.EventPool.every(event => Object.values(event.scenes).every(scene => Object.values(scene.buttons || {}).every(button => !button.link)))), 'random gameplay never opens a promotional external link');
+  assert.equal(await page.locator('.menu').getByText('github', { exact: false }).count(), 0, 'legacy GitHub jump removed');
   assert.deepEqual(errors,[],'no page errors');
   console.log('PASS real first visit, 1024px and narrow-window layout');
 } catch(error) { console.error(error);process.exitCode=1; }
