@@ -41,3 +41,16 @@ test('dark room restores an existing save and resets only its own storage', () =
   assert.equal(values.get('unrelated.login'), 'keep');
   assert.equal(context.GameStorage.gameState, null);
 });
+
+test('account saves isolate progress while retaining the browser language', () => {
+  const { context, values } = game('{"version":1.3,"stores":{"wood":42}}');
+  context.GameStorage.lang = 'zh_cn';
+  context.GameStorage.useAccount('11111111-1111-4111-8111-111111111111');
+  assert.equal(context.GameStorage.gameState, null);
+  assert.equal(context.GameStorage.lang, 'zh_cn');
+  context.GameStorage.gameState = '{"version":1.3,"stores":{"wood":99}}';
+  assert.equal(JSON.parse(values.get('amazingindex.dark-room.gameState')).stores.wood, 42);
+  context.GameStorage.clear();
+  assert.equal(context.GameStorage.gameState, null);
+  assert.equal(JSON.parse(values.get('amazingindex.dark-room.gameState')).stores.wood, 42);
+});

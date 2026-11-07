@@ -1,0 +1,110 @@
+// Exercise the real page, auth client, iframe engine and save buttons. All
+// network traffic outside the isolated dev server is mocked or denied.
+import { chromium } from 'playwright';
+import assert from 'node:assert/strict';
+const origin = process.env.COMMUNITY_TEST_URL || 'http://127.0.0.1:4328';
+const apiOrigin = process.env.PUBLIC_COMMUNITY_SUPABASE_URL || 'https://community-preview.supabase.co';
+const user = { id: '11111111-1111-4111-8111-111111111111', aud: 'authenticated', role: 'authenticated', email: 'dark-room@example.test', email_confirmed_at: new Date().toISOString(), app_metadata: {}, user_metadata: {}, identities: [], created_at: new Date().toISOString() };
+const token = `${Buffer.from('{"alg":"HS256","typ":"JWT"}').toString('base64url')}.${Buffer.from(JSON.stringify({ sub: user.id, role: 'authenticated', exp: Math.floor(Date.now() / 1000) + 3600 })).toString('base64url')}.test-signature`;
+let latest = null;
+let slots = [];
+let offline = false;
+const errors = [];
+const calls = [];
+const browser = await chromium.launch({ headless: true });
+const context = await browser.newContext({ viewport: { width: 1365, height: 900 } });
+let page;
+try {
+  await context.addInitScript(({ apiOrigin, token, user }) => {
+    if (localStorage.getItem('dark-room-test-seeded')) return;
+    localStorage.setItem('dark-room-test-seeded', 'yes');
+    localStorage.setItem(`amazingindex-community-auth:${apiOrigin}`, JSON.stringify({ access_token: token, refresh_token: 'test-refresh', token_type: 'bearer', expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, user }));
+    localStorage.setItem('amazingindex.dark-room.gameState', JSON.stringify({ version: 1.3, stores: { wood: 80 } }));
+  }, { apiOrigin, token, user });
+  await context.route('**/*', async route => {
+    const url = new URL(route.request().url());
+    if (url.origin === origin) return route.continue();
+    if (url.origin !== apiOrigin) return route.abort();
+    const ok = data => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(data) });
+    if (url.pathname.endsWith('/user')) return ok(user);
+    if (!url.pathname.endsWith('/functions/v1/meet-api/dark-room')) return route.abort();
+    if (offline) return route.abort();
+    const { action, payload } = route.request().postDataJSON();
+    calls.push({ action, payload });
+    if (action === 'read') return ok({ latest, slots: slots.map(({ state, ...metadata }) => metadata) });
+    if (latest?.last_request_id === payload.request_id) return ok({ latest });
+    if (payload.expected_revision !== (latest?.revision || 0)) return route.fulfill({ status: 409, contentType: 'application/json', body: JSON.stringify({ error: 'conflict', latest }) });
+    let state = payload.state;
+    if (action === 'restore') state = slots.find(slot => slot.revision === payload.revision)?.state;
+    assert.ok(state, 'restore target exists');
+    if (latest && !slots.some(slot => slot.revision === latest.revision)) slots.push({ ...latest, saved_at: latest.updated_at, is_manual_slot: false, reason: payload.operation || 'restore' });
+    latest = { state: structuredClone(state), revision: (latest?.revision || 0) + 1, schema_version: 1, game_version: '1.3', updated_at: new Date().toISOString(), last_request_id: payload.request_id, last_operation: payload.operation || 'restore' };
+    if (payload.operation === 'manual') {
+      slots.forEach(slot => { slot.is_manual_slot = false; });
+      slots.push({ ...latest, saved_at: latest.updated_at, is_manual_slot: true, reason: 'manual' });
+    }
+    return ok({ latest });
+  });
+  page = await context.newPage();
+  page.on('pageerror', error => errors.push(error.message));
+  page.setDefaultTimeout(15000);
+  await page.clock.install({ time: new Date() });
+  await page.goto(`${origin}/dark-room?ignorebrowser=true`);
+  await page.getByRole('button', { name: '继续本机游客存档', exact: false }).click();
+  await page.waitForFunction(() => document.querySelector('#dark-room-save-status')?.textContent.includes('已同步'));
+  assert.equal(latest.state.stores.wood, 80, 'guest binding');
+  const wood = () => page.evaluate(() => document.querySelector('iframe').contentWindow.State.stores.wood);
+  const setWood = value => page.evaluate(value => { document.querySelector('iframe').contentWindow.$SM.set('stores.wood', value); }, value);
+  await page.locator('#dark-room-save').click();
+  await page.waitForFunction(() => !JSON.parse(localStorage.getItem('amazingindex.dark-room.user.11111111-1111-4111-8111-111111111111.gameState.sync')).pending.length);
+  assert.equal(slots.find(slot => slot.is_manual_slot).state.stores.wood, 80, 'manual exact snapshot');
+  await setWood(81);
+  await page.clock.fastForward(31000);
+  await page.waitForFunction(() => !JSON.parse(localStorage.getItem('amazingindex.dark-room.user.11111111-1111-4111-8111-111111111111.gameState.sync')).pending.length);
+  assert.equal(latest.state.stores.wood, 81, '30-second autosave');
+  assert.equal(slots.find(slot => slot.is_manual_slot).state.stores.wood, 80, 'autosave preserves manual');
+  offline = true;
+  await setWood(82);
+  await page.locator('#dark-room-save').click();
+  await page.locator('#dark-room-save-status').filter({ hasText: '已留在本机' }).waitFor();
+  await setWood(83);
+  await page.clock.fastForward(31000);
+  await page.reload();
+  await page.locator('#dark-room-save-status').filter({ hasText: '已留在本机' }).waitFor();
+  assert.equal(await wood(), 83, 'offline local resume');
+  offline = false;
+  await page.locator('#dark-room-retry').click();
+  await page.waitForFunction(() => !JSON.parse(localStorage.getItem('amazingindex.dark-room.user.11111111-1111-4111-8111-111111111111.gameState.sync')).pending.length);
+  assert.equal(latest.state.stores.wood, 83, 'offline latest flushed');
+  assert.equal(slots.find(slot => slot.is_manual_slot).state.stores.wood, 82, 'offline manual survives reload and later autosave');
+  await setWood(84);
+  await page.locator('#dark-room-load').click();
+  await page.locator('dialog').getByRole('button', { name: /^手动存档/ }).click();
+  await page.waitForFunction(() => document.querySelector('iframe').contentWindow.State?.stores?.wood === 82);
+  assert.equal(latest.state.stores.wood, 82, 'manual restore creates latest');
+  assert(slots.some(slot => slot.state.stores.wood === 84), 'pre-restore progress backed up');
+  latest = { ...latest, state: { ...latest.state, stores: { ...latest.state.stores, wood: 900 } }, revision: latest.revision + 1, last_request_id: 'other-device' };
+  await setWood(85);
+  await page.locator('#dark-room-save').click();
+  await page.getByRole('heading', { name: '发现不同的游戏进度' }).waitFor();
+  assert.equal(latest.state.stores.wood, 900, 'CAS never overwrites unseen state');
+  await page.getByRole('button', { name: /^继续云端进度/ }).click();
+  await page.waitForFunction(() => document.querySelector('iframe').contentWindow.State?.stores?.wood === 900);
+  const second = await context.newPage();
+  await second.goto(`${origin}/dark-room`);
+  await second.locator('#dark-room-save-status').filter({ hasText: '另一个标签页' }).waitFor();
+  assert.equal(await second.locator('#dark-room-save').isDisabled(), true, 'only one tab writes');
+  await second.close();
+  await page.reload();
+  await page.waitForFunction(() => document.querySelector('iframe').contentWindow.State?.stores?.wood === 900);
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('amazingindex.dark-room.gameState')).stores.wood), 80, 'original guest save retained');
+  assert.deepEqual(errors, []);
+  await page.screenshot({ path: '/tmp/dark-room-cloud.png' });
+  console.log(JSON.stringify({ result: 'PASS', cloudRequests: calls.length, checks: ['guest binding', 'manual snapshot', '30s autosave', 'offline queue and reload', 'manual restore and backup', 'CAS conflict choice', 'tab locking', 'cloud resume'] }));
+} catch (error) {
+  if (page) {
+    console.error(await page.locator('#dark-room-save-status').textContent(), errors);
+    await page.screenshot({ path: '/tmp/dark-room-cloud-failure.png' });
+  }
+  throw error;
+} finally { await browser.close(); }

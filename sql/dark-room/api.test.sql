@@ -1,0 +1,40 @@
+begin;
+set local role service_role;
+do $$
+declare
+  account uuid;
+  result jsonb;
+  first_request uuid := gen_random_uuid();
+  restore_request uuid := gen_random_uuid();
+  device uuid := gen_random_uuid();
+  payload jsonb;
+  pinned bigint;
+begin
+  select id into account from auth.users u where not exists (select 1 from public.dark_room_saves s where s.user_id=u.id) limit 1;
+  if account is null then raise exception 'A spare auth account is required'; end if;
+  payload := jsonb_build_object('request_id',first_request,'device_id',device,'operation','manual','expected_revision',0,'state','{"version":1.3,"stores":{"wood":42}}'::jsonb);
+  result := public.dark_room_api(account,'save',payload);
+  assert (result#>>'{latest,revision}')::bigint = 1, 'first save';
+  result := public.dark_room_api(account,'save',payload);
+  assert (result#>>'{latest,revision}')::bigint = 1, 'idempotent retry';
+  payload := payload || jsonb_build_object('request_id',gen_random_uuid(),'state','{"version":1.3,"stores":{"wood":90}}'::jsonb,'operation','autosave');
+  result := public.dark_room_api(account,'save',payload);
+  assert result->>'error' = 'conflict', 'stale create rejected';
+  payload := payload || '{"expected_revision":1}'::jsonb;
+  result := public.dark_room_api(account,'save',payload);
+  assert (result#>>'{latest,revision}')::bigint = 2, 'auto revision';
+  select revision into pinned from public.dark_room_save_backups where user_id=account and is_manual_slot;
+  assert pinned = 1, 'auto preserves manual slot';
+  result := public.dark_room_api(account,'restore',jsonb_build_object('request_id',restore_request,'device_id',device,'expected_revision',2,'revision',pinned));
+  assert result#>>'{latest,state,stores,wood}' = '42', 'restore snapshot';
+  assert (result#>>'{latest,revision}')::bigint = 3, 'restore creates new revision';
+  assert exists(select 1 from public.dark_room_save_backups where user_id=account and revision=2 and state#>>'{stores,wood}'='90'), 'pre-restore checkpoint';
+  result := public.dark_room_api(account,'read');
+  assert jsonb_array_length(result->'slots') = 2, 'list manual and history';
+  assert not ((result->'latest') ? 'user_id'), 'omit account identifier';
+  assert not ((result#>'{slots,0}') ? 'state'), 'list contains metadata only';
+  assert not has_function_privilege('authenticated','public.dark_room_api(uuid,text,jsonb)','EXECUTE'), 'browser cannot call server RPC';
+  assert not has_table_privilege('authenticated','public.dark_room_saves','UPDATE'), 'browser cannot write tables';
+end;
+$$;
+rollback;
