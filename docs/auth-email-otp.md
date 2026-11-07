@@ -8,7 +8,20 @@
 
 目标为现有 community 项目 `spb-x6r06737x2zdpg3x`，不迁移项目、不修改账号或业务数据。
 现有插件不提供 Auth 模板、SMTP 设置或邮件投递日志接口。
-本代码变更不代表这些线上配置已经完成，也不能证明 Gmail 收件成功。
+当前后台配置核验记录如下；Gmail 的实际收件仍需单独验证。
+
+### 2026-11-07 后台配置核验
+
+通过当前项目 Studio 的 `Authentication → Emails → Templates` 已保存并刷新读回
+Confirm signup 与 Magic Link 两类模板，主题均为「向上研究所登录验证码」。
+正文与 `auth-email-otp.html` 一致，包含 `{{ .Token }}`，并保留备用登录链接，
+兼容尚未发布验证码输入页的线上版本。
+
+Email Provider 已核验 OTP 为 6 位、600 秒。现有 Custom SMTP 为 Brevo，端口 587，
+重发间隔 60 秒；这些设置未修改。Auth Hooks 页面确认没有配置 hook，邮件由 SMTP 发送。
+模板静态检查显示 `MISSING_SUBJECT`，
+但两个主题字段均已保存并在刷新后显示正确，实际邮件头和投递状态仍待真实收件核验。
+这次操作未发送测试邮件，也没有验证 Gmail 收件成功。前端仍需合并及 build 发布。
 
 1. 保持 Email Auth、邮箱验证开启，保留现有反滥用、发送和验证频率限制。
 2. 将邮件 OTP 长度设为 6 位、有效期设为 600 秒，重发间隔至少 60 秒。
