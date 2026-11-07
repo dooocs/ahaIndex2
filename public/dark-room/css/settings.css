@@ -1,0 +1,17 @@
+/* AmazingIndex adaptation, MPL-2.0. Shared by the game and account toolbar. */
+.game-settings { position: fixed; top: 14px; right: 20px; z-index: 15; color: inherit; font: 13px/1.6 system-ui, sans-serif; }
+.game-settings summary { display: grid; place-items: center; width: 34px; height: 34px; cursor: pointer; list-style: none; border-radius: 50%; }
+.game-settings summary::-webkit-details-marker { display: none; }
+.game-settings summary:hover, .game-settings[open] summary { background: #f2f0ec; color: #2b2117; }
+.game-settings summary:focus-visible, .settings-panel button:focus-visible, .settings-panel a:focus-visible { outline: 2px solid #d0461e; outline-offset: 3px; }
+.settings-panel { position: absolute; top: 42px; right: 0; width: 216px; box-sizing: border-box; padding: 18px; border: 1px solid #e5e0d8; border-radius: 8px; background: var(--dark-room-bg, #fff); color: var(--dark-room-ink, #2b2117); box-shadow: 0 8px 24px #0000000d; }
+.settings-panel strong { display: block; margin-bottom: 12px; font-weight: 500; }
+.settings-actions { display: grid; gap: 2px; }
+.settings-actions button { border: 0; background: none; color: inherit; padding: 8px 0; font: inherit; text-align: left; cursor: pointer; }
+.settings-actions button:hover { color: #d0461e; }
+.settings-credit { margin-top: 12px; padding-top: 12px; border-top: 1px solid #eee; font-size: 10px; color: var(--dark-room-muted, #888); }
+.settings-links { display: flex; gap: 12px; margin-top: 5px; }
+.settings-links a { font-size: 11px; color: var(--dark-room-muted, #777); text-decoration: none; }
+.settings-links a:hover { color: #d0461e; }
+.game-settings--embedded { position: relative; top: auto; right: auto; font: inherit; }
+.game-settings--embedded summary { width: auto; padding: 0 2px; border-radius: 3px; }
