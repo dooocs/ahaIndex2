@@ -27,12 +27,11 @@ var Events = {
 			options
 		);
 
-		// Build the Event Pool
+		// Only gameplay events belong in the AmazingIndex event pool.
 		Events.EventPool = [].concat(
 			Events.Global,
 			Events.Room,
-			Events.Outside,
-      Events.Marketing
+			Events.Outside
 		);
 
 		Events.eventStack = [];
