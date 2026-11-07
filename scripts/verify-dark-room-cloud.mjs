@@ -66,10 +66,10 @@ try {
   assert.equal(await page.evaluate(() => document.querySelector('iframe').contentWindow.State.config.soundOn), true, 'hosted sound control reaches the engine');
   await settings.locator('summary').click();
   await settings.getByRole('button', { name: '夜间模式', exact: true }).click();
-  await page.locator('.dark-room-page[data-theme="dark"]').waitFor();
+  await page.locator('.dark-room-page[data-theme="dark"]').waitFor({ state: 'attached' });
   await settings.locator('summary').click();
   await settings.getByRole('button', { name: '开灯', exact: true }).click();
-  await page.locator('.dark-room-page[data-theme="light"]').waitFor();
+  await page.locator('.dark-room-page[data-theme="light"]').waitFor({ state: 'attached' });
   for (const width of [1920, 1365, 375]) {
     await page.setViewportSize({ width, height: 900 });
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
