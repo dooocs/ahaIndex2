@@ -14,8 +14,14 @@ export class Smoke {
     for (let i = 0; i < n; i++) this.mesh.setMatrixAt(i, this.zero);
     scene.add(this.mesh);
   }
+  setLimit(n) {
+    this.mesh.count = Math.max(1, Math.min(this.p.length, n));
+    this.k %= this.mesh.count;
+    for (let i = this.mesh.count; i < this.p.length; i++) { this.p[i].life = 0; this.mesh.setMatrixAt(i, this.zero); }
+    this.mesh.instanceMatrix.needsUpdate = true;
+  }
   emit(x, y, z, vx, vy, vz, size = 0.6, life = 0.9, tint = null) {
-    const i = this.k, p = this.p[i]; this.k = (this.k + 1) % this.p.length;
+    const i = this.k, p = this.p[i]; this.k = (this.k + 1) % this.mesh.count;
     Object.assign(p, { x, y, z, vx, vy, vz, size, life, max: life });
     this.mesh.instanceColor.setXYZ(i, ...(tint || [1, 1, 1]));
     this.mesh.instanceColor.needsUpdate = true;
@@ -66,3 +72,4 @@ export class Skids {
     } else if (!prev) this.last.set(key, [x, y, z, rx, rz]);
   }
 }
+

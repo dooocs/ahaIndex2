@@ -340,6 +340,10 @@ export function createPost(camera) {
 
   return {
     post,
+    setQuality({ samples, grain }) {
+      if (rtColor.samples !== samples) { rtColor.dispose(); rtColor.samples = samples; }
+      post.uniforms.uGrain.value = grain ? 1 : 0;
+    },
     setSize(W, H, pr) {
       rtColor.setSize(W, H); rtNormal.setSize(W, H);
       post.uniforms.uRes.value.set(W, H);
@@ -378,3 +382,4 @@ export function mergeColored(items) {
   });
   return mergeGeometries(geos);
 }
+
