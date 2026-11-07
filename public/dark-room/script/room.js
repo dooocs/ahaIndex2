@@ -1071,7 +1071,9 @@ var Room = {
 	},
 
 	craftUnlocked: function (thing) {
-		if (Room.buttons[thing]) {
+		var unlockState = 'features.craftables["' + thing + '"]';
+		if (Room.buttons[thing] || $SM.get(unlockState)) {
+			Room.buttons[thing] = true;
 			return true;
 		}
 		if ($SM.get('game.builder.level') < 4) return false;
@@ -1082,6 +1084,7 @@ var Room = {
 		//show button if one has already been built
 		if ($SM.get('game.buildings["' + thing + '"]') > 0) {
 			Room.buttons[thing] = true;
+			$SM.set(unlockState, true);
 			return true;
 		}
 		// Show buttons if we have at least 1/2 the wood, and all other components have been seen.
@@ -1095,6 +1098,8 @@ var Room = {
 		}
 
 		Room.buttons[thing] = true;
+		// Discovery survives spending its materials and reloading the game.
+		$SM.set(unlockState, true);
 		//don't notify if it has already been built before
 		if (!$SM.get('game.buildings["' + thing + '"]')) {
 			Notifications.notify(Room, craftable.availableMsg);

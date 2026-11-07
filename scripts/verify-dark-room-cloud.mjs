@@ -126,10 +126,28 @@ try {
   await second.close();
   await page.reload();
   await page.waitForFunction(() => document.querySelector('iframe').contentWindow.State?.stores?.wood === 900);
+  await page.evaluate(() => {
+    const manager = document.querySelector('iframe').contentWindow.$SM;
+    manager.set('game.builder.level', 4);
+    manager.set('stores.wood', 250);
+    manager.set('stores.fur', 9);
+    manager.set('stores.meat', 5);
+  });
+  await gameFrame.locator('#build_trading-post').waitFor();
+  await gameFrame.locator('#build_lodge').waitFor();
+  await setWood(28);
+  await page.evaluate(() => document.querySelector('iframe').contentWindow.$SM.set('stores.fur', 0));
+  await page.locator('#dark-room-save').click();
+  await page.waitForFunction(() => !JSON.parse(localStorage.getItem('amazingindex.dark-room.user.11111111-1111-4111-8111-111111111111.gameState.sync')).pending.length);
+  assert.equal(latest.state.features.craftables['trading post'], true, 'cloud snapshot includes building discoveries');
+  await page.reload();
+  await gameFrame.locator('#build_trading-post').waitFor();
+  await gameFrame.locator('#build_lodge').waitFor();
+  assert.equal(await wood(), 28, 'restoring discoveries does not replenish spent resources');
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('amazingindex.dark-room.gameState')).stores.wood), 80, 'original guest save retained');
   assert.deepEqual(errors, []);
   await page.screenshot({ path: '/tmp/dark-room-cloud.png' });
-  console.log(JSON.stringify({ result: 'PASS', cloudRequests: calls.length, checks: ['Chinese sound prompt and default language', 'account-aligned controls at desktop and mobile widths', 'hosted sound and theme settings', 'guest binding', 'manual snapshot', '30s autosave', 'offline queue and reload', 'manual restore and backup', 'CAS conflict choice', 'tab locking', 'cloud resume'] }));
+  console.log(JSON.stringify({ result: 'PASS', cloudRequests: calls.length, checks: ['Chinese sound prompt and default language', 'account-aligned controls at desktop and mobile widths', 'hosted sound and theme settings', 'guest binding', 'manual snapshot', '30s autosave', 'offline queue and reload', 'manual restore and backup', 'CAS conflict choice', 'tab locking', 'cloud resume', 'building discoveries survive spending and cloud reload'] }));
 } catch (error) {
   if (page) {
     console.error(await page.locator('#dark-room-save-status').textContent(), errors);
