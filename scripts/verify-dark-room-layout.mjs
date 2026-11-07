@@ -9,7 +9,7 @@ const root = path.resolve('public');
 const button = text => `<div class="button">${text}<div class="cooldown"></div></div>`;
 const rows = (n, cls='storeRow') => Array.from({length:n},(_,i)=>`<div class="${cls}"><span class="row_key">资源 ${i}</span><span class="row_val">123</span></div>`).join('');
 function fixture(scene) {
-  const stores = `<div id="storesContainer"><div id="stores" data-legend="库存">${rows(28)}</div></div>`;
+  const stores = `<div id="storesContainer"${scene === 'path' ? ' style="top:250px"' : ''}><div id="stores" data-legend="库存">${rows(28)}</div></div>`;
   let panel;
   if(scene==='room') panel = `${stores}<div id="stokeButton" class="button">添柴</div>` + ['buildBtns','craftBtns','buyBtns'].map((id,i)=>`<div id="${id}" data-legend="${['建筑物','制作','交易'][i]}">${Array.from({length:20},(_,n)=>button(`物品 ${n}`)).join('')}</div>`).join('');
   if(scene==='outside') panel = `${button('伐木')}<div id="workers">${rows(12,'workerRow')}</div><div id="village">${rows(10)}</div>`;
@@ -60,6 +60,42 @@ try {
     if(scene==='fabricator')assert(result.fabricate.left+136<result.blueprints.left&&result.blueprints.right<result.stores.left,'fabricator columns clear');
     if(scene==='world'){assert(result.map.width<=700,'map fits original slider');assert.equal(result.map.lineHeight,'10px');}
     if(scene==='combat')assert(Math.abs((result.event.left+result.event.right)/2-result.viewport/2)<1,'combat dialog centered');
+    if (['room', 'outside', 'path', 'fabricator'].includes(scene)) {
+      // A wider masthead must move only the outer columns, beyond the slider's
+      // original clipping edge. Compare the central actions to their baseline.
+      const edges = await page.evaluate(() => {
+        const root = document.documentElement;
+        const wrapper = document.getElementById('wrapper').getBoundingClientRect();
+        const left = wrapper.left - 32, right = wrapper.right + 32;
+        root.style.setProperty('--site-nav-left', left + 'px');
+        root.style.setProperty('--site-inventory-right', innerWidth - right + 'px');
+        root.setAttribute('data-site-edges', '');
+        const rect = selector => {
+          const e = document.querySelector(selector), r = e?.getBoundingClientRect();
+          return r ? { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width } : null;
+        };
+        const visible = selector => {
+          const e = document.querySelector(selector), r = e?.getBoundingClientRect();
+          return !e || e.contains(document.elementFromPoint(r.right - 2, r.top + 20));
+        };
+        return { left, right, notifications: rect('#notifications'), stores: rect('#stores'), village: rect('#village'), perks: rect('#perks'), primary: rect('#stokeButton'), workers: rect('#workers'), outfit: rect('#outfitting'), blueprints: rect('#blueprints'), inventoryVisible: visible('#stores'), villageVisible: visible('#village'), perksVisible: visible('#perks') };
+      });
+      assert.equal(edges.notifications.left, edges.left, `${scene}: narrative follows masthead left edge`);
+      for (const name of ['stores', 'village', 'perks']) if (edges[name]) {
+        assert.equal(edges[name].right, edges.right, `${scene}: ${name} follows settings right edge`);
+        assert.equal(edges[name].top, result[name].top, `${scene}: ${name} keeps its vertical position`);
+      }
+      assert(edges.inventoryVisible && edges.villageVisible && edges.perksVisible, `${scene}: outer panels escape slider clipping`);
+      for (const name of ['primary', 'workers', 'outfit', 'blueprints']) if (edges[name]) {
+        assert.equal(edges[name].left, result[name].left, `${scene}: ${name} stays in place`);
+        assert.equal(edges[name].width, result[name].width, `${scene}: ${name} keeps its width`);
+      }
+      await page.evaluate(() => { Engine.activeModule = { panel: [document.getElementById('outerSlider')] }; document.getElementById('main').style.opacity = '0.99'; });
+      await page.waitForFunction(() => !document.documentElement.hasAttribute('data-game-main'));
+      for (const selector of ['#storesContainer', '#village', '#perks']) {
+        assert(await page.locator(selector).evaluateAll(elements => elements.every(e => getComputedStyle(e).visibility === 'hidden')), `${scene}: outer panels disappear during exploration`);
+      }
+    }
     console.log(`PASS ${scene}`);
   }
   await page.setViewportSize({width:1024,height:768});await page.goto(`${origin}/__layout_fixture?scene=room`);
