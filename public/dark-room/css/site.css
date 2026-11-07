@@ -13,6 +13,20 @@ body { min-width: 992px; }
 div#wrapper { width: 700px; padding-left: 260px; }
 div#notifications { width: 220px; line-height: 1.65; }
 div#notifications .notification { margin-bottom: 14px; }
+/* Only the outer columns follow the host site's edges. Fixed inventory panels
+   escape the slider's overflow clipping without widening or moving its 700px
+   coordinate system. Keep the engine's animated top offset below village/perks. */
+html[data-site-edges] div#notifications { left: calc(var(--site-nav-left) - var(--game-wrapper-left)); }
+html[data-site-edges] div#storesContainer,
+html[data-site-edges] div#village,
+html[data-site-edges] div#perks {
+  position: fixed;
+  right: var(--site-inventory-right) !important;
+  margin-top: var(--game-panel-top);
+}
+html[data-site-edges]:not([data-game-main]) #storesContainer,
+html[data-site-edges]:not([data-game-panel="outsidePanel"]) #village,
+html[data-site-edges]:not([data-game-panel="pathPanel"]) #perks { visibility: hidden; }
 div#content, div#outerSlider > div { height: var(--game-stage-height, 700px); }
 div.location, div#outerSlider > #worldPanel { height: auto; min-height: 700px; }
 #locationSlider > div.location { min-height: 0; }

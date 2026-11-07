@@ -145,9 +145,36 @@ try {
   await gameFrame.locator('#build_lodge').waitFor();
   assert.equal(await wood(), 28, 'restoring discoveries does not replenish spent resources');
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('amazingindex.dark-room.gameState')).stores.wood), 80, 'original guest save retained');
+  await page.evaluate(() => {
+    const game = document.querySelector('iframe').contentWindow;
+    if (!game.Outside.panel) game.Outside.init();
+    game.$SM.set('game.buildings.hut', 5);
+    game.Engine.travelTo(game.Outside);
+  });
+  await page.clock.runFor(400);
+  for (const width of [1920, 1365, 1024]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.clock.runFor(100);
+    const edges = await page.evaluate(() => {
+      const frame = document.querySelector('iframe'), doc = frame.contentDocument;
+      const nav = document.querySelector('.nav-tab').getBoundingClientRect();
+      const settings = document.querySelector('#dark-room-settings-host summary').getBoundingClientRect();
+      const notifications = doc.getElementById('notifications').getBoundingClientRect();
+      const inventory = doc.getElementById('stores').getBoundingClientRect();
+      const village = doc.getElementById('village').getBoundingClientRect();
+      const action = doc.getElementById('gatherButton').getBoundingClientRect();
+      const workers = doc.getElementById('workers')?.getBoundingClientRect();
+      doc.documentElement.removeAttribute('data-site-edges');
+      const original = doc.getElementById('gatherButton').getBoundingClientRect();
+      doc.documentElement.setAttribute('data-site-edges', '');
+      return { left: notifications.left + frame.getBoundingClientRect().left - nav.left, inventoryRight: inventory.right + frame.getBoundingClientRect().left - settings.right, villageRight: village.right + frame.getBoundingClientRect().left - settings.right, unchanged: action.left === original.left && action.width === original.width, clear: !workers || workers.right < village.left, stacked: inventory.top > village.bottom };
+    });
+    assert(Math.abs(edges.left) < 1 && Math.abs(edges.inventoryRight) < 1 && Math.abs(edges.villageRight) < 1, `game columns align with navigation and settings at ${width}px`);
+    assert(edges.unchanged && edges.clear && edges.stacked, `middle stays in place and village remains above inventory at ${width}px`);
+  }
   assert.deepEqual(errors, []);
   await page.screenshot({ path: '/tmp/dark-room-cloud.png' });
-  console.log(JSON.stringify({ result: 'PASS', cloudRequests: calls.length, checks: ['Chinese sound prompt and default language', 'account-aligned controls at desktop and mobile widths', 'hosted sound and theme settings', 'guest binding', 'manual snapshot', '30s autosave', 'offline queue and reload', 'manual restore and backup', 'CAS conflict choice', 'tab locking', 'cloud resume', 'building discoveries survive spending and cloud reload'] }));
+  console.log(JSON.stringify({ result: 'PASS', cloudRequests: calls.length, checks: ['Chinese sound prompt and default language', 'account-aligned controls at desktop and mobile widths', 'hosted sound and theme settings', 'guest binding', 'manual snapshot', '30s autosave', 'offline queue and reload', 'manual restore and backup', 'CAS conflict choice', 'tab locking', 'cloud resume', 'building discoveries survive spending and cloud reload', 'masthead-aligned outer columns at three desktop widths with unchanged central actions'] }));
 } catch (error) {
   if (page) {
     console.error(await page.locator('#dark-room-save-status').textContent(), errors);

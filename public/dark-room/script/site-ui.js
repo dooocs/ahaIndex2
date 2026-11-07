@@ -49,6 +49,12 @@ function setupGameUI() {
       });
       var active = Engine.activeModule && Engine.activeModule.panel;
       var panel = active && active[0];
+      var root = document.documentElement;
+      var main = panel && panel.parentElement.id === 'locationSlider';
+      root.dataset.gamePanel = panel ? panel.id : '';
+      root.toggleAttribute('data-game-main', Boolean(main));
+      root.style.setProperty('--game-wrapper-left', document.getElementById('wrapper').getBoundingClientRect().left + 'px');
+      if (main) root.style.setProperty('--game-panel-top', document.getElementById('locationSlider').getBoundingClientRect().top + 'px');
       var height = panel ? panel.getBoundingClientRect().height : 700;
       if (panel && panel.parentElement.id === 'locationSlider') {
         var panelTop = panel.getBoundingClientRect().top;
@@ -65,6 +71,8 @@ function setupGameUI() {
   new MutationObserver(queueStage).observe(document.getElementById('outerSlider'), {
     childList: true, subtree: true, attributes: true, attributeFilter: ['style']
   });
+  window.addEventListener('resize', queueStage);
+  window.addEventListener('scroll', queueStage, { passive: true });
   queueStage();
   function closeSettings(event) {
     if (!settings.contains(event.target)) settings.open = false;

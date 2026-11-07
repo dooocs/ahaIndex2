@@ -21,7 +21,7 @@ const canonical = `${SITE_URL}/dark-room`;
     </div>
     <p id="dark-room-start-note">正在准备存档…</p>
     <dialog id="dark-room-saves" aria-label="小黑屋存档"></dialog>
-    <iframe id="dark-room-app" src="/dark-room/app.html?v=20261107-unlocks&amp;embedded=1" title="小黑屋 · 文字冒险" allow="autoplay; fullscreen"></iframe>
+    <iframe id="dark-room-app" src="/dark-room/app.html?v=20261107-edges&amp;embedded=1" title="小黑屋 · 文字冒险" allow="autoplay; fullscreen"></iframe>
     <noscript><p>小黑屋需要开启 JavaScript 才能游玩。</p></noscript>
   </main>
 </BaseLayout>
@@ -83,6 +83,7 @@ const canonical = `${SITE_URL}/dark-room`;
     };
     const ready = () => {
       syncTheme();
+      resize();
       const doc = frame.contentDocument;
       frame.contentWindow?.addEventListener('dark-room-started', syncTheme);
       doc?.addEventListener('load', syncTheme, true);
@@ -101,6 +102,18 @@ const canonical = `${SITE_URL}/dark-room`;
       if (account) page.style.setProperty('--game-controls-right', `${Math.max(16, innerWidth - account.getBoundingClientRect().right)}px`);
       page.style.setProperty('--game-top', `${bottom}px`);
       frame.style.setProperty('--game-top', `${bottom + 40}px`);
+      // Share the masthead's actual edges with the isolated game document.
+      // Keep the original scrollable stage on narrow windows.
+      const nav = head.querySelector('.nav-tab');
+      const root = frame.contentDocument?.documentElement;
+      if (root) {
+        root.toggleAttribute('data-site-edges', innerWidth >= 992 && Boolean(nav && account));
+        if (nav && account) {
+          const bounds = frame.getBoundingClientRect();
+          root.style.setProperty('--site-nav-left', `${nav.getBoundingClientRect().left - bounds.left}px`);
+          root.style.setProperty('--site-inventory-right', `${bounds.right - account.getBoundingClientRect().right}px`);
+        }
+      }
     };
     resize();
     if (window.ResizeObserver) new ResizeObserver(resize).observe(head);
