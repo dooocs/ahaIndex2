@@ -11,6 +11,7 @@ function setupGameUI() {
   if (host) {
     settings.classList.add('game-settings--embedded');
     settings.querySelector('summary').textContent = '设置';
+    document.getElementById('saveNotify').hidden = true;
   }
   function label(text) {
     return text.replace('sound on.', '开启声音').replace('sound off.', '关闭声音');
