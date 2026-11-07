@@ -19,12 +19,21 @@ try {
     const context = await browser.newContext({ viewport: { width: 1365, height: 900 }, serviceWorkers: 'block' });
     const errors = [];
     let calls = 0;
+    let verifications = 0;
     // Deny all external traffic, including Aliyun and future custom domains.
     // Only local preview assets may reach the network; OTP is always simulated.
     await context.route('**/*', async route => {
       const action = loginTestRequestAction(route.request().url(), route.request().method(), origin);
       if (action === 'continue') return route.continue();
       if (action === 'abort') return route.abort();
+      if (new URL(route.request().url()).pathname === '/auth/v1/verify') {
+        verifications++;
+        const body = route.request().postDataJSON();
+        assert.equal(body.email, 'login-regression@example.test');
+        assert.equal(body.type, 'email');
+        await new Promise(resolve => setTimeout(resolve, 100));
+        return route.fulfill({ status: 403, contentType: 'application/json', headers: { 'x-supabase-api-version': '2024-01-01' }, body: JSON.stringify({ code: 'otp_expired', msg: 'Token has expired or is invalid' }) });
+      }
       calls++;
       await new Promise(resolve => setTimeout(resolve, 100));
       return route.fulfill({
@@ -72,15 +81,42 @@ try {
     }
 
     await button.click();
-    await page.getByText('登录链接已发送至 login-regression@example.test').waitFor();
+    await page.getByText('请查收 login-regression@example.test 的验证码邮件').waitFor();
     assert.equal(calls, 2);
-    assert.equal(await page.locator('#resend-link').isDisabled(), true);
+    assert.equal(await page.locator('#resend-code').isDisabled(), true);
+    assert.equal(await page.locator('#code-form button').isDisabled(), false, 'Sending cooldown must not prevent verification');
+    const code = page.getByLabel('邮箱验证码', { exact: true });
+    for (const width of [320, 375, 1365]) {
+      await page.setViewportSize({ width, height: 900 });
+      const sizes = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, width: innerWidth }));
+      assert.ok(sizes.scroll <= sizes.width, `OTP form must fit at ${width}px`);
+    }
+    await page.locator('#email-code').evaluate(input => {
+      const clipboardData = new DataTransfer();
+      clipboardData.setData('text', '１２３ ４５６');
+      input.dispatchEvent(new ClipboardEvent('paste', { clipboardData, bubbles: true, cancelable: true }));
+    });
+    assert.equal(await code.inputValue(), '123456', 'Pasted full-width digits and whitespace are normalized');
+    await code.fill('123');
+    await page.locator('#code-form').evaluate(form => form.requestSubmit());
+    assert.equal(verifications, 0, 'Incomplete codes must not be submitted');
+    await code.fill('000000');
+    await page.locator('#code-form').evaluate(form => { form.requestSubmit(); form.requestSubmit(); });
+    await page.getByText('验证码错误或已过期，请检查后重试，或重新发送。', { exact: true }).waitFor();
+    assert.equal(verifications, 1, 'Duplicate verify submissions must be ignored');
+    assert.equal(await page.locator('#email-code').getAttribute('aria-invalid'), 'true');
+    await page.clock.fastForward(61000);
+    await page.locator('#resend-code').click();
+    await page.locator('#community-message').filter({ hasText: '验证码发送请求已提交' }).waitFor();
+    assert.equal(calls, 3);
+    assert.equal(await code.inputValue(), '', 'A successful resend clears the old code');
+    assert.equal(await page.locator('#email-code').getAttribute('aria-invalid'), null);
     await page.locator('#change-email').click();
     assert.equal(await button.isDisabled(), true, 'Changing email cannot reset the cooldown');
     assert.deepEqual(errors, []);
     await context.close();
   }
-  console.log(JSON.stringify({ result: 'PASS', emailsSent: 0, checks: ['mail quota vs request rate vs resend interval', 'duplicate submit guard', 'cooldown survives reload and new tab', 'cooldown expiry and successful retry', 'changing email retains cooldown', 'team-only error', 'mobile overflow'] }));
+  console.log(JSON.stringify({ result: 'PASS', emailsSent: 0, checks: ['mail quota vs request rate vs resend interval', 'duplicate send/verify guards', 'cooldown survives reload and new tab', 'incomplete and expired codes', 'verification during send cooldown', 'resend clears stale code', 'changing email retains cooldown', 'team-only error', 'mobile overflow'] }));
 } catch (error) {
   if (currentPage && !currentPage.isClosed()) {
     console.error('Login page:', await currentPage.locator('#community-message').textContent());

@@ -42,6 +42,12 @@ try {
      assert.equal(redirect.searchParams.get('next'), '/meet/new');
      return ok({});
    }
+   if (url.pathname.endsWith('/verify')) {
+     assert.equal(body.type, 'email');
+     assert.equal(body.email, user.email);
+     if (body.token !== '123456') return route.fulfill({status:403,contentType:'application/json',headers:{'x-supabase-api-version':'2024-01-01'},body:JSON.stringify({code:'otp_expired',msg:'Token has expired or is invalid'})});
+     return ok({access_token:token,refresh_token:'test-refresh-token',expires_in:3600,token_type:'bearer',user});
+   }
    if (url.pathname.endsWith('/user')) return ok(user);
    if (url.pathname.endsWith('/logout')) return route.fulfill({status:204});
    if (url.pathname.endsWith('/functions/v1/meet-photos')) return ok({photos:[]});
@@ -116,9 +122,15 @@ try {
  assert.equal(loginNavigations,1,'Clearing a missing session must redirect to login only once');
  await page.getByLabel('邮箱',{exact:true}).fill(user.email);
  await page.locator('[name=terms]').check();
- await page.getByRole('button',{name:'发送登录链接',exact:true}).click();
- await page.getByText(`登录链接已发送至 ${user.email}`).waitFor();
- assert.equal(await page.locator('#resend-link').isDisabled(),true);
+ await page.getByRole('button',{name:'发送验证码',exact:true}).click();
+ await page.getByText(`请查收 ${user.email} 的验证码邮件`).waitFor();
+ assert.equal(await page.locator('#resend-code').isDisabled(),true);
+ await page.getByLabel('邮箱验证码',{exact:true}).fill('000000');
+ await page.getByRole('button',{name:'登录',exact:true}).click();
+ await page.getByText('验证码错误或已过期，请检查后重试，或重新发送。').waitFor();
+ await page.getByLabel('邮箱验证码',{exact:true}).fill('123456');
+ await page.getByRole('button',{name:'登录',exact:true}).click();
+ await page.waitForURL('**/meet/new**');
  await page.goto(origin+'/auth/callback#error=access_denied&error_code=otp_expired&error_description=expired');
  await page.getByText('登录链接无效或已过期，请重新发送。').waitFor();
  assert.equal(new URL(page.url()).hash,'');

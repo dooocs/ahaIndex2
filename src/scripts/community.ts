@@ -1,6 +1,6 @@
 import { communityClient } from '../lib/community-client';
 import { communityRpc } from '../lib/community-api';
-import { friendlyError, loginRetrySeconds, postRetrySeconds, safeReturnPath, STATUS_LABELS, validatePost, type MeetPost } from '../lib/community-model';
+import { emailCodeError, friendlyError, loginRetrySeconds, postRetrySeconds, safeReturnPath, STATUS_LABELS, validatePost, type MeetPost } from '../lib/community-model';
 import { photoEditor, photoViewer } from './community-photos';
 
 type Turnstile = { render: (element: HTMLElement, options: Record<string, unknown>) => string; reset: (id: string) => void; remove: (id: string) => void };
@@ -110,12 +110,18 @@ async function init() {
       const emailInput = emailForm.querySelector<HTMLInputElement>('[name=email]')!;
       const submit = emailForm.querySelector<HTMLButtonElement>('button[type=submit]')!;
       const sent = $('#email-sent');
-      const resend = $<HTMLButtonElement>('#resend-link');
+      const codeForm = $<HTMLFormElement>('#code-form');
+      const codeInput = $<HTMLInputElement>('#email-code');
+      const verify = codeForm.querySelector<HTMLButtonElement>('button[type=submit]')!;
+      const resend = $<HTMLButtonElement>('#resend-code');
       const changeEmail = $<HTMLButtonElement>('#change-email');
       const cooldownKey = 'amazingindex-community-login-retry-at';
       let email = '';
       let resendAt = 0;
-      let sendingLink = false;
+      let sendingCode = false;
+      let verifyingCode = false;
+      let verified = false;
+      let verifyAt = 0;
       let captchaToken = '';
       let widget = '';
       const captcha = root.querySelector<HTMLElement>('#community-captcha');
@@ -147,12 +153,17 @@ async function init() {
           if (Number.isFinite(saved) && saved <= Date.now() + 3600000) resendAt = Math.max(resendAt, saved);
         } catch { /* In-memory cooldown still works when storage is unavailable. */ }
         const seconds = Math.max(0, Math.ceil((resendAt - Date.now()) / 1000));
-        submit.disabled = sendingLink || seconds > 0;
-        resend.disabled = sendingLink || seconds > 0;
-        emailInput.readOnly = sendingLink;
-        changeEmail.disabled = sendingLink;
-        submit.textContent = sendingLink ? '正在发送…' : seconds ? `${seconds} 秒后可发送` : '发送登录链接';
-        resend.textContent = sendingLink ? '正在发送…' : seconds ? `${seconds} 秒后重发` : '重新发送';
+        const busy = sendingCode || verifyingCode || verified;
+        const verifySeconds = Math.max(0, Math.ceil((verifyAt - Date.now()) / 1000));
+        submit.disabled = busy || seconds > 0;
+        resend.disabled = busy || seconds > 0;
+        verify.disabled = busy || verifySeconds > 0;
+        emailInput.readOnly = busy;
+        codeInput.readOnly = busy;
+        changeEmail.disabled = busy;
+        submit.textContent = sendingCode ? '正在发送…' : seconds ? `${seconds} 秒后可发送` : '发送验证码';
+        resend.textContent = sendingCode ? '正在发送…' : seconds ? `${seconds} 秒后重发` : '重新发送验证码';
+        verify.textContent = verified ? '登录成功…' : verifyingCode ? '正在验证…' : verifySeconds ? `${verifySeconds} 秒后可验证` : '登录';
       };
       const cooldown = (seconds: number) => {
         resendAt = Math.max(resendAt, Date.now() + seconds * 1000);
@@ -163,15 +174,15 @@ async function init() {
       window.addEventListener('storage', onStorage);
       disposers.push(() => { clearInterval(timer); window.removeEventListener('storage', onStorage); });
       updateCountdown();
-      if (resendAt > Date.now()) message('请等待倒计时结束后再发送；如已收到邮件，请使用最新一封中的链接。');
-      async function sendLink() {
-        if (sendingLink || disposed) return;
+      if (resendAt > Date.now()) message('请等待倒计时结束后再发送；如已收到邮件，请使用最新一封中的验证码。');
+      async function sendCode() {
+        if (sendingCode || verifyingCode || verified || disposed) return;
         updateCountdown();
-        if (Date.now() < resendAt) { message('请稍后再发送登录链接。', true); return; }
+        if (Date.now() < resendAt) { message('请稍后再发送验证码。', true); return; }
         if (captcha && !captchaToken) { message('请先完成安全验证。', true); return; }
-        sendingLink = true;
+        sendingCode = true;
         updateCountdown();
-        message('正在发送登录链接…');
+        message('正在发送验证码…');
         try {
           const redirect = new URL('/auth/callback', location.origin);
           redirect.searchParams.set('next', next);
@@ -184,29 +195,73 @@ async function init() {
           emailForm.hidden = true;
           sent.hidden = false;
           if (captcha) sent.prepend(captcha);
-          $('#email-recipient').textContent = `登录链接已发送至 ${email}`;
-          message('请在邮箱中打开登录链接，10 分钟内有效。');
+          $('#email-recipient').textContent = `请查收 ${email} 的验证码邮件`;
+          codeInput.value = '';
+          codeInput.removeAttribute('aria-invalid');
+          message('验证码发送请求已提交，请查收邮件。');
         } catch (error) {
           const seconds = loginRetrySeconds(error);
           if (seconds) cooldown(seconds);
           message(friendlyError(error), true);
         } finally {
-          sendingLink = false;
+          sendingCode = false;
           if (captcha && !disposed) { captchaToken = ''; turnstile()?.reset(widget); }
           updateCountdown();
+          if (!disposed && !sent.hidden) codeInput.focus();
         }
       }
+      codeInput.addEventListener('input', () => { codeInput.removeAttribute('aria-invalid'); });
+      codeInput.addEventListener('paste', event => {
+        const pasted = event.clipboardData?.getData('text').normalize('NFKC').replace(/\s/g, '');
+        if (pasted && /^[0-9]{6}$/.test(pasted)) {
+          event.preventDefault();
+          codeInput.value = pasted;
+          codeInput.removeAttribute('aria-invalid');
+        }
+      });
+      codeForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (disposed || sendingCode || verifyingCode || verified || sent.hidden) return;
+        if (Date.now() < verifyAt || !codeForm.reportValidity()) return;
+        verifyingCode = true;
+        updateCountdown();
+        message('正在验证验证码…');
+        try {
+          const { data, error } = await client!.auth.verifyOtp({ email, token: codeInput.value.trim(), type: 'email' });
+          if (disposed) return;
+          if (error) throw error;
+          if (!data.session || !data.user?.email_confirmed_at) throw { code: 'otp_expired' };
+          verified = true;
+          codeInput.value = '';
+          message('登录成功，正在返回…');
+          location.replace(next);
+        } catch (error) {
+          if (disposed) return;
+          const seconds = loginRetrySeconds(error);
+          if (seconds) verifyAt = Date.now() + seconds * 1000;
+          codeInput.setAttribute('aria-invalid', 'true');
+          message(emailCodeError(error), true);
+        } finally {
+          verifyingCode = false;
+          updateCountdown();
+          if (!disposed && !verified) codeInput.focus();
+        }
+      });
       emailForm.addEventListener('submit', event => {
         event.preventDefault();
         if (!emailForm.reportValidity()) return;
         email = String(new FormData(emailForm).get('email')).trim();
-        void sendLink();
+        void sendCode();
       });
-      resend.addEventListener('click', () => { void sendLink(); });
+      resend.addEventListener('click', () => { void sendCode(); });
       changeEmail.addEventListener('click', () => {
+        if (sendingCode || verifyingCode || verified) return;
         sent.hidden = true; emailForm.hidden = false;
+        codeInput.value = '';
+        codeInput.removeAttribute('aria-invalid');
         if (captcha) emailForm.append(captcha);
         message('');
+        emailInput.focus();
       });
     }
 

@@ -103,7 +103,7 @@ export function friendlyError(error: unknown): string {
   if (postRetrySeconds(e)) return '帖子提交间隔需满一分钟，请稍后再试。';
   if (e?.code === 'otp_expired' || e?.details?.code === 'otp_expired') return '登录链接无效或已过期，请重新发送。';
   if (e?.code === 'email_address_not_authorized') return '当前为封闭测试，仅支持项目团队成员邮箱。';
-  if (loginRetrySeconds(e) && retrySeconds(e)) return `登录链接发送间隔过短，请等待 ${retrySeconds(e)} 秒后再试。`;
+  if (loginRetrySeconds(e) && retrySeconds(e)) return `验证码发送间隔过短，请等待 ${retrySeconds(e)} 秒后再试。`;
   if (e?.code === 'over_email_send_rate_limit') return '登录邮件发送已达到服务限额，这次未发送。请稍后再试；若持续出现，请联系站点管理员配置邮件服务。';
   if (e?.code === 'over_request_rate_limit') return '登录请求过于频繁，请等待几分钟后再试。';
   if (e?.status === 429 || /rate[ _-]?limit|too many requests/i.test(e?.message || '')) return '操作太频繁，请稍后再试。';
@@ -112,4 +112,11 @@ export function friendlyError(error: unknown): string {
   if (e?.code === '23514' || e?.code === '22023') return '资料不符合发布要求，请检查后重试。';
   if (e?.code === 'PGRST202' || e?.code === 'PGRST205') return '相亲服务尚未准备就绪，请稍后再试。';
   return '服务暂时不可用，请稍后重试。';
+}
+
+export function emailCodeError(error: unknown): string {
+  const e = error as ServiceError;
+  if (e?.code === 'otp_expired' || e?.details?.code === 'otp_expired') return '验证码错误或已过期，请检查后重试，或重新发送。';
+  if (e?.status === 429 || e?.code === 'over_request_rate_limit') return '验证过于频繁，请稍后再试。';
+  return friendlyError(error);
 }

@@ -9,7 +9,7 @@ export function localPreviewOrigin(value) {
 
 export function loginTestRequestAction(requestUrl, method, origin) {
   const url = new URL(requestUrl);
-  if (method === 'POST' && url.pathname === '/auth/v1/otp') return 'mock';
+  if (method === 'POST' && ['/auth/v1/otp', '/auth/v1/verify'].includes(url.pathname)) return 'mock';
   if (url.origin === origin && ['GET', 'HEAD'].includes(method)) return 'continue';
   return 'abort';
 }
