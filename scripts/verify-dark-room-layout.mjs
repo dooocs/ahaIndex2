@@ -9,7 +9,7 @@ const root = path.resolve('public');
 const button = text => `<div class="button">${text}<div class="cooldown"></div></div>`;
 const rows = (n, cls='storeRow') => Array.from({length:n},(_,i)=>`<div class="${cls}"><span class="row_key">资源 ${i}</span><span class="row_val">123</span></div>`).join('');
 function fixture(scene) {
-  const stores = `<div id="storesContainer"><div id="stores" data-legend="库存">${rows(28)}</div></div>`;
+  const stores = `<div id="storesContainer"${scene === 'path' ? ' style="top:250px"' : ''}><div id="stores" data-legend="库存">${rows(28)}</div></div>`;
   let panel;
   if(scene==='room') panel = `${stores}<div id="stokeButton" class="button">添柴</div>` + ['buildBtns','craftBtns','buyBtns'].map((id,i)=>`<div id="${id}" data-legend="${['建筑物','制作','交易'][i]}">${Array.from({length:20},(_,n)=>button(`物品 ${n}`)).join('')}</div>`).join('');
   if(scene==='outside') panel = `${button('伐木')}<div id="workers">${rows(12,'workerRow')}</div><div id="village">${rows(10)}</div>`;
