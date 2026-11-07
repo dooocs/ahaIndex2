@@ -137,6 +137,7 @@ try {
  await page.goto(origin+'/auth/callback?next=%2Fmeet%2Fnew%2F#'+new URLSearchParams({access_token:token,refresh_token:'test-refresh-token',expires_in:'3600',token_type:'bearer',type:'magiclink'}));
  await page.waitForURL('**/meet/new**');
  await page.locator('#post-form').waitFor({state:'visible'});
+ const photoListCallsBeforeUpload = apiCalls.filter(path=>path.endsWith('/functions/v1/meet-photos')).length;
  const fixture = await page.evaluate(() => {
    const canvas=document.createElement('canvas'); canvas.width=16; canvas.height=16;
    canvas.getContext('2d').fillRect(0,0,16,16);
@@ -148,7 +149,7 @@ try {
  await page.getByText('照片已上传，提交后与资料一起审核。',{exact:true}).waitFor();
  assert.equal(await page.locator('#photo-counter').textContent(),'1 / 6');
  assert.equal(apiCalls.filter(path=>path.includes('/storage/v1/object/meet-photos/')).length,2);
- assert.equal(apiCalls.filter(path=>path.endsWith('/functions/v1/meet-photos')).length,1,'Only initial photo list may use FC');
+ assert.equal(apiCalls.filter(path=>path.endsWith('/functions/v1/meet-photos')).length,photoListCallsBeforeUpload,'Uploading photos must not add FC requests');
  await page.locator('#photo-files').setInputFiles(Array.from({length:6},()=>fixtureFile));
  await page.getByText('每则启事最多 6 张照片。',{exact:true}).waitFor();
  await page.getByRole('button',{name:'移除照片'}).click();
