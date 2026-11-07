@@ -31,12 +31,13 @@
 	<script>
         // Validate against the bundled languages before constructing asset paths.
         var requestedLang = new URLSearchParams(location.search).get('lang');
-        var lang = Object.prototype.hasOwnProperty.call(langs, requestedLang) ? requestedLang : (GameStorage.lang || 'zh_cn');
-        if (!Object.prototype.hasOwnProperty.call(langs, lang)) lang = 'zh_cn';
+        var lang = Object.prototype.hasOwnProperty.call(langs, requestedLang) ? requestedLang : 'zh_cn';
+        GameStorage.lang = lang;
         if (lang !== 'en') {
             document.write('<script src="lang/'+lang+'/strings.js"><\/script>');
             document.write('<link rel="stylesheet" href="lang/'+lang+'/main.css">');
         }
+        if (lang === 'zh_cn') document.write('<script src="lang/zh_cn/site-strings.js?v=20261107-controls"><\/script>');
 	</script>
 	
 	<script src="script/Button.js"></script>
@@ -83,8 +84,9 @@
 	
 	<script src="script/localization.js"></script>
 
-	<link rel="stylesheet" href="css/site.css?v=20261104-layout">
-	<script src="script/site-ui.js?v=20261107-cloud"></script>
+	<link rel="stylesheet" href="css/settings.css?v=20261107-controls">
+	<link rel="stylesheet" href="css/site.css?v=20261107-controls">
+	<script src="script/site-ui.js?v=20261107-controls"></script>
 </head>
 <body>
 

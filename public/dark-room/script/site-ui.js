@@ -1,10 +1,18 @@
 // AmazingIndex adaptation, MPL-2.0. Keep utility controls out of the play area.
 function setupGameUI() {
   var menu = document.querySelector('.menu');
-  if (!menu || document.querySelector('.game-settings')) return;
+  if (!menu || menu.dataset.settingsReady) return;
+  menu.dataset.settingsReady = 'true';
+  var host;
+  try { host = window.parent !== window && window.parent.document.getElementById('dark-room-settings-host'); } catch (_) {}
   var settings = document.createElement('details');
   settings.className = 'game-settings';
-  settings.innerHTML = '<summary class="menuBtn" aria-label="游戏设置" title="游戏设置"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m9 3-1 3-3 1 1 3-2 2 2 2-1 3 3 1 1 3h6l1-3 3-1-1-3 2-2-2-2 1-3-3-1-1-3Z"/><circle cx="12" cy="12" r="3"/></svg></summary><div class="settings-panel"><strong>游戏设置</strong><div class="settings-actions"></div><div class="settings-credit">A Dark Room<br>Michael Townsend &amp; contributors</div><div class="settings-links"><a href="https://github.com/doublespeakgames/adarkroom" target="_blank" rel="noopener">原作</a><a href="https://github.com/dooocs/ahaIndex2/tree/main/public/dark-room" target="_blank" rel="noopener">源码</a><a href="LICENSE.md" target="_blank" rel="noopener">MPL-2.0</a></div></div>';
+  settings.innerHTML = '<summary class="menuBtn" aria-label="游戏设置" title="游戏设置"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m9 3-1 3-3 1 1 3-2 2 2 2-1 3 3 1 1 3h6l1-3 3-1-1-3 2-2-2-2 1-3-3-1-1-3Z"/><circle cx="12" cy="12" r="3"/></svg></summary><div class="settings-panel"><strong>游戏设置</strong><div class="settings-actions"></div><div class="settings-credit">A Dark Room<br>Michael Townsend 等</div><div class="settings-links"><a href="https://github.com/doublespeakgames/adarkroom" target="_blank" rel="noopener">原作</a><a href="https://github.com/dooocs/ahaIndex2/tree/main/public/dark-room" target="_blank" rel="noopener">源码</a><a href="/dark-room/LICENSE.md" target="_blank" rel="noopener">MPL-2.0</a></div></div>';
+  if (host) {
+    settings.classList.add('game-settings--embedded');
+    settings.querySelector('summary').textContent = '设置';
+    document.getElementById('saveNotify').hidden = true;
+  }
   function label(text) {
     return text.replace('sound on.', '开启声音').replace('sound off.', '关闭声音');
   }
@@ -14,7 +22,7 @@ function setupGameUI() {
     var button = document.createElement('button');
     button.type = 'button';
     button.className = 'menuBtn';
-    var updateLabel = function () { button.textContent = selector === '.save' ? '存档 / 备份' : label(original.textContent); };
+    var updateLabel = function () { button.textContent = selector === '.save' ? '导入 / 导出' : label(original.textContent); };
     updateLabel();
     new MutationObserver(updateLabel).observe(original, { childList: true, characterData: true, subtree: true });
     button.addEventListener('click', function () {
@@ -24,7 +32,8 @@ function setupGameUI() {
     });
     settings.querySelector('.settings-actions').appendChild(button);
   });
-  document.body.appendChild(settings);
+  if (host) host.replaceChildren(settings);
+  else document.body.appendChild(settings);
   // Crafting lists grow as the game progresses. Grow the viewport vertically
   // without changing the fixed horizontal offsets used by the original engine.
   var stageQueued = false;
@@ -57,9 +66,17 @@ function setupGameUI() {
     childList: true, subtree: true, attributes: true, attributeFilter: ['style']
   });
   queueStage();
-  document.addEventListener('click', function (event) {
+  function closeSettings(event) {
     if (!settings.contains(event.target)) settings.open = false;
-  });
+  }
+  document.addEventListener('click', closeSettings);
+  if (host) {
+    host.ownerDocument.addEventListener('click', closeSettings);
+    window.addEventListener('pagehide', function () {
+      host.ownerDocument.removeEventListener('click', closeSettings);
+      settings.remove();
+    });
+  }
   settings.addEventListener('keydown', function (event) {
     if (event.key === 'Escape') { settings.open = false; settings.querySelector('summary').focus(); }
   });

@@ -20,6 +20,7 @@ try {
     localStorage.setItem('dark-room-test-seeded', 'yes');
     localStorage.setItem(`amazingindex-community-auth:${apiOrigin}`, JSON.stringify({ access_token: token, refresh_token: 'test-refresh', token_type: 'bearer', expires_in: 3600, expires_at: Math.floor(Date.now() / 1000) + 3600, user }));
     localStorage.setItem('amazingindex.dark-room.gameState', JSON.stringify({ version: 1.3, stores: { wood: 80 } }));
+    localStorage.setItem('amazingindex.dark-room.lang', 'en');
   }, { apiOrigin, token, user });
   await context.route('**/*', async route => {
     const url = new URL(route.request().url());
@@ -53,6 +54,33 @@ try {
   await page.getByRole('button', { name: '继续本机游客存档', exact: false }).click();
   await page.waitForFunction(() => document.querySelector('#dark-room-save-status')?.textContent.includes('已同步'));
   assert.equal(latest.state.stores.wood, 80, 'guest binding');
+  const gameFrame = page.frameLocator('#dark-room-app');
+  await page.clock.fastForward(3100);
+  await gameFrame.getByText('是否开启声音？', { exact: true }).waitFor();
+  await gameFrame.getByText('保持静音', { exact: true }).click();
+  assert.equal(await page.evaluate(() => localStorage.getItem('amazingindex.dark-room.lang')), 'zh_cn', 'Chinese is the default even with an old English preference');
+  assert.equal(await gameFrame.locator('.game-settings').count(), 0, 'settings live below the account');
+  const settings = page.locator('#dark-room-settings-host .game-settings');
+  await settings.locator('summary').click();
+  await settings.getByRole('button', { name: '开启声音', exact: true }).click();
+  assert.equal(await page.evaluate(() => document.querySelector('iframe').contentWindow.State.config.soundOn), true, 'hosted sound control reaches the engine');
+  await settings.locator('summary').click();
+  await settings.getByRole('button', { name: '夜间模式', exact: true }).click();
+  await page.locator('.dark-room-page[data-theme="dark"]').waitFor({ state: 'attached' });
+  await settings.locator('summary').click();
+  await settings.getByRole('button', { name: '开灯', exact: true }).click();
+  await page.locator('.dark-room-page[data-theme="light"]').waitFor({ state: 'attached' });
+  for (const width of [1920, 1365, 375]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const aligned = await page.evaluate(() => {
+      const account = document.querySelector('[data-community-account]').getBoundingClientRect();
+      const controls = document.querySelector('.dark-room-cloud').getBoundingClientRect();
+      return Math.abs(account.right - controls.right) < 2 && controls.top >= account.bottom && controls.left >= 0 && controls.right <= innerWidth;
+    });
+    assert(aligned, `controls align below account at ${width}px`);
+  }
+  await page.setViewportSize({ width: 1365, height: 900 });
   const wood = () => page.evaluate(() => document.querySelector('iframe').contentWindow.State.stores.wood);
   const setWood = value => page.evaluate(value => { document.querySelector('iframe').contentWindow.$SM.set('stores.wood', value); }, value);
   await page.locator('#dark-room-save').click();
@@ -81,6 +109,7 @@ try {
   await page.locator('#dark-room-load').click();
   await page.locator('dialog').getByRole('button', { name: /^手动存档/ }).click();
   await page.waitForFunction(() => document.querySelector('iframe').contentWindow.State?.stores?.wood === 82);
+  assert.equal(await page.locator('#dark-room-settings-host .game-settings').count(), 1, 'one working settings menu after restore');
   assert.equal(latest.state.stores.wood, 82, 'manual restore creates latest');
   assert(slots.some(slot => slot.state.stores.wood === 84), 'pre-restore progress backed up');
   latest = { ...latest, state: { ...latest.state, stores: { ...latest.state.stores, wood: 900 } }, revision: latest.revision + 1, last_request_id: 'other-device' };
@@ -100,7 +129,7 @@ try {
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('amazingindex.dark-room.gameState')).stores.wood), 80, 'original guest save retained');
   assert.deepEqual(errors, []);
   await page.screenshot({ path: '/tmp/dark-room-cloud.png' });
-  console.log(JSON.stringify({ result: 'PASS', cloudRequests: calls.length, checks: ['guest binding', 'manual snapshot', '30s autosave', 'offline queue and reload', 'manual restore and backup', 'CAS conflict choice', 'tab locking', 'cloud resume'] }));
+  console.log(JSON.stringify({ result: 'PASS', cloudRequests: calls.length, checks: ['Chinese sound prompt and default language', 'account-aligned controls at desktop and mobile widths', 'hosted sound and theme settings', 'guest binding', 'manual snapshot', '30s autosave', 'offline queue and reload', 'manual restore and backup', 'CAS conflict choice', 'tab locking', 'cloud resume'] }));
 } catch (error) {
   if (page) {
     console.error(await page.locator('#dark-room-save-status').textContent(), errors);

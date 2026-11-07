@@ -19,7 +19,7 @@ function fixture(scene) {
   if(scene==='combat') panel = `<div class="eventPanel"><div id="description"><div class="fighter">战斗</div></div><div id="buttons">${['攻击','治疗','逃跑','投掷'].map(button).join('')}</div></div>`;
   const id = scene==='combat' ? 'roomPanel' : `${scene}Panel`;
   const body = `<div id="wrapper"><div id="notifications">${rows(8)}</div><div id="content"><div id="outerSlider" style="width:700px"><div id="main"><div id="header">小黑屋 ｜ 静谧森林</div><div id="locationSlider" style="width:700px"><div class="location" id="${id}">${panel}</div></div></div></div></div></div><div class="menu"></div>`;
-  return `<!doctype html><meta charset="utf-8">${['main','room','outside','path','world','fabricator','site'].map(n=>`<link rel="stylesheet" href="/dark-room/css/${n}.css">`).join('')}<link rel="stylesheet" href="/dark-room/lang/zh_cn/main.css"><link rel="stylesheet" href="/dark-room/css/site.css"><script src="/dark-room/lib/jquery.min.js"></script>${body}<script>window.Engine={activeModule:{panel:[$('#${id}')[0]]}};</script><script src="/dark-room/script/site-ui.js"></script>`;
+  return `<!doctype html><meta charset="utf-8">${['main','room','outside','path','world','fabricator','settings','site'].map(n=>`<link rel="stylesheet" href="/dark-room/css/${n}.css">`).join('')}<link rel="stylesheet" href="/dark-room/lang/zh_cn/main.css"><link rel="stylesheet" href="/dark-room/css/site.css"><script src="/dark-room/lib/jquery.min.js"></script>${body}<script>window.Engine={activeModule:{panel:[$('#${id}')[0]]}};</script><script src="/dark-room/script/site-ui.js"></script>`;
 }
 const server=http.createServer(async(req,res)=>{
   try {
