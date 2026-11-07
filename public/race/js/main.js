@@ -16,6 +16,7 @@ import { damp, makeRand, slice } from './noise.js';
 import * as LB from './board.js';
 import { TUNE, isAdvanced, applyTuning } from './tuning.js';
 import { readQuality, qualityProfile, bindQualityButton } from './quality.js';
+import { createTour, LANDMARKS } from './tour.js';
 
 THREE.ColorManagement.enabled = false;
 const Q = new URLSearchParams(location.search);
@@ -139,6 +140,7 @@ track.startAt = LY.START_AT;
 track.padAt = [[425, -180], [50, -352], [-403, -178], [-300, 474]];
 const D_START = track.dAt(...LY.START_AT);
 let terrain, updateBoats, player, ais = [], cars = [], smoke, skids;
+let tour;
 const sound = new Sound();
 
 // 赛道沿途的景点字幕（西湖十景）
@@ -155,6 +157,8 @@ async function build() {
   const prog = (a, b) => f => { $('bar').style.width = `${(a + (b - a) * f) * 100}%`; };
   prog(0, 0)(0);
   terrain = await buildTerrain(track, scene, slice);
+  tour = createTour(track, terrain.groundAt, D_START);
+  mountLandmarks();
   prog(0, 0.35)(1);
   classify(track);
   buildTrackMeshes(track, scene);
@@ -215,6 +219,7 @@ addEventListener('pagehide', () => { sound.setOn(false); syncMute(); });
 function startRace() {
   sound.start(); $('mute').classList.remove('hint');
   $('title').hidden = true; $('hud').hidden = false;
+  $('tour').hidden = true;
   if (state === 'title' || state === 'finish') resetRace();
   state = 'count'; countT = Q.has('skipcount') ? 0.61 : 3.6; lastCount = 4;
   syncMute();
@@ -321,27 +326,62 @@ function autopilot() {
 }
 
 // ---------- 相机 ----------
-const cam = { yaw: 0, pos: new THREE.Vector3(), look: new THREE.Vector3(), fov: 62, shake: 0, fly: 0 };
+const cam = { yaw: 0, pos: new THREE.Vector3(), look: new THREE.Vector3(), fov: 62, shake: 0 };
+let tourTime = 0;
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+const tourPos = new THREE.Vector3(), tourLook = new THREE.Vector3(), tourAim = new THREE.Vector3();
+let tourInitialized = false;
+const markers = [];
+function mountLandmarks() {
+  for (const spot of LANDMARKS) {
+    const el = document.createElement('div');
+    el.className = 'landmark'; el.hidden = true;
+    const name = document.createElement('b'), detail = document.createElement('span');
+    name.textContent = spot.name; detail.textContent = spot.detail;
+    el.append(name, detail); $('landmarks').append(el);
+    markers.push({ el, world: new THREE.Vector3(spot.at[0], terrain.groundAt(...spot.at) + spot.lift, spot.at[1]), projected: new THREE.Vector3() });
+  }
+}
+function updateLandmarks() {
+  const visible = state === 'title' && !CAM_PIN;
+  $('tour').hidden = !visible;
+  if (!visible) return;
+  camera.updateMatrixWorld();
+  const blocked = [$('title').firstElementChild, $('quality'), $('mute')].map(el => el.getBoundingClientRect());
+  const placed = [], w = innerWidth, h = innerHeight, half = w < 640 ? 53 : 66;
+  for (const m of markers) {
+    const p = m.projected.copy(m.world).project(camera);
+    const x = (p.x + 1) * w / 2, y = (1 - p.y) * h / 2;
+    const box = { left: x - half, right: x + half, top: y - 70, bottom: y + 8 };
+    const overlap = r => box.left < r.right + 8 && box.right > r.left - 8 && box.top < r.bottom + 8 && box.bottom > r.top - 8;
+    const show = p.z > -1 && p.z < 1 && box.left > 8 && box.right < w - 8 && box.top > insetTop + 64 && box.bottom < h - 8 && !blocked.some(overlap) && !placed.some(overlap);
+    m.el.hidden = !show;
+    if (show) { m.el.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px)`; placed.push(box); }
+  }
+}
 // ?cam=x,y,z,lx,ly,lz：固定机位（截图、检查建模用）
 const CAM_PIN = Q.get('cam') ? Q.get('cam').split(',').map(Number) : null;
 function updateCamera(dt) {
   if (CAM_PIN) { camera.position.set(CAM_PIN[0], CAM_PIN[1], CAM_PIN[2]); camera.lookAt(CAM_PIN[3], CAM_PIN[4], CAM_PIN[5]); camera.fov = 55; camera.updateProjectionMatrix(); return; }
   if (state === 'title' || state === 'loading') {
-    // 片头：沿着赛道上空慢慢飞，看西湖
-    cam.fly += dt * 22;
-    const s = track.sample(D_START + cam.fly, {}), a = track.sample(D_START + cam.fly + 110, {});
-    // 机位放在赛道低的那一侧（通常是湖面上），高度至少离地 45 米，避开山上的树
-    const side = terrain && terrain.groundAt(s.x + s.rx * 70, s.z + s.rz * 70) < terrain.groundAt(s.x - s.rx * 70, s.z - s.rz * 70) ? 1 : -1;
-    if (terrain) cam.side = cam.side === undefined ? side : damp(cam.side, side, 1.2, dt);
-    else cam.side = 1;
-    const cx = s.x + s.rx * 70 * cam.side, cz = s.z + s.rz * 70 * cam.side;
-    const gy = terrain ? Math.max(terrain.groundAt(cx, cz), s.y) : s.y;
-    cam.flyY = damp(cam.flyY ?? gy + 45, gy + 45, 1.2, dt);
-    camera.position.set(cx, cam.flyY, cz);
-    camera.lookAt(a.x, a.y + 2, a.z);
+    if (!tour) return;
+    if (state === 'title' && !document.hidden && !reducedMotion.matches) tourTime += dt;
+    const shot = tour.sample(reducedMotion.matches ? 0 : tourTime, camera.aspect);
+    tourPos.fromArray(shot.position); tourLook.fromArray(shot.look);
+    // 高空视角下保持地图平整、远处清晰；比赛恢复原来的弧面和雾气。
+    G.uBend.value = 0; camera.far = 6000;
+    if (!tourInitialized || reducedMotion.matches) {
+      camera.position.copy(tourPos); tourAim.copy(tourLook); tourInitialized = true;
+    } else {
+      const f = 1 - Math.exp(-3 * dt);
+      camera.position.lerp(tourPos, f); tourAim.lerp(tourLook, f);
+    }
+    camera.lookAt(tourAim);
     camera.fov = 58; camera.updateProjectionMatrix();
+    $('tour-phase').textContent = shot.phase === 'overview' ? '西湖全景' : '沿赛道巡游';
     return;
   }
+  G.uBend.value = 1 / 3400; camera.far = 2600;
   const p = player;
   // 偏向运动方向，漂移时能看到车身甩出去
   const yawT = camMode === 1 ? p.h : p.m + wrapA(p.h - p.m) * TUNE.camDriftLook;
@@ -604,6 +644,9 @@ if (ADVANCED) import('./advanced.js').then(({ mountTuning }) => mountTuning({
 
 function render(dt) {
   updateCamera(dt);
+  updateLandmarks();
+  post.post.uniforms.uFar.value = camera.far;
+  post.post.uniforms.uHazeScale.value = state === 'title' || state === 'loading' ? 0.35 : 1;
   if (updateBoats) updateBoats(elapsed);
   updateLOD(camera.position, qualityMode === 'low' ? 0.4 : 1);
   G.uTime.value = elapsed;

@@ -262,12 +262,12 @@ export function createPost(camera) {
       uRes: { value: new THREE.Vector2(1, 1) }, uNear: { value: camera.near }, uFar: { value: camera.far },
       uInvProj: { value: new THREE.Matrix4() }, uCamWorld: { value: new THREE.Matrix4() },
       uTime: { value: 0 }, uLine: { value: 1 }, uLineW: { value: 1.2 }, uGrain: { value: 1 },
-      uInk: G.uInk, uSpeed: { value: 0 }, uHaze: { value: new THREE.Color(0.80, 0.91, 0.90) },
+      uInk: G.uInk, uSpeed: { value: 0 }, uHaze: { value: new THREE.Color(0.80, 0.91, 0.90) }, uHazeScale: { value: 1 },
     },
     vertexShader: `varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`,
     fragmentShader: /* glsl */`
       uniform sampler2D tColor, tNormal, tDepth;
-      uniform vec2 uRes; uniform float uNear, uFar, uTime, uLine, uLineW, uGrain, uSpeed;
+      uniform vec2 uRes; uniform float uNear, uFar, uTime, uLine, uLineW, uGrain, uSpeed, uHazeScale;
       uniform mat4 uInvProj, uCamWorld; uniform vec3 uInk, uHaze;
       varying vec2 vUv;
       ${NOISE_GLSL}
@@ -296,7 +296,7 @@ export function createPost(camera) {
         float d0 = lin(texture2D(tDepth, uv).r);
         float isGeo = step(d0, uFar * 0.98);
         // 远景雾气：越远越接近地平线的天色
-        float haze = smoothstep(260.0, 1500.0, d0) * 0.72 * isGeo;
+        float haze = smoothstep(260.0, 1500.0, d0 * uHazeScale) * 0.72 * isGeo;
         vec3 c = mix(sky, col.rgb, col.a);
         c = mix(c, uHaze, haze);
 
