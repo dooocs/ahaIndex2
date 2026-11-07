@@ -398,7 +398,12 @@
       string64 = string64.replace(/\./g, '');
       string64 = string64.replace(/\n/g, '');
       var decodedSave = Base64.decode(string64);
-      GameStorage.gameState = decodedSave;
+      var imported = JSON.parse(decodedSave);
+      if (!imported || typeof imported !== 'object' || Array.isArray(imported) || (imported.version !== undefined && [1, 1.1, 1.2, Engine.VERSION].indexOf(imported.version) === -1)) {
+        throw new Error('Unsupported save');
+      }
+      GameStorage.gameState = JSON.stringify(imported);
+      GameStorage.markImport();
       location.reload();
     },
 
@@ -436,6 +441,9 @@
         window.State = {};
         GameStorage.clear();
         Prestige.set(prestige);
+        State.version = Engine.VERSION;
+        Engine.saveGame();
+        GameStorage.notifyOperation('reset');
       }
       if(!noReload) {
         location.reload();
@@ -943,5 +951,5 @@ $.Dispatch = function( id ) {
 };
 
 $(function() {
-  Engine.init();
+  GameStorage.boot(function () { Engine.init(); });
 });
