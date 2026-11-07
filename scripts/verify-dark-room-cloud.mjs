@@ -51,6 +51,8 @@ try {
   page.setDefaultTimeout(15000);
   await page.clock.install({ time: new Date() });
   await page.goto(`${origin}/dark-room?ignorebrowser=true`);
+  await page.getByRole('heading', { name: '选择这次要继续的进度' }).waitFor();
+  assert.equal(await page.locator('.dark-room-dialog-close').count(), 0, 'required save ownership choice cannot be dismissed');
   await page.getByRole('button', { name: '继续本机游客存档', exact: false }).click();
   await page.waitForFunction(() => document.querySelector('#dark-room-save-status')?.textContent.includes('已同步'));
   assert.equal(latest.state.stores.wood, 80, 'guest binding');
@@ -106,6 +108,26 @@ try {
   assert.equal(latest.state.stores.wood, 83, 'offline latest flushed');
   assert.equal(slots.find(slot => slot.is_manual_slot).state.stores.wood, 82, 'offline manual survives reload and later autosave');
   await setWood(84);
+  await page.locator('#dark-room-load').click();
+  const closeSaves = page.getByRole('button', { name: '关闭读取存档', exact: true });
+  await closeSaves.waitFor();
+  for (const width of [1365, 375]) {
+    await page.setViewportSize({ width, height: 568 });
+    const visibleClose = await page.locator('dialog').evaluate(dialog => {
+      dialog.scrollTop = dialog.scrollHeight;
+      const bounds = dialog.getBoundingClientRect();
+      const close = dialog.querySelector('.dark-room-dialog-close').getBoundingClientRect();
+      const title = dialog.querySelector('h2').getBoundingClientRect();
+      return dialog.scrollTop > 0 && close.width >= 100 && close.height >= 48 && close.top >= bounds.top && close.bottom <= bounds.bottom && title.right <= close.left && bounds.left >= 0 && bounds.right <= innerWidth;
+    });
+    assert(visibleClose, `large header close stays visible after scrolling at ${width}px`);
+  }
+  const restores = calls.filter(call => call.action === 'restore').length;
+  await closeSaves.click();
+  assert.equal(await page.locator('dialog').isVisible(), false, 'header close returns to game');
+  assert.equal(await wood(), 84, 'closing leaves current game progress intact');
+  assert.equal(calls.filter(call => call.action === 'restore').length, restores, 'closing never restores a save');
+  await page.setViewportSize({ width: 1365, height: 900 });
   await page.locator('#dark-room-load').click();
   await page.locator('dialog').getByRole('button', { name: /^手动存档/ }).click();
   await page.waitForFunction(() => document.querySelector('iframe').contentWindow.State?.stores?.wood === 82);

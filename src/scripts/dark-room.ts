@@ -60,11 +60,29 @@ function snapshot() {
 function choose(title: string, description: string, choices: Choice[], required = false) {
   modalRequired = required;
   dialog.replaceChildren();
+  const header = document.createElement('div');
+  header.className = 'dark-room-dialog-header';
   const heading = document.createElement('h2');
+  heading.id = 'dark-room-dialog-title';
   heading.textContent = title;
+  header.append(heading);
+  if (!required) {
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'dark-room-dialog-close';
+    close.textContent = '× 关闭';
+    close.setAttribute('aria-label', `关闭${title}`);
+    close.autofocus = true;
+    close.addEventListener('click', () => dialog.close());
+    header.append(close);
+  }
+  dialog.setAttribute('aria-labelledby', heading.id);
+  const body = document.createElement('div');
+  body.className = 'dark-room-dialog-body';
   const note = document.createElement('p');
   note.textContent = description;
-  dialog.append(heading, note);
+  body.append(note);
+  dialog.append(header, body);
   for (const choice of choices) {
     const button = document.createElement('button');
     button.type = 'button';
@@ -80,14 +98,14 @@ function choose(title: string, description: string, choices: Choice[], required 
       dialog.close();
       void Promise.resolve().then(choice.run).catch(error => report(error));
     });
-    dialog.append(button);
+    body.append(button);
   }
   if (!required) {
     const cancel = document.createElement('button');
     cancel.type = 'button';
     cancel.textContent = '返回游戏';
     cancel.addEventListener('click', () => dialog.close());
-    dialog.append(cancel);
+    body.append(cancel);
   }
   if (!dialog.open) dialog.showModal();
 }
