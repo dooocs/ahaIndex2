@@ -23,8 +23,9 @@ const CHORDS = [
 const BPM = 104, STEP = 60 / BPM / 2;
 
 export class Sound {
-  constructor() { this.ctx = null; this.on = true; }
+  constructor() { this.ctx = null; this.on = false; }
   start() {
+    if (!this.on) return;
     if (this.ctx) { this.ctx.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
@@ -67,7 +68,15 @@ export class Sound {
     this.step = 0; this.next = c.currentTime + 0.3;
     this.timer = setInterval(() => this.schedule(), 25);
   }
-  setOn(on) { this.on = on; if (this.master) this.master.gain.setTargetAtTime(on ? 0.6 : 0, this.ctx.currentTime, 0.05); }
+  setOn(on) {
+    this.on = !!on;
+    if (!this.master) return;
+    const gain = this.master.gain, t = this.ctx.currentTime;
+    // 取消之前的渐入；关闭时直接归零，连已排程的音符和回声一起静音。
+    gain.cancelScheduledValues(t);
+    if (this.on) gain.setTargetAtTime(0.6, t, 0.05);
+    else gain.setValueAtTime(0, t);
+  }
 
   schedule() {
     const c = this.ctx;

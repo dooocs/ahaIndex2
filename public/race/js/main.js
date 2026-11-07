@@ -76,6 +76,8 @@ addEventListener('keydown', e => {
   if (typing(e)) return;
   if (e.code === 'Escape' && !$('lb').hidden) { closeBoard(); return; }
   const k = MAP[e.code]; if (!k) return;
+  // 声音开关直接在用户手势里执行，暂停时也可用；不等渲染帧再恢复 AudioContext。
+  if (k === 'mute') { e.preventDefault(); if (!e.repeat) $('mute').click(); return; }
   if (e.code.startsWith('Arrow') || e.code === 'Space' || k === 'nitro') e.preventDefault();
   if (!keys.has(k)) pressed.add(k);
   keys.add(k);
@@ -174,18 +176,18 @@ function ranking() { return [...cars].sort((a, b) => (a.finished && b.finished ?
 
 $('start').addEventListener('click', () => startRace());
 $('again').addEventListener('click', () => { $('result').hidden = true; resetRace(); startRace(); });
-// 声音：浏览器要用户点一下才肯出声，所以标题页上喇叭先显示“开音乐”，点了就开始放；关掉的选择记在本机
-const muteKey = 'race.mute';
-try { sound.on = localStorage.getItem(muteKey) !== '1'; } catch { /* 无痕模式 */ }
+// 每次进入页面先静音；只有主动点击喇叭（或按 M）才开声音，不恢复旧的自动播放偏好。
 const syncMute = () => { const on = !!sound.ctx && sound.on; $('mute').classList.toggle('off', !on); $('mute').classList.toggle('short', state !== 'title'); $('mute').title = on ? '关掉声音（M）' : '打开声音和音乐（M）'; };
 $('mute').addEventListener('click', () => {
   const turnOn = !(sound.ctx && sound.on);
   sound.setOn(turnOn);
   if (turnOn) sound.start();
-  try { localStorage.setItem(muteKey, turnOn ? '0' : '1'); } catch { /* 无痕模式 */ }
   $('mute').classList.remove('hint');
   syncMute(); $('mute').blur();   // 别让空格（喷氮气）再“按”到这个按钮
 });
+syncMute();
+// 后退/前进缓存会保留整个游戏实例；离开时也静音，返回页面不会自行续播。
+addEventListener('pagehide', () => { sound.setOn(false); syncMute(); });
 function startRace() {
   sound.start(); $('mute').classList.remove('hint');
   $('title').hidden = true; $('hud').hidden = false;
@@ -352,7 +354,6 @@ function frame() {
 function step(dt) {
   if (pressed.has('pause') && (state === 'race' || state === 'count')) { paused = !paused; $('paused').hidden = !paused; }
   if (paused) return;
-  if (pressed.has('mute')) $('mute').click();
   if (pressed.has('cam')) camMode = (camMode + 1) % 2;
 
   const racing = state === 'race';
