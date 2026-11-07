@@ -90,6 +90,9 @@ talks to PostgREST directly with the public publishable key, which `race.astro` 
   column grants.
 - Identity without login: the browser keeps a random key in localStorage and sends it only with an insert; a trigger
   stores its sha256 as `player_id` and drops the key, so nobody can post under someone else's id.
+  The game requires the site's signed-in state before submitting. Guests can still read the board and save local
+  bests; the board and result card show “登录后才能提交个人成绩” with a login link returning to `/race`.
+  The parent sends only a boolean via same-origin `race:auth`; no session token is sent to the game.
 - Checks (stop casual tampering, not a determined forger — the game runs in the browser): each lap 60 s–10 min,
   total = sum of laps (±1.5 s), best lap = the fastest lap, one submission per player per 100 s, nickname 1–12 chars.
 - `race_leaderboard` (security-invoker view): each player's best run, ranked by total time, earliest first on ties.

@@ -508,6 +508,16 @@ function showResult() {
 const status = (html, kind = '') => { const el = $('ustatus'); el.hidden = !html; el.className = `ustatus ${kind}`; el.innerHTML = html; };
 const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 let lastRun = null;
+const loginHint = '登录后才能提交个人成绩。<a href="/login?next=%2Frace" target="_top">登录 / 注册</a>';
+function syncLoginHint() {
+  $('lb-login').hidden = LB.signedIn();
+  if (!$('result').hidden && lastRun && !lastRun.uploaded) {
+    if (!LB.signedIn()) { $('up').hidden = true; status(`本机已记下这次成绩。${loginHint}`); }
+    else { $('up').hidden = false; status('填写昵称，提交个人成绩'); }
+  }
+}
+addEventListener('race:authchange', syncLoginHint);
+syncLoginHint();
 function afterRace() {
   $('up').hidden = true; status('');
   if (!canUpload()) { if (ADVANCED) status('高级模式试跑：不计个人纪录，也不上传总榜。可继续调参后重新试跑。'); else if (AUTO) status('自动驾驶的成绩不上榜'); return; }
@@ -518,6 +528,7 @@ function afterRace() {
   updatePB();
   LB.online().then(on => {
     if (!on) { status('本机已记下这次成绩。排行榜要在向上研究所站内（amazingindex.com/race）打开才能上传。'); return; }
+    if (!LB.signedIn()) { status(`本机已记下这次成绩。${loginHint}`); return; }
     const nick = LB.nickname();
     $('nick').value = nick;
     if (nick) upload(nick); else { $('up').hidden = false; status(''); }
@@ -525,6 +536,7 @@ function afterRace() {
 }
 async function upload(nick) {
   if (!lastRun || lastRun.uploaded) return;
+  if (!LB.signedIn()) { $('up').hidden = true; status(`本机已记下这次成绩。${loginHint}`); return; }
   $('upbtn').disabled = true;
   status('正在上传成绩……');
   try {
@@ -557,6 +569,7 @@ async function updatePB() {
 }
 async function openBoard() {
   $('lb').hidden = false;
+  syncLoginHint();
   const list = $('lb-list');
   list.innerHTML = '<li class="empty">加载中……</li>'; $('lb-me').textContent = '';
   if (!(await LB.online())) { list.innerHTML = '<li class="empty">总榜要在向上研究所站内（amazingindex.com/race）打开</li>'; return; }
