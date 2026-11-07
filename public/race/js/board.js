@@ -16,6 +16,16 @@ addEventListener('message', e => {
 });
 export const online = () => ready.then(c => !!c);
 
+let loggedIn = false;
+export const signedIn = () => loggedIn;
+addEventListener('message', e => {
+  if (e.origin !== location.origin || e.source !== parent || !e.data || e.data.type !== 'race:auth') return;
+  const next = e.data.signedIn === true;
+  if (loggedIn === next) return;
+  loggedIn = next;
+  dispatchEvent(new Event('race:authchange'));
+});
+
 // 玩家身份：本机随机密钥（只在上传时发出，服务器存它的 sha256），以及哈希后的 id（用来查自己的成绩）
 function playerKey() {
   let k = LS.get('race.player');
@@ -61,6 +71,7 @@ async function rest(path, opts = {}) {
 
 // 上传一场成绩（两圈），返回服务器上的个人最佳和名次
 export async function submit({ nick, laps }) {
+  if (!signedIn()) throw new Error('login_required');
   const lap_ms = laps.map(t => Math.round(t * 1000));
   const total_ms = lap_ms.reduce((a, b) => a + b, 0);
   await rest('race_scores', {
@@ -85,6 +96,7 @@ export async function top(n = 50) {
 export function why(err) {
   const m = String(err && err.message || '');
   if (m === 'offline') return '排行榜要在向上研究所站内打开才能上传';
+  if (m === 'login_required') return '登录后才能提交个人成绩';
   if (/too many submissions/.test(m)) return '刚交过一次成绩，等一分多钟再交';
   if (/check|violates/.test(m)) return '这条成绩没通过校验，没有上传';
   if (err && err.status === 404 || /does not exist|Could not find the table|schema cache/.test(m)) return '排行榜还没开放，成绩已记在本机';

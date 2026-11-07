@@ -35,6 +35,26 @@ const rest = community ? { url: community.url, key: community.key } : null;
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 </style>
 
+<script>
+  import { communityClient } from '../lib/community-client';
+
+  const frame = document.getElementById('race-app') as HTMLIFrameElement | null;
+  let signedIn = false;
+  const sendAuth = () => frame?.contentWindow?.postMessage({ type: 'race:auth', signedIn }, location.origin);
+  frame?.addEventListener('load', sendAuth);
+  communityClient?.auth.onAuthStateChange((_event, session) => {
+    signedIn = Boolean(session);
+    sendAuth();
+  });
+  if (communityClient) {
+    void communityClient.auth.getSession().then(({ data, error }) => {
+      signedIn = !error && Boolean(data.session);
+      sendAuth();
+    });
+  }
+  sendAuth();
+</script>
+
 <script is:inline type="module" define:vars={{ rest }}>
   import { advancedSearch } from '/race/js/tuning.js';
   // Tell the game how tall the masthead over it is (it keeps its HUD clear of it), hand it the leaderboard's

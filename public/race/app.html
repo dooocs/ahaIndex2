@@ -135,6 +135,8 @@
   .ustatus.good { background: #e6f4ec; }
   .ustatus.bad { background: #fbeceb; }
   .ustatus b { font: 600 17px/1 var(--num); }
+  .login-hint { margin: 0 0 12px; padding: 9px 12px; border-radius: 8px; background: #fff1e8; color: #4f5b61; font-size: 14px; line-height: 1.5; }
+  .login-hint a, .ustatus a { color: var(--accent); font-weight: 700; text-underline-offset: 3px; }
   #lb { position: fixed; inset: 0; display: grid; place-items: center; z-index: 14; background: rgba(42, 50, 56, 0.35); padding: calc(var(--inset-top) + 12px) 12px 12px; }
   #lb .card { width: min(520px, 94vw); max-height: min(80vh, 720px); display: flex; flex-direction: column; padding: 18px 20px 14px; }
   #lb header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -237,6 +239,7 @@
 <div id="lb" hidden><div class="card" role="dialog" aria-labelledby="lb-title">
   <header><h2 id="lb-title">西湖飞车 · 总榜</h2><button class="x" id="lb-close" aria-label="关闭">×</button></header>
   <p class="lbsub">两圈总时间，每人只算自己最好的一次</p>
+  <p class="login-hint" id="lb-login" role="status">登录后才能提交个人成绩。<a href="/login?next=%2Frace" target="_top">登录 / 注册</a></p>
   <div class="lbhead"><span>名次</span><span>昵称</span><span>总时间</span><span>最快单圈</span></div>
   <ol id="lb-list"><li class="empty">加载中……</li></ol>
   <p class="lbme" id="lb-me"></p>
