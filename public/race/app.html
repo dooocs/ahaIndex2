@@ -30,10 +30,24 @@
   /* 片头 */
   #title { position: fixed; inset: 0; display: flex; align-items: flex-end; justify-content: flex-start; z-index: 10; padding: calc(var(--inset-top) + 16px) 28px 28px; pointer-events: none; }
   @media (max-width: 640px) { #title { justify-content: center; padding: calc(var(--inset-top) + 12px) 12px 12px; } #title h1 { font-size: 30px; } }
-  #title .card { pointer-events: auto; width: min(520px, 92vw); padding: 26px 28px 22px; }
+  #title .card { pointer-events: auto; width: min(440px, 92vw); max-height: calc(100dvh - var(--inset-top) - 48px); overflow: auto; padding: 22px 24px 18px; }
   #title h1 { margin: 0; font-size: 38px; letter-spacing: 0.06em; line-height: 1.1; }
   #title h1 span { font-size: 18px; color: var(--sea); letter-spacing: 0.04em; margin-left: 8px; vertical-align: 6px; }
   #title p.sub { margin: 8px 0 16px; color: #4f5b61; }
+  #title details { margin: 0 0 18px; }
+  #title summary { width: fit-content; padding: 4px 0; cursor: pointer; color: var(--sea); font-weight: 700; }
+  #title details[open] summary { margin-bottom: 10px; }
+  #title details p { color: #4f5b61; font-size: 13px; }
+  #tour { position: fixed; inset: 0; z-index: 6; pointer-events: none; }
+  .tour-caption { position: absolute; left: 28px; top: calc(var(--inset-top) + 20px); display: grid; gap: 4px; padding: 10px 14px; border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0; background: rgba(251, 252, 247, 0.88); }
+  .tour-caption b { font-size: 16px; letter-spacing: 0.12em; }
+  .tour-caption span { font-size: 12px; color: #4f5b61; }
+  .landmark { position: absolute; left: 0; top: 0; width: 132px; height: 0; text-align: center; }
+  .landmark b { position: absolute; bottom: 36px; left: -50%; width: 100%; padding: 7px 8px 22px; border: 1.5px solid var(--ink); border-radius: 8px; background: rgba(251, 252, 247, 0.95); box-shadow: 2px 2px 0 rgba(42, 50, 56, 0.5); font-size: 16px; letter-spacing: 0.1em; white-space: nowrap; }
+  .landmark span { position: absolute; bottom: 42px; left: -50%; width: 100%; color: #5a666c; font-size: 10px; white-space: nowrap; }
+  .landmark::before { content: ''; position: absolute; left: -1px; bottom: 0; height: 36px; width: 2px; background: var(--ink); }
+  .landmark::after { content: ''; position: absolute; left: -5px; top: -5px; width: 10px; height: 10px; border: 2px solid var(--paper); border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 1px var(--ink); }
+  @media (max-width: 640px) { .tour-caption { left: 12px; top: calc(var(--inset-top) + 14px); padding: 8px 10px; } .tour-caption b { font-size: 14px; } .tour-caption span { display: none; } .landmark { width: 106px; } .landmark b { font-size: 14px; } #title .card { padding: 18px; } #title h1 { font-size: 30px; } }
   .keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0 0 18px; font-size: 13px; }
   .keys kbd { font: 600 13px/1 var(--num); letter-spacing: 0.04em; padding: 4px 7px; border: 1.5px solid var(--ink); border-bottom-width: 3px; border-radius: 6px; background: #fff; white-space: nowrap; }
   .keys dd { margin: 0; align-self: center; color: #3f4a50; }
@@ -185,9 +199,16 @@
   <div class="bar"><div id="bar"></div></div>
 </div></div>
 
+<div id="tour" hidden aria-label="西湖赛道航拍">
+  <div class="tour-caption"><b id="tour-phase">西湖全景</b><span>无人机巡游 · 随时开始比赛</span></div>
+  <div id="landmarks" aria-label="沿途景点"></div>
+</div>
+
 <div id="title" hidden><div class="card">
   <h1>西湖飞车<span>环湖赛道</span></h1>
-  <p class="sub">龙翔桥地铁站起步，顺着平海路冲向西湖，绕湖逆时针一圈：过断桥上白堤，绕孤山过西泠桥，杨公堤六连跳，翻三台山三个发卡弯，再沿南山路过雷峰塔，从解放路、延安路绕回龙翔桥。两圈定胜负。</p>
+  <p class="sub">从龙翔桥出发，过断桥、白堤，穿杨公堤，沿南山路绕西湖竞速。两圈定胜负。</p>
+  <details><summary>操作说明与赛道路线</summary>
+  <p>龙翔桥地铁站起步，顺着平海路冲向西湖，绕湖逆时针一圈：过断桥上白堤，绕孤山过西泠桥，杨公堤六连跳，翻三台山三个发卡弯，再沿南山路过雷峰塔，从解放路、延安路绕回龙翔桥。</p>
   <dl class="keys">
     <dt><kbd>↑ ↓ ← →</kbd> <kbd>WASD</kbd></dt><dd>油门、刹车、转向。不喷气最高 180 km/h；刹车和过弯按真车来：180 刹停要 100 米，路边黄牌是弯道预告（箭头越多越急，下面是建议速度）</dd>
     <dt><kbd>空格</kbd></dt><dd>喷氮气：有氮气随时按、喷着还能再按接上；最高 260 km/h，加速猛，车身立刻按车头方向冲出去（Ctrl 也可以）</dd>
@@ -196,6 +217,7 @@
     <dt><kbd>R</kbd> <kbd>C</kbd> <kbd>Esc</kbd></dt><dd>回到赛道 · 切换视角 · 暂停</dd>
   </dl>
   <p class="touchhint">自动油门。左边两个键转向；右边按住“漂移”配合方向漂移（会掉速、但能集氮气），松开自动小喷；车头对准了按“氮气”直接冲出去。</p>
+  </details>
   <div class="row2"><button class="btn" id="start">开始比赛</button><button class="btn ghost" id="lb-open">排行榜</button></div>
   <p class="pb" id="pb">个人最佳：还没有成绩</p>
 </div></div>
