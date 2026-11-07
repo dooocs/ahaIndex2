@@ -40,9 +40,9 @@ class Batch {
 }
 // 实例化的树：每个地块一组；有远景版本的种类，按相机到地块的距离在细/粗两套之间切换
 const LODS = [];
-export function updateLOD(cam) {
+export function updateLOD(cam, scale = 1) {
   for (const t of LODS) {
-    const near = Math.hypot(cam.x - t.x, cam.z - t.z) < t.swap;
+    const near = Math.hypot(cam.x - t.x, cam.z - t.z) < t.swap * scale;
     if (near === t.near) continue;
     t.near = near;
     t.nearMeshes.forEach(m => { m.visible = near; });
@@ -791,3 +791,4 @@ export function buildBoats(scene) {
     }
   };
 }
+

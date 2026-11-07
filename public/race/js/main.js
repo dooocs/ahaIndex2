@@ -15,6 +15,7 @@ import { Sound } from './audio.js';
 import { damp, makeRand, slice } from './noise.js';
 import * as LB from './board.js';
 import { TUNE, isAdvanced, applyTuning } from './tuning.js';
+import { readQuality, qualityProfile, bindQualityButton } from './quality.js';
 
 THREE.ColorManagement.enabled = false;
 const Q = new URLSearchParams(location.search);
@@ -51,10 +52,33 @@ scene.add(sun, sun.target);
 const post = createPost(camera);
 
 // ---------- 尺寸与自适应分辨率 ----------
-let pr = Math.min(window.devicePixelRatio || 1, matchMedia('(pointer: coarse)').matches ? 1.5 : 2), lowTier = 0;
+let qualityMode = readQuality(Q), lowTier = 0, pr = profile().pixelRatio;
+function profile() {
+  return qualityProfile(qualityMode, { dpr: window.devicePixelRatio || 1, coarse: matchMedia('(pointer: coarse)').matches, width: innerWidth, height: innerHeight });
+}
+function setShadows(enabled) {
+  if (renderer.shadowMap.enabled === enabled) return;
+  renderer.shadowMap.enabled = enabled;
+  scene.traverse(o => {
+    const materials = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+    materials.forEach(m => { m.needsUpdate = true; });
+  });
+}
+function applyQuality(mode) {
+  qualityMode = mode;
+  const p = profile();
+  pr = p.pixelRatio; lowTier = mode === 'low' ? 2 : 0;
+  setShadows(p.shadows);
+  post.setQuality(p);
+  if (smoke) smoke.setLimit(p.smokeLimit);
+  // 手动切换后重新采样，避免将着色器编译耗时当作持续掉帧。
+  slow = 0; frames = 0; fpsT = 0;
+  resize();
+}
 let insetTop = Math.max(0, Math.min(400, +(Q.get('inset')) || 0));
 function resize() {
   const w = innerWidth, h = innerHeight;
+  if (qualityMode === 'low') pr = profile().pixelRatio;
   renderer.setPixelRatio(pr); renderer.setSize(w, h, false);
   camera.aspect = w / h; camera.updateProjectionMatrix();
   post.setSize(Math.round(w * pr), Math.round(h * pr), pr);
@@ -142,7 +166,7 @@ async function build() {
   await slice();
   await buildScenery(track, terrain, scene, prog(0.35, 0.92));
   updateBoats = buildBoats(scene);
-  smoke = new Smoke(scene); skids = new Skids(scene);
+  smoke = new Smoke(scene); smoke.setLimit(profile().smokeLimit); skids = new Skids(scene);
 
   // 车：玩家 + 5 个 AI
   const rand = makeRand(3);
@@ -446,12 +470,12 @@ function step(dt) {
     wheelL.set(c.x - fx * 1.35 - rx * 1.0, c.y, c.z - fz * 1.35 - rz * 1.0);
     wheelR.set(c.x - fx * 1.35 + rx * 1.0, c.y, c.z - fz * 1.35 + rz * 1.0);
     const near = Math.hypot(c.x - camera.position.x, c.z - camera.position.z) < 180;
-    if (drifting && near && Math.random() < dt * 40) {
+    if (drifting && near && Math.random() < dt * (qualityMode === 'low' ? 14 : 40)) {
       for (const w of [wheelL, wheelR]) smoke.emit(w.x, w.y + 0.3, w.z, (Math.random() - 0.5) * 2 - fx * c.s * 0.05, 0.6 + Math.random(), (Math.random() - 0.5) * 2 - fz * c.s * 0.05, 0.55 + Math.random() * 0.35, 0.7 + Math.random() * 0.4);
     }
     // 喷气时尾部甩出火团（氮气偏蓝白、小喷偏橙）
     const boostOn = c === player ? (c.nitroT > 0 || c.smallT > 0 || c.padT > 0) : (c.nitroT > 0 || c.smallT > 0);
-    if (boostOn && near && Math.random() < dt * 45) {
+    if (boostOn && near && Math.random() < dt * (qualityMode === 'low' ? 16 : 45)) {
       const blue = c.nitroT > 0, side = Math.random() < 0.5 ? -0.45 : 0.45;
       smoke.emit(c.x - fx * (3.6 + Math.random() * 1.5) + rx * side, c.y + 0.55, c.z - fz * (3.6 + Math.random() * 1.5) + rz * side, -fx * 6, 0.6, -fz * 6,
         blue ? 0.55 : 0.42, 0.32, blue ? [0.75, 0.92, 1.25] : [1.3, 0.78, 0.35]);
@@ -568,7 +592,7 @@ if (ADVANCED) import('./advanced.js').then(({ mountTuning }) => mountTuning({
 function render(dt) {
   updateCamera(dt);
   if (updateBoats) updateBoats(elapsed);
-  updateLOD(camera.position);
+  updateLOD(camera.position, qualityMode === 'low' ? 0.4 : 1);
   G.uTime.value = elapsed;
   post.post.uniforms.uTime.value = elapsed;
   const sp = player && (player.nitroT > 0 ? 1 : player.padT > 0 || player.smallT > 0 ? 0.5 : 0);
@@ -586,15 +610,16 @@ function render(dt) {
   if (!fpsT) fpsT = nowT;
   if (nowT - fpsT >= 1000) {
     fps = Math.round(frames * 1000 / (nowT - fpsT)); frames = 0; fpsT = nowT;
-    slow = fps < 45 && state !== 'loading' && !PIN ? slow + 1 : 0;
+    slow = fps < 45 && state !== 'loading' && !paused && !document.hidden && qualityMode === 'standard' && !PIN ? slow + 1 : 0;
     if (slow >= 2 && pr > 1) { pr = Math.max(1, pr - 0.25); slow = 0; resize(); }
-    else if (slow >= 3 && pr <= 1 && lowTier < 2) { slow = 0; lowTier++; if (lowTier === 1) { renderer.shadowMap.enabled = false; scene.traverse(o => { if (o.material) o.material.needsUpdate = true; }); } }
+    else if (slow >= 3 && pr <= 1 && lowTier < 2) { slow = 0; lowTier++; if (lowTier === 1) setShadows(false); }
     if (DEBUG) { const i = renderer.info.render; stats.hidden = false; stats.innerHTML = `${fps} fps · 像素比 ${pr.toFixed(2)} · 档位 ${lowTier}<br>${i.calls} draw calls · ${(i.triangles / 1000).toFixed(0)}k 三角形`; }
   }
 }
 
 // ---------- 启动 ----------
 const bootT = performance.now();
+bindQualityButton($('quality'), qualityMode, applyQuality);
 frame();
 build().then(() => {
   $('loading').hidden = true; $('title').hidden = false;
@@ -613,3 +638,4 @@ build().then(() => {
     },
   };
 }).catch(err => { console.error(err); $('loadmsg').textContent = `加载失败：${err.message}`; });
+

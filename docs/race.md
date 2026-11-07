@@ -123,3 +123,11 @@ talks to PostgREST directly with the public publishable key, which `race.astro` 
 - Full simulated race (2 laps, 60 Hz, grip-only `pilot.js` driver): laps of ~129 s and ~128 s, 3rd of 6; the AI spread
   over ~9 s. Scene: ~500–1050 draw calls and 0.9–2.4 M triangles per frame across all passes
   (the most on 平海路 looking down the street at the lake).
+
+
+### 画质切换
+
+- 右侧声音按钮附近的「画质：标准 / 流畅」可随时切换，无需刷新或重开比赛；选择保存在当前浏览器。存储被禁用时仍能切换。
+- 标准模式保留原有视觉和自动降级；流畅模式立即关闭实时阴影、描边、4x MSAA 和纸纹，将像素比限制为 1 且渲染像素不超过约 130 万，更早切换树木远景模型，并减少烟雾实例和发射量。文字 HUD 保持原有清晰度。
+- 切回标准会恢复画质并重新采样帧率；车辆操控、AI、碰撞、计时和排行榜规则不变。
+- 独立游戏测试入口支持 `?quality=low` / `?quality=standard`；原有 `?quality=high` 仍固定标准画质并禁用自动降级。URL 覆盖本机偏好但不会自行保存，点击按钮才保存。
