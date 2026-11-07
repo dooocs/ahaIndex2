@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { communityConfig, communityStorageKey, isCommunityPublicKey, validatePost, safeReturnPath, friendlyError, loginRetrySeconds, postRetrySeconds } from '../src/lib/community-model.ts';
+import { communityConfig, communityStorageKey, isCommunityPublicKey, validatePost, safeReturnPath, friendlyError, emailCodeError, loginRetrySeconds, postRetrySeconds } from '../src/lib/community-model.ts';
 
 const jwt = (payload, header = { alg: 'HS256', typ: 'JWT' }) => [header, payload].map(value => Buffer.from(JSON.stringify(value)).toString('base64url')).join('.') + '.testSignature';
 
@@ -45,6 +45,15 @@ test('auth failures have actionable messages without exposing backend errors', (
   assert.doesNotMatch(friendlyError({ message: 'secret database internal error' }), /secret/);
   assert.match(friendlyError({ code: 'PGRST202' }), /尚未准备就绪/);
   assert.doesNotMatch(friendlyError(new Error('unavailable')), /检查网络/);
+});
+
+test('code verification errors distinguish an incorrect code from a legacy link error', () => {
+  assert.match(emailCodeError({ code: 'otp_expired' }), /验证码错误或已过期/);
+  assert.match(emailCodeError({ details: { code: 'otp_expired' } }), /验证码错误或已过期/);
+  assert.match(emailCodeError({ code: 'over_request_rate_limit', status: 429 }), /验证过于频繁/);
+  assert.doesNotMatch(emailCodeError({ status: 429 }), /发送间隔/);
+  assert.doesNotMatch(emailCodeError({ message: 'secret diagnostic' }), /secret/);
+  assert.match(friendlyError({ code: 'otp_expired' }), /登录链接/);
 });
 
 test('Aliyun legacy anon keys are accepted without accepting privileged or user JWTs', () => {
