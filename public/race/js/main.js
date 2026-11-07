@@ -186,6 +186,8 @@ $('mute').addEventListener('click', () => {
   syncMute(); $('mute').blur();   // 别让空格（喷氮气）再“按”到这个按钮
 });
 syncMute();
+// 后退/前进缓存会保留整个游戏实例；离开时也静音，返回页面不会自行续播。
+addEventListener('pagehide', () => { sound.setOn(false); syncMute(); });
 function startRace() {
   sound.start(); $('mute').classList.remove('hint');
   $('title').hidden = true; $('hud').hidden = false;

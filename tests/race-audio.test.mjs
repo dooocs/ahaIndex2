@@ -47,9 +47,10 @@ function controls(sound) {
   // Execute the actual event wiring without creating the unrelated WebGL world.
   vm.runInNewContext(main.slice(main.indexOf('// 每次进入页面先静音'), main.indexOf('function startRace()')), {
     sound, $: () => button, state: 'title',
+    addEventListener(type, handler) { handlers[type] = handler; },
     localStorage: { getItem: () => '0', setItem() { throw new Error('storage blocked'); } },
   });
-  return { button, classes };
+  return { button, classes, handlers };
 }
 
 test('visits and starting a muted race do not create or resume audio, even with an old enabled preference', t => {
@@ -102,4 +103,16 @@ test('M toggles once per user gesture without waiting for an unpaused rendering 
   handlers.keydown({ code: 'KeyM', repeat: false, preventDefault() {} });
   handlers.keydown({ code: 'KeyM', repeat: true, preventDefault() {} });
   assert.equal(clicks, 1);
+});
+
+test('leaving silences the retained audio graph so back/forward cache cannot resume music', t => {
+  const sound = setup(t);
+  const { button, classes, handlers } = controls(sound);
+  button.click();
+  handlers.pagehide();
+  assert.equal(sound.on, false);
+  assert.equal(sound.master.gain.value, 0);
+  assert.ok(classes.has('off'));
+  sound.start();
+  assert.equal(sound.master.gain.value, 0);
 });
