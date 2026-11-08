@@ -5,7 +5,7 @@ export const SITE_SLOGAN_LEAD = '每天';
 export const SITE_SLOGAN_ACCENT = '向上';
 export const SITE_SLOGAN_TAIL = '一点';
 export const SITE_SLOGAN = `${SITE_SLOGAN_LEAD}${SITE_SLOGAN_ACCENT}${SITE_SLOGAN_TAIL}`;
-export const SITE_INTRO = `${SITE_NAME}，汇集拓展认知、提升能力、探索生活的内容与工具，陪你${SITE_SLOGAN}，遇见更强的自己。`;
+export const SITE_INTRO = `${SITE_NAME}，汇集拓展认知、提升能力、探索生活的内容与工具，陪你${SITE_SLOGAN}。`;
 export const SITE_DESCRIPTION = SITE_INTRO;
 
 // The daily AI briefing keeps its original name as a column of the site.
