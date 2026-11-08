@@ -61,13 +61,13 @@ test('copy link round-trips every control and removes recording/test switches', 
   assert.equal(tuningURL('https://www.amazingindex.com/race', values), 'https://www.amazingindex.com/race?advanced=1');
 });
 
-test('the original player handling values remain the defaults', () => {
-  // Captured from main before advanced mode: existing public links must retain this handling.
-  const original = {
-    latGrip: 22, vmax: 50, vmaxBoost: 72.2, accel: 16.2, nitroAccel: 27.7, brake: 40, reverseMax: 10, roll: 2,
-    turn: 1.75, grip: 11, nitroTurn: 0.72, driftMin: 12, driftYaw: 1.35, driftYawAlign: 0.8, driftGrip: 1.9,
-    driftRelease: 5.5, maxDrift: 1.1, driftDrag: 4.5, driftDragAngle: 12, driftDragSpeed: 0.3,
-    driftThrottle: 0.3, gaugeRate: 0.3, nitroTime: 2.6, smallWindow: 0.5, gravity: 30,
+test('the approved playtested handling values are the defaults', () => {
+  // Promoted from the manually tested advanced-mode configuration on 2026-11-08.
+  const approved = {
+    latGrip: 22, vmax: 50, vmaxBoost: 84.9, accel: 16.2, nitroAccel: 31.4, brake: 40, reverseMax: 10, roll: 3,
+    turn: 1.75, grip: 11, nitroTurn: 0.72, driftMin: 12, driftYaw: 1.3, driftYawAlign: 1.1, driftGrip: 2.8,
+    driftRelease: 14, driftReleaseDecay: 12, maxDrift: 1.1, driftDrag: 4.5, driftDragAngle: 10, driftDragSpeed: 0.26,
+    driftThrottle: 0.4, gaugeRate: 0.5, nitroTime: 2.6, smallWindow: 0.5, gravity: 30,
   };
-  for (const [key, value] of Object.entries(original)) assert.equal(DEFAULT_TUNE[key], value, key);
+  for (const [key, value] of Object.entries(approved)) assert.equal(DEFAULT_TUNE[key], value, key);
 });
