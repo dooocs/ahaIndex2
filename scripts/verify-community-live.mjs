@@ -152,7 +152,7 @@ try {
   assert.deepEqual(checked(await photos(reader.client,[postId]),'edited photos hidden'),[]);
   assert.equal(checked(await admin.from('meet_photos').select('id').eq('post_id',postId),'remaining photo').length,1);
   checked(await admin.from('meet_posts').update({status:'published'}).eq('id',postId).eq('owner_id',owner.id),'review changed photo');
-  await owner.page.goto(`${origin}/account`);
+  await owner.page.goto(`${origin}/account?section=meet`);
   await owner.page.getByText('已发布', { exact: true }).waitFor();
   owner.page.once('dialog', dialog => dialog.accept());
   await owner.page.getByRole('button', { name: '撤回帖子' }).click();
@@ -161,7 +161,8 @@ try {
   assert.equal(checked(await rpc(reader.client,'get_meet_contact', { p_id: postId }), 'withdrawn contact'), null);
   assert.deepEqual(checked(await photos(reader.client,[postId]),'withdrawn photos'),[]);
   await owner.page.getByRole('button', { name: '退出登录' }).click();
-  await owner.page.waitForURL(`${origin}/meet`);
+  await owner.page.waitForURL(`${origin}/`);
+  await owner.page.goto(`${origin}/meet`);
   await owner.page.locator('#post-total').getByText(String(baselineCount),{exact:true}).waitFor();
   stage = 'real empty feed and mobile layout';
   await owner.page.screenshot({ path: join(tmpdir(), 'community-live-feed.png'), fullPage: true });

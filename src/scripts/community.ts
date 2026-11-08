@@ -359,33 +359,76 @@ async function init() {
       const user = await requireUser();
       if (!user || disposed) return;
       $('#account-email').textContent = user.email || '';
+      const verification = $('#account-verification');
+      verification.textContent = user.email_confirmed_at ? '已验证' : '未验证';
+      verification.dataset.verified = String(Boolean(user.email_confirmed_at));
+      const createdAt = new Date(user.created_at);
+      if (Number.isFinite(createdAt.getTime())) {
+        const created = $<HTMLTimeElement>('#account-created');
+        created.dateTime = createdAt.toISOString();
+        created.textContent = createdAt.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' });
+        $('#account-created-row').hidden = false;
+      }
+      $('#account-content').hidden = false;
+      message('');
       const signout = $<HTMLButtonElement>('#sign-out');
       signout.hidden = false;
       signout.addEventListener('click', () => { void busy(signout, async () => {
         signingOut = true;
         const { error } = await client.auth.signOut({ scope: 'local' });
         if (error) { signingOut = false; throw error; }
-        location.assign('/meet');
+        location.assign('/');
       }); });
-      const { data: post, error } = await client.from('meet_posts').select('*').eq('owner_id', user.id).maybeSingle();
-      if (error) throw error;
-      if (!post) {
-        message('你还没有发布相亲帖。');
-        const link = document.createElement('a'); link.href = '/meet/new'; link.dataset.astroReload = ''; link.className = 'community-button'; link.textContent = '发布相亲帖';
-        $('#my-post').append(link);
-      } else {
-        const expired = post.status === 'published' && new Date(post.expires_at).getTime() <= Date.now();
-        message(expired ? '帖子已到期，可编辑后重新提交。' : STATUS_LABELS[post.status as keyof typeof STATUS_LABELS]);
-        $('#my-post').append(card(post));
-        if (post.review_reason) $('#my-post').append(node('p', `审核反馈：${post.review_reason}`, 'community-note'));
-        void photos.load([post.id]).catch(() => {});
-        $('#my-post-actions').hidden = false;
-        const withdraw = $<HTMLButtonElement>('#withdraw-post');
-        withdraw.hidden = post.status === 'withdrawn';
-        withdraw.addEventListener('click', () => {
-          if (!window.confirm('确认撤回这条相亲帖？撤回后其他用户将无法查看。')) return;
-          void busy(withdraw, async () => { await rpc('withdraw_meet_post'); location.reload(); });
-        });
+      const meet = $<HTMLDetailsElement>('#account-meet');
+      const retryPost = $<HTMLButtonElement>('#retry-my-post');
+      const postMessage = $('#my-post-message');
+      let postLoaded = false;
+      let postLoading = false;
+      async function loadMyPost() {
+        if (disposed || postLoaded || postLoading) return;
+        postLoading = true;
+        retryPost.hidden = true;
+        postMessage.textContent = '正在加载相亲帖…';
+        postMessage.dataset.error = 'false';
+        try {
+          const { data: post, error } = await client!.from('meet_posts').select('*').eq('owner_id', user!.id).maybeSingle();
+          if (disposed) return;
+          if (error) throw error;
+          $('#my-post').replaceChildren();
+          if (!post) {
+            postMessage.textContent = '你还没有发布相亲帖。';
+            const link = document.createElement('a'); link.href = '/meet/new'; link.dataset.astroReload = ''; link.className = 'community-button secondary'; link.textContent = '发布相亲帖';
+            $('#my-post').append(link);
+          } else {
+            const expired = post.status === 'published' && new Date(post.expires_at).getTime() <= Date.now();
+            postMessage.textContent = expired ? '帖子已到期，可编辑后重新提交。' : STATUS_LABELS[post.status as keyof typeof STATUS_LABELS];
+            $('#my-post').append(card(post));
+            if (post.review_reason) $('#my-post').append(node('p', `审核反馈：${post.review_reason}`, 'community-note'));
+            void photos.load([post.id]).catch(() => {});
+            $('#my-post-actions').hidden = false;
+            const withdraw = $<HTMLButtonElement>('#withdraw-post');
+            withdraw.hidden = post.status === 'withdrawn';
+            withdraw.addEventListener('click', () => {
+              if (!window.confirm('确认撤回这条相亲帖？撤回后其他用户将无法查看。')) return;
+              void busy(withdraw, async () => { await rpc('withdraw_meet_post'); location.assign('/account?section=meet'); });
+            });
+          }
+          postLoaded = true;
+        } catch (error) {
+          if (disposed) return;
+          postMessage.textContent = friendlyError(error);
+          postMessage.dataset.error = 'true';
+          retryPost.hidden = false;
+        } finally { postLoading = false; }
+      }
+      const onMeetToggle = () => { if (meet.open) void loadMyPost(); };
+      meet.addEventListener('toggle', onMeetToggle);
+      retryPost.addEventListener('click', () => { void loadMyPost(); });
+      disposers.push(() => meet.removeEventListener('toggle', onMeetToggle));
+      const params = new URLSearchParams(location.search);
+      if (params.get('section') === 'meet' || params.get('submitted') === '1') {
+        meet.open = true;
+        void loadMyPost();
       }
     }
 
