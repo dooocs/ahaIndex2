@@ -1,5 +1,10 @@
 /* AmazingIndex adaptation, MPL-2.0. Shared by the game and account toolbar. */
-.game-settings { position: fixed; top: 14px; right: 20px; z-index: 15; color: inherit; font: 13px/1.6 system-ui, sans-serif; }
+.game-controls { position: fixed; top: 14px; right: 20px; z-index: 15; display: flex; align-items: center; gap: 12px; color: inherit; font: 13px/1.6 system-ui, sans-serif; }
+.game-controls--embedded { position: relative; top: auto; right: auto; font: inherit; }
+.game-sound-toggle { flex-shrink: 0; height: 34px; padding: 0 2px; border: 0; background: transparent; color: inherit; font: inherit; white-space: nowrap; cursor: pointer; }
+.game-sound-toggle:hover { color: #d0461e; }
+.game-sound-toggle:focus-visible { outline: 2px solid #d0461e; outline-offset: 3px; }
+.game-settings { position: relative; color: inherit; font: inherit; }
 .game-settings summary { display: grid; place-items: center; width: 34px; height: 34px; cursor: pointer; list-style: none; border-radius: 50%; }
 .game-settings summary::-webkit-details-marker { display: none; }
 .game-settings summary:hover, .game-settings[open] summary { background: #f2f0ec; color: #2b2117; }

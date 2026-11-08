@@ -63,9 +63,16 @@ try {
   assert.equal(await page.evaluate(() => localStorage.getItem('amazingindex.dark-room.lang')), 'zh_cn', 'Chinese is the default even with an old English preference');
   assert.equal(await gameFrame.locator('.game-settings').count(), 0, 'settings live below the account');
   const settings = page.locator('#dark-room-settings-host .game-settings');
-  await settings.locator('summary').click();
-  await settings.getByRole('button', { name: '开启声音', exact: true }).click();
+  const sound = page.locator('#dark-room-settings-host > .game-controls > .game-sound-toggle');
+  assert.equal(await sound.textContent(), '打开声音', 'muted game offers to turn sound on');
+  assert.equal(await settings.locator('.game-sound-toggle').count(), 0, 'sound control sits outside settings');
+  assert(await sound.evaluate(button => button.getBoundingClientRect().right <= button.nextElementSibling.getBoundingClientRect().left), 'sound control sits left of settings');
+  await sound.click();
   assert.equal(await page.evaluate(() => document.querySelector('iframe').contentWindow.State.config.soundOn), true, 'hosted sound control reaches the engine');
+  assert.equal(await sound.textContent(), '关闭声音', 'audible game offers to mute sound');
+  await sound.click();
+  assert.equal(await page.evaluate(() => document.querySelector('iframe').contentWindow.State.config.soundOn), false, 'hosted sound control mutes the engine');
+  assert.equal(await sound.textContent(), '打开声音', 'muting updates the label');
   await settings.locator('summary').click();
   await settings.getByRole('button', { name: '夜间模式', exact: true }).click();
   await page.locator('.dark-room-page[data-theme="dark"]').waitFor({ state: 'attached' });
