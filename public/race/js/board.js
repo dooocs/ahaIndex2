@@ -83,12 +83,12 @@ export async function submit({ nick, laps }) {
 // 我在总榜上的最佳（含名次）；没交过成绩返回 null
 export async function myBest() {
   const id = await playerId();
-  const rows = await rest(`race_leaderboard?select=rank,nickname,total_ms,best_lap_ms&player_id=eq.${id}`);
+  const rows = await rest(`race_leaderboard?select=rank,nickname,total_ms,best_lap_ms,created_at&player_id=eq.${id}`);
   return rows && rows[0] ? rows[0] : null;
 }
 // 总榜前 n 名
 export async function top(n = 50) {
-  const rows = await rest(`race_leaderboard?select=rank,player_id,nickname,total_ms,best_lap_ms&order=rank.asc&limit=${n}`);
+  const rows = await rest(`race_leaderboard?select=rank,player_id,nickname,total_ms,best_lap_ms,created_at&order=rank.asc&limit=${n}`);
   const me = await playerId();
   return rows.map(r => ({ ...r, me: r.player_id === me }));
 }
@@ -102,3 +102,4 @@ export function why(err) {
   if (err && err.status === 404 || /does not exist|Could not find the table|schema cache/.test(m)) return '排行榜还没开放，成绩已记在本机';
   return '网络不太好，成绩没传上去，稍后可以再试';
 }
+
