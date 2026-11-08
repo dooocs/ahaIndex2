@@ -873,6 +873,12 @@
       return;
     }
 
+    // A delayed startup notice must not stack over an in-progress story/dialog.
+    if (Events.activeEvent() || Engine.keyLock) {
+      setTimeout(notifyAboutSound, 1000);
+      return;
+    }
+
     // Tell new users that there's sound now!
     $SM.set('playStats.audioAlertShown', true);
     Events.startEvent({
@@ -947,3 +953,4 @@ $.Dispatch = function( id ) {
 $(function() {
   GameStorage.boot(function () { Engine.init(); });
 });
+
