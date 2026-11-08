@@ -550,6 +550,17 @@ function showResult() {
 // ---------- 成绩：本机最佳、上传、总榜 ----------
 const status = (html, kind = '') => { const el = $('ustatus'); el.hidden = !html; el.className = `ustatus ${kind}`; el.innerHTML = html; };
 const esc = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const recordTimeFormat = new Intl.DateTimeFormat('zh-CN', {
+  timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
+function recordTime(value) {
+  const date = typeof value === 'string' ? new Date(value) : null;
+  if (!date || !Number.isFinite(date.getTime())) return '<span class="lb-record-time">—</span>';
+  const p = Object.fromEntries(recordTimeFormat.formatToParts(date).map(({ type, value }) => [type, value]));
+  const full = `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
+  return `<time class="lb-record-time" datetime="${date.toISOString()}" title="${full}（北京时间）" aria-label="记录时间：${full}（北京时间）">${full.slice(5)}</time>`;
+}
 let lastRun = null;
 const loginHint = '登录后才能提交个人成绩。<a href="/login?next=%2Frace" target="_top">登录 / 注册</a>';
 function syncLoginHint() {
@@ -618,7 +629,7 @@ async function openBoard() {
   if (!(await LB.online())) { list.innerHTML = '<li class="empty">总榜要在向上研究所站内（amazingindex.com/race）打开</li>'; return; }
   try {
     const [rows, me] = await Promise.all([LB.top(50), LB.myBest()]);
-    list.innerHTML = rows.length ? rows.map(r => `<li class="${r.me ? 'me' : ''}"><b>${r.rank}</b><span>${esc(r.nickname)}</span><span>${fmt(r.total_ms / 1000)}</span><span>${fmt(r.best_lap_ms / 1000)}</span></li>`).join('')
+    list.innerHTML = rows.length ? rows.map(r => `<li class="${r.me ? 'me' : ''}"><b>${r.rank}</b><span>${esc(r.nickname)}</span><span>${fmt(r.total_ms / 1000)}</span><span>${fmt(r.best_lap_ms / 1000)}</span>${recordTime(r.created_at)}</li>`).join('')
       : '<li class="empty">还没有人上榜，跑完两圈就是第一名</li>';
     $('lb-me').innerHTML = me ? `我的最佳：<b>${fmt(me.total_ms / 1000)}</b> · 第 <b>${me.rank}</b> 名` : '我还没有上榜成绩';
   } catch (err) { list.innerHTML = `<li class="empty">${esc(LB.why(err))}</li>`; }
@@ -697,4 +708,5 @@ build().then(() => {
     },
   };
 }).catch(err => { console.error(err); $('loadmsg').textContent = `加载失败：${err.message}`; });
+
 
