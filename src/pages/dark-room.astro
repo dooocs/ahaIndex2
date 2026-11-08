@@ -115,6 +115,10 @@ const canonical = `${SITE_URL}/dark-room`;
         root.toggleAttribute('data-site-edges', innerWidth >= 992 && Boolean(nav && account));
         if (nav && account) {
           const bounds = frame.getBoundingClientRect();
+          // Update both coordinate spaces together. Waiting for the iframe's
+          // next animation frame briefly leaves the narrative at its old width.
+          const wrapper = frame.contentDocument?.getElementById('wrapper');
+          if (wrapper) root.style.setProperty('--game-wrapper-left', `${wrapper.getBoundingClientRect().left}px`);
           root.style.setProperty('--site-nav-left', `${nav.getBoundingClientRect().left - bounds.left}px`);
           root.style.setProperty('--site-inventory-right', `${bounds.right - account.getBoundingClientRect().right}px`);
         }
@@ -130,3 +134,4 @@ const canonical = `${SITE_URL}/dark-room`;
 <script>
   import '../scripts/dark-room';
 </script>
+
