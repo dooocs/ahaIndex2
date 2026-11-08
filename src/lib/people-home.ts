@@ -41,7 +41,7 @@ export function featuredCards(
         slug: p.slug ?? s.slug,
         rank: p.featured_rank,
         name,
-        alt: p.name_zh ? p.name : null,
+        alt: p.name_zh && p.name_zh !== p.name ? p.name : null,
         role: p.role ?? null,
         initial: initialOf(name),
         avatar: p.avatar_url ?? null,

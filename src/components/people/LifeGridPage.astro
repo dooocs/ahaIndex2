@@ -26,6 +26,7 @@ const g = grids.find((x) => x.slug === slug)!;
 const pages = new Set([...people.map((p) => p.slug), ...grids.map((x) => x.slug)]);
 
 const display = g.nameZh ?? g.name;
+const hasAltName = Boolean(g.nameZh && g.nameZh !== g.name);
 const L = g.lanes;
 const D = g.dimensions.length;
 const col = { year: 1, age: 2, lane: (i: number) => 3 + i, dim: (i: number) => 3 + L + i, events: 3 + L + D };
@@ -33,7 +34,7 @@ const row = (i: number) => i + 2;
 const eventIndex = new Map(g.events.map((e, i) => [e.id, i]));
 const arcsFrom = (i: number) => g.arcs.filter((a) => a.rowFrom === i);
 
-const pageTitle = siteTitle(`${g.nameZh ? `${g.nameZh}（${g.name}）` : g.name} · 人物`);
+const pageTitle = siteTitle(`${hasAltName ? `${g.nameZh}（${g.name}）` : g.name} · 人物`);
 const pageDesc = `${display}${g.role ? `：${g.role}` : ''}。${g.lifeText ? `${g.lifeText.split(' · ')[0]}，` : ''}${g.events.length} 个事件、${g.arcs.length} 条人生主线，按年份排开，每件事都能回到当时的现场。`;
 const canonical = `${SITE_URL}${PEOPLE_PATH}/${g.slug}`;
 ---
@@ -46,7 +47,7 @@ const canonical = `${SITE_URL}${PEOPLE_PATH}/${g.slug}`;
     <div class="lg-who">
       <div class="lg-name">
         <h1>{display}</h1>
-        {g.nameZh && <span class="lg-alt">{g.name}</span>}
+        {hasAltName && <span class="lg-alt">{g.name}</span>}
       </div>
       <div class="lg-sub">
         {g.lifeText && <span class="lg-life">{g.lifeText}</span>}

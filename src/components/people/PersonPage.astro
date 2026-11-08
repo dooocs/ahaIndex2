@@ -39,7 +39,8 @@ const published = new Set([...people.map((x) => x.slug), ...grids.map((g) => g.s
 const tagClass = (type: string) => `ev-tag${type === '争议' ? ' is-fight' : type === '低谷' ? ' is-low' : ''}`;
 const sourceLabel = (s: Source) => s.title;
 
-const name = p.name_zh ? `${p.name}（${p.name_zh}）` : p.name;
+const hasAltName = Boolean(p.name_zh && p.name_zh !== p.name);
+const name = hasAltName ? `${p.name}（${p.name_zh}）` : p.name;
 const pageTitle = siteTitle(`${name} · 人物`);
 const pageDesc = written
   ? `${p.name}：${p.role}。看他人生里的转折、争议和低谷。`
@@ -58,7 +59,7 @@ const others = [...new Map(p.stances.flatMap((s) => s.others ?? []).map((o) => [
     <div class="people-avatar" aria-hidden="true">{avatar ? <img src={avatar} alt="" width="56" height="56" decoding="async" /> : initialOf(p.name)}</div>
     <div style="min-width: 0;">
       <div class="person-kicker">人物 · {p.group}</div>
-      <h1 class="person-title">{p.name}{p.name_zh && <> <small>{p.name_zh}</small></>}</h1>
+      <h1 class="person-title">{p.name}{hasAltName && <> <small>{p.name_zh}</small></>}</h1>
       <div class="person-sub">
         <span>{p.role}</span>
         {p.x_handle && <span>X @{p.x_handle}</span>}
