@@ -2,7 +2,9 @@
 
 ## Scope
 
-- Email magic-link registration/sign-in, persistent session, sign-out.
+- Email OTP registration/sign-in, persistent session, sign-out. The OTP rollout
+  requires both signup and magic-link templates to be configured before release;
+  see [邮箱验证码登录上线配置](auth-email-otp.md). Legacy callback links remain supported.
 - Public paginated post list and static detail shell, without city filtering.
 - City, age (18+) and gender are required and displayed on every post.
 - One post per verified adult user, submit/edit, manual review, withdrawal.
@@ -33,9 +35,11 @@ a separate audit/remediation task. No changes to those permissions are included.
    generated invoker installation described below. Deploy `meet-photos`,
    `meet-photo-cleanup` and `meet-review`; Aliyun also requires `meet-api`.
 3. Enable Email Auth with verification. Do not enable anonymous sign-ins or disable
-   email confirmation. Keep the default signup and magic-link email templates.
-   The current Free/default-provider API rejects template modifications (HTTP 400),
-   so this MVP uses the emailed login link instead of a numeric-code input.
+   email confirmation. Configure both signup and magic-link email templates to
+   include `{{ .Token }}` before deploying the numeric-code login UI. The original
+   Free/default-provider test project rejected template modifications (HTTP 400);
+   this does not establish Aliyun's template support. See `auth-email-otp.md` for
+   the current project's required settings and real-delivery acceptance checks.
 4. Official Supabase Cloud's default SMTP is a **team-only test service**, not a low-volume public
    email provider. It currently restricts recipients to organization team members
    and allows only two emails per hour. Confirm the tester's email is eligible.

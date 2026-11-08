@@ -20,7 +20,7 @@ const tabs = visibleShelves(Boolean(community));
         <a href={t.tabHref} class={`nav-tab ${t.id === active ? 'active' : ''}`} data-astro-reload>{t.tab}{t.beta && <sup class="nav-beta">beta</sup>}</a>
       ))}
     </div>
-    {community && <a href="/login" class="community-nav" data-community-account data-astro-reload>登录 / 注册</a>}
+    {community && <a href="/login" class="community-nav" data-community-account data-astro-reload>邮箱登录</a>}
   </div>
 </nav>
 <script src="../scripts/community-nav.ts"></script>

@@ -17,6 +17,7 @@ test('OTP calls are mocked regardless of backend hostname', () => {
   for (const service of ['https://example.supabase.co',
     'https://spb-x6r06737x2zdpg3x.supabase.opentrust.net', 'https://api.example.test', origin]) {
     assert.equal(loginTestRequestAction(service + '/auth/v1/otp', 'POST', origin), 'mock');
+    assert.equal(loginTestRequestAction(service + '/auth/v1/verify', 'POST', origin), 'mock');
   }
 });
 

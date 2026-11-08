@@ -61,6 +61,11 @@
 .auth-section { max-width: 560px; padding: 48px 64px 64px; margin: 0 auto; }
 .auth-section h1 { font-size: 30px; }
 .auth-note { margin-top: 32px; padding-top: 16px; border-top: 1px solid var(--c-rule); }
+.auth-section #email-recipient { margin: 0; }
+.auth-section #code-form { gap: 12px; }
+.auth-section #email-code { font-family: var(--fm); font-size: 22px; font-variant-numeric: tabular-nums; }
+.auth-section #email-code[aria-invalid=true] { border-bottom-color: var(--c-red); }
+.auth-section #code-help, .auth-section .auth-delivery-help { margin: 0; font-size: 12px; }
 .community-message { min-height: 24px; font: 13px/1.8 var(--fm); color: var(--c-soft); margin: 16px 0; overflow-wrap: anywhere; }
 .community-message:empty { min-height: 0; margin: 0; }
 .community-message[data-error=true] { color: var(--c-red); }
