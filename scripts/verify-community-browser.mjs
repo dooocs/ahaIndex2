@@ -103,7 +103,7 @@ try {
      const response = page.waitForResponse(r => r.request().isNavigationRequest() && r.url() === `${origin}/`,{timeout:180000});
      await link.click({noWaitAfter:true});
      assert.equal((await response).status(),200,'Homepage must load with the news Supabase configuration');
-     await page.getByRole('heading',{name:'向上研究所 · 每天一点 Amazing',exact:true}).waitFor();
+     await page.getByRole('heading',{name:'向上研究所 · 每天向上一点',exact:true}).waitFor();
      assert.ok(await page.locator('#article-list a.article').count(),'Homepage must contain real news articles');
      // 相亲贴 is hidden from the tab bar; its pages are reached by direct URL.
      await page.goto(origin+'/meet');
