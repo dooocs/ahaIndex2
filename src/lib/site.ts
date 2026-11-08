@@ -69,7 +69,7 @@ export const SHELVES: Shelf[] = [
   },
   {
     id: 'race', href: '/race', name: '西湖飞车', desc: '绕西湖一圈的卡通赛车：断桥、白堤、孤山，杨公堤六连跳，三台山发卡弯，雷峰塔',
-    tab: '西湖飞车', tabHref: '/race', beta: true, paths: ['/race'],
+    tab: '西湖飞车', tabHref: '/race', paths: ['/race'],
   },
   {
     id: 'dark-room', href: '/dark-room', name: '小黑屋', desc: '从一间寒冷的小黑屋开始，生火、建造、探索',
