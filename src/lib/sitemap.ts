@@ -1,6 +1,7 @@
 // Sitemap and RSS rendering. Pure functions over data already read: the
 // export script feeds them the editions that are actually deployed.
 import type { ProcessedItem } from './types.ts';
+import { selectDailyItems } from './daily-items.ts';
 import type { ArticleRouteItem } from './queries.ts';
 
 export const SITE_URL = 'https://www.amazingindex.com';
@@ -148,7 +149,7 @@ export function renderRss(items: ProcessedItem[], latestDate: string | null): st
     '<description>每日 AI 行业精选简报，过滤噪音，直达洞察。</description>',
     '<language>zh-CN</language>',
     ...(latestDate ? [`<lastBuildDate>${escapeXml(rssPubDate(latestDate))}</lastBuildDate>`] : []),
-    ...items.map(renderRssItem),
+    ...selectDailyItems(items).map(renderRssItem),
     '</channel>',
     '</rss>',
   ].join('');
