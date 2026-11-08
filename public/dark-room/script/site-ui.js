@@ -5,6 +5,8 @@ function setupGameUI() {
   menu.dataset.settingsReady = 'true';
   var host;
   try { host = window.parent !== window && window.parent.document.getElementById('dark-room-settings-host'); } catch (_) {}
+  var controls = document.createElement('div');
+  controls.className = 'game-controls' + (host ? ' game-controls--embedded' : '');
   var settings = document.createElement('details');
   settings.className = 'game-settings';
   settings.innerHTML = '<summary class="menuBtn" aria-label="游戏设置" title="游戏设置"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m9 3-1 3-3 1 1 3-2 2 2 2-1 3 3 1 1 3h6l1-3 3-1-1-3 2-2-2-2 1-3-3-1-1-3Z"/><circle cx="12" cy="12" r="3"/></svg></summary><div class="settings-panel"><strong>游戏设置</strong><div class="settings-actions"></div><div class="settings-credit">A Dark Room<br>Michael Townsend 等</div><div class="settings-links"><a href="https://github.com/doublespeakgames/adarkroom" target="_blank" rel="noopener">原作</a><a href="https://github.com/dooocs/ahaIndex2/tree/main/public/dark-room" target="_blank" rel="noopener">源码</a><a href="/dark-room/LICENSE.md" target="_blank" rel="noopener">MPL-2.0</a></div></div>';
@@ -13,16 +15,17 @@ function setupGameUI() {
     settings.querySelector('summary').textContent = '设置';
     document.getElementById('saveNotify').hidden = true;
   }
-  function label(text) {
-    return text.replace('sound on.', '开启声音').replace('sound off.', '关闭声音');
-  }
+  controls.appendChild(settings);
   ['.save', '.volume', '.lightsOff', '.restart'].forEach(function (selector) {
     var original = menu.querySelector(selector);
     if (!original) return;
     var button = document.createElement('button');
     button.type = 'button';
     button.className = 'menuBtn';
-    var updateLabel = function () { button.textContent = selector === '.save' ? '导入 / 导出' : label(original.textContent); };
+    var updateLabel = function () {
+      if (selector === '.volume') button.textContent = $SM.get('config.soundOn') ? '关闭声音' : '打开声音';
+      else button.textContent = selector === '.save' ? '导入 / 导出' : original.textContent;
+    };
     updateLabel();
     new MutationObserver(updateLabel).observe(original, { childList: true, characterData: true, subtree: true });
     button.addEventListener('click', function () {
@@ -30,10 +33,13 @@ function setupGameUI() {
       updateLabel();
       settings.open = false;
     });
-    settings.querySelector('.settings-actions').appendChild(button);
+    if (selector === '.volume') {
+      button.classList.add('game-sound-toggle');
+      controls.insertBefore(button, settings);
+    } else settings.querySelector('.settings-actions').appendChild(button);
   });
-  if (host) host.replaceChildren(settings);
-  else document.body.appendChild(settings);
+  if (host) host.replaceChildren(controls);
+  else document.body.appendChild(controls);
   // Crafting lists grow as the game progresses. Grow the viewport vertically
   // without changing the fixed horizontal offsets used by the original engine.
   var stageQueued = false;
@@ -82,7 +88,7 @@ function setupGameUI() {
     host.ownerDocument.addEventListener('click', closeSettings);
     window.addEventListener('pagehide', function () {
       host.ownerDocument.removeEventListener('click', closeSettings);
-      settings.remove();
+      controls.remove();
     });
   }
   settings.addEventListener('keydown', function (event) {

@@ -8,7 +8,7 @@ const canonical = `${SITE_URL}/dark-room`;
 ---
 <BaseLayout title={siteTitle('小黑屋')} description="从一间寒冷的小黑屋开始，生火、建造、探索。" canonicalUrl={canonical} ogUrl={canonical} noindex>
   <Masthead showScore={false} overlay />
-  <link rel="stylesheet" href="/dark-room/css/settings.css?v=20261107-controls" />
+  <link rel="stylesheet" href="/dark-room/css/settings.css?v=20261108-sound-toggle" />
   <main class="dark-room-page">
     <h1 class="sr-only">小黑屋</h1>
     <div class="dark-room-cloud" aria-label="游戏存档">
@@ -21,7 +21,7 @@ const canonical = `${SITE_URL}/dark-room`;
     </div>
     <p id="dark-room-start-note">正在准备存档…</p>
     <dialog id="dark-room-saves" aria-label="小黑屋存档"></dialog>
-    <iframe id="dark-room-app" src="/dark-room/app.html?v=20261107-no-promotions&amp;embedded=1" title="小黑屋 · 文字冒险" allow="autoplay; fullscreen"></iframe>
+    <iframe id="dark-room-app" src="/dark-room/app.html?v=20261108-sound-toggle&amp;embedded=1" title="小黑屋 · 文字冒险" allow="autoplay; fullscreen"></iframe>
     <noscript><p>小黑屋需要开启 JavaScript 才能游玩。</p></noscript>
   </main>
 </BaseLayout>
