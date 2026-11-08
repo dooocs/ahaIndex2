@@ -201,7 +201,7 @@ export class PlayerCar {
       if (ground) {
         this.s -= (T.driftDrag + T.driftDragAngle * sa + T.driftDragSpeed * this.s * sa) * dt;
         // 集气只看真正的漂移：角度小于 ~6° 不集气、点一下（0.25 s 以内）不集气；角度越大越快，同时也掉速越多
-        this.gauge += dt * T.gaugeRate * 2.2 * clamp((sa - 0.1) / 0.5, 0, 1) * clamp((this.driftT - T.gaugeDelay) / 0.3, 0, 1) * clamp(this.s / 34, 0.3, 1.1);
+        this.gauge += dt * T.gaugeRate * 2.2 * clamp((sa - 0.1) / 0.5, 0, 1) * clamp((this.driftT - T.gaugeDelay) / 0.3, 0, 1) * Math.max(this.s / 34, 0.3);
         while (this.gauge >= 1) {
           if (this.nitroN < 3) { this.nitroN++; this.gauge -= 1; this.emit('gauge'); } else { this.gauge = 1; break; }
         }
