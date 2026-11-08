@@ -4,6 +4,7 @@ import BriefingCard from './BriefingCard.astro';
 import Sidebar from './Sidebar.astro';
 import type { ProcessedItem, DailyArchive } from '../lib/types';
 import { SITE_NAME, SITE_SLOGAN } from '../lib/site';
+import { selectDailyItems } from '../lib/daily-items';
 
 type LayoutProps = Omit<Parameters<typeof TabLayout>[0], 'tab' | 'items' | 'date' | 'showArchiveBanner'>;
 
@@ -36,6 +37,7 @@ const {
 } = Astro.props;
 
 const snapshotDate = date || (items.length > 0 ? items[0].snapshot_date : undefined);
+const displayItems = selectDailyItems(items);
 const isHome = sidebarMode === 'intro';
 ---
 
@@ -49,8 +51,8 @@ const isHome = sidebarMode === 'intro';
     </a>
   )}
   <div class="article-list" id="article-list">
-    {items.length > 0 ? (
-      items.map((item, index) => (
+    {displayItems.length > 0 ? (
+      displayItems.map((item, index) => (
         <BriefingCard item={item} index={index} date={snapshotDate} />
       ))
     ) : (
