@@ -29,6 +29,10 @@ function setupGameUI() {
     updateLabel();
     new MutationObserver(updateLabel).observe(original, { childList: true, characterData: true, subtree: true });
     button.addEventListener('click', function () {
+      if (window.Companions && Companions.isOpen()) {
+        Notifications.notify(Room, '请先关闭伴侣窗口，再使用这个设置。');
+        return;
+      }
       original.click();
       updateLabel();
       settings.open = false;
@@ -40,6 +44,7 @@ function setupGameUI() {
   });
   if (host) host.replaceChildren(controls);
   else document.body.appendChild(controls);
+  if (window.Companions) Companions.init(settings.querySelector('.settings-actions'));
   // Crafting lists grow as the game progresses. Grow the viewport vertically
   // without changing the fixed horizontal offsets used by the original engine.
   var stageQueued = false;
@@ -97,3 +102,4 @@ function setupGameUI() {
 }
 window.addEventListener('dark-room-started', setupGameUI);
 $(setupGameUI);
+

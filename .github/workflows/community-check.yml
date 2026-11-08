@@ -23,6 +23,8 @@ jobs:
       - run: npx playwright install --with-deps chromium
       - name: Dark Room layout and isolated first visit
         run: node scripts/verify-dark-room-layout.mjs
+      - name: Dark Room companion preferences and relationship flow
+        run: node scripts/verify-dark-room-companions.mjs
       - name: Browser flow with isolated mock APIs
         env:
           PUBLIC_COMMUNITY_ENABLED: 'true'
@@ -47,3 +49,4 @@ jobs:
             /tmp/community-*.png
             /tmp/community-dev.log
             /tmp/dark-room-*.png
+
