@@ -1,13 +1,66 @@
 ---
 import CommunityLayout from '../layouts/CommunityLayout.astro';
 ---
-<CommunityLayout title="我的账号">
+<CommunityLayout title="个人中心">
   <section data-view="account" class="account-section">
-    <div class="community-heading"><div><h1>我的账号</h1><p id="account-email" class="community-note"></p></div><button id="sign-out" class="community-button secondary" hidden>退出登录</button></div>
-    <h2>我的相亲帖</h2>
-    <p id="community-message" role="status" aria-live="polite" class="community-message">正在加载…</p>
-    <div id="my-post"></div>
-    <div class="community-actions" id="my-post-actions" hidden><a href="/meet/new" class="community-button" data-astro-reload>编辑资料</a><button id="withdraw-post" class="community-button secondary">撤回帖子</button></div>
-    <p class="community-note">删除账号及资料请联系 <a href="mailto:hi@amazingindex.com">hi@amazingindex.com</a>。</p>
+    <a href="/" class="community-back" data-astro-reload>返回首页</a>
+    <header class="account-header">
+      <div>
+        <p class="community-eyebrow">我的空间 <em>MY SPACE</em></p>
+        <h1>个人中心</h1>
+        <p id="account-email" class="community-note"></p>
+      </div>
+      <button id="sign-out" class="community-button secondary" hidden>退出登录</button>
+    </header>
+    <p id="community-message" role="status" aria-live="polite" class="community-message">正在检查登录状态…</p>
+    <div id="account-content" class="account-grid" hidden>
+      <div class="account-main">
+        <section aria-labelledby="account-play-title">
+          <div class="account-section-heading"><h2 id="account-play-title">继续探索</h2><span>PLAY & EXPLORE</span></div>
+          <div class="account-games">
+            <a href="/race" class="account-game" aria-label="进入西湖飞车" data-astro-reload>
+              <span class="account-game-number">01 / RACING</span>
+              <h3>西湖飞车</h3>
+              <p>沿着西湖跑一圈，挑战自己的下一次纪录。</p>
+              <span class="account-game-action">进入赛道 <span aria-hidden="true">↗</span></span>
+            </a>
+            <a href="/dark-room" class="account-game" aria-label="进入小黑屋" data-astro-reload>
+              <span class="account-game-number">02 / ADVENTURE</span>
+              <h3>小黑屋</h3>
+              <p>生起炉火，建造村落，继续探索未知的世界。</p>
+              <span class="account-game-action">打开小黑屋 <span aria-hidden="true">↗</span></span>
+            </a>
+          </div>
+        </section>
+        <section id="account-explore" aria-labelledby="account-discover-title">
+          <div class="account-section-heading"><h2 id="account-discover-title">逛逛研究所</h2><span>DISCOVER</span></div>
+          <div class="account-discover">
+            <a href="/" data-astro-reload><span>AI 日报</span><small>读今天的精选</small><span aria-hidden="true">↗</span></a>
+            <a href="/feed" data-astro-reload><span>动态</span><small>看看正在发生什么</small><span aria-hidden="true">↗</span></a>
+            <a href="/people" data-astro-reload><span>人物</span><small>认识不同的人生</small><span aria-hidden="true">↗</span></a>
+            <a href="/dream" data-astro-reload><span>梦想人生</span><small>留一点时间给自己</small><span aria-hidden="true">↗</span></a>
+          </div>
+        </section>
+        <details id="account-meet" class="account-manage">
+          <summary><span>相亲帖管理</span><span class="account-manage-indicator" aria-hidden="true">+</span></summary>
+          <div class="account-manage-body">
+            <p id="my-post-message" role="status" aria-live="polite" class="community-message"></p>
+            <button id="retry-my-post" type="button" class="community-link" hidden>重新加载相亲帖</button>
+            <div id="my-post"></div>
+            <div class="community-actions" id="my-post-actions" hidden><a href="/meet/new" class="community-button secondary" data-astro-reload>编辑资料</a><button id="withdraw-post" class="community-button secondary">撤回帖子</button></div>
+          </div>
+        </details>
+      </div>
+      <aside class="account-side" aria-labelledby="account-info-title">
+        <div class="account-section-heading"><h2 id="account-info-title">账号信息</h2><span>ACCOUNT</span></div>
+        <dl class="account-facts">
+          <div><dt>邮箱状态</dt><dd id="account-verification"></dd></div>
+          <div><dt>登录方式</dt><dd>邮箱验证</dd></div>
+          <div id="account-created-row" hidden><dt>加入时间</dt><dd><time id="account-created"></time></dd></div>
+        </dl>
+        <p class="community-note account-support">需要删除账号或资料？<br />请联系 <a href="mailto:hi@amazingindex.com">hi@amazingindex.com</a>。</p>
+        <a href="/privacy" class="community-link" data-astro-reload>隐私政策 <span aria-hidden="true">↗</span></a>
+      </aside>
+    </div>
   </section>
 </CommunityLayout>

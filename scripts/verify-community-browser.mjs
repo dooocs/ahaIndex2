@@ -16,6 +16,7 @@ const token = `${Buffer.from(JSON.stringify({alg:'HS256',typ:'JWT'})).toString('
 let ownPost = null;
 let contact = null;
 let rateLimitNextPost = false;
+let failAccountPosts = false;
 let published = [{ id: 18, nickname: '周末散步的人', age: 29, gender: '女', city: '杭州', occupation: '产品设计', title: '想找一个一起逛书店的人', about: '工作日认真工作，周末喜欢散步、看展和逛书店。比起热闹的聚会，更喜欢两个人慢慢聊天。', looking_for: '真诚、独立，有自己的兴趣，也愿意分享日常。', created_at: new Date().toISOString(), expires_at: new Date(Date.now()+86400000).toISOString() }];
 const browser = await chromium.launch({headless:true,channel:process.env.PLAYWRIGHT_CHANNEL || undefined});
 let testPage;
@@ -23,6 +24,7 @@ const errors = [], apiCalls = [], requestFailures = [];
 let loginNavigations = 0;
 try {
  const context = await browser.newContext({viewport:{width:1365,height:900}});
+ if (!checkHomepage) await context.route(`${origin}/`, route => route.fulfill({contentType:'text/html',body:'<!doctype html><html lang="zh-CN"><title>首页模拟</title><h1>首页模拟</h1></html>'}));
  const page = await context.newPage();
  await page.clock.install({time:new Date()});
  testPage = page;
@@ -77,7 +79,10 @@ try {
      if (route.request().method()==='PATCH') return ok({id:url.searchParams.get('id')?.replace('eq.',''),post_id:null,sort_order:0,width:1600,height:1600});
      return ok([]);
    }
-   if (url.pathname.endsWith('/meet_posts')) return ok(ownPost ? [ownPost] : []);
+   if (url.pathname.endsWith('/meet_posts')) {
+     if (failAccountPosts) { return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({message:'Account post fixture unavailable'})}); }
+     return ok(ownPost ? [ownPost] : []);
+   }
    if (url.pathname.endsWith('/meet_contacts')) return ok(contact ? [contact] : []);
    throw new Error(`Unexpected API ${url.pathname}`);
  });
@@ -212,13 +217,42 @@ try {
  await page.getByRole('heading',{name:'想找一个一起逛书店的人'}).waitFor();
  await page.getByText('wechat-test-only').waitFor();
  assert.equal(await page.getByRole('button',{name:'查看联系方式'}).count(),0);
+ const postReadsBeforeCenter = apiCalls.filter(path=>path.endsWith('/meet_posts')).length;
  await page.goto(origin+'/account');
+ await page.locator('#account-content').waitFor({state:'visible'});
+ await page.getByRole('heading',{name:'个人中心',exact:true}).waitFor();
+ assert.equal(await page.locator('#account-meet').getAttribute('open'),null);
+ assert.equal(await page.getByText('待审核',{exact:true}).isVisible(),false);
+ assert.equal(await page.getByRole('link',{name:'进入西湖飞车',exact:true}).getAttribute('href'),'/race');
+ assert.equal(await page.getByRole('link',{name:'进入小黑屋',exact:true}).getAttribute('href'),'/dark-room');
+ assert.equal(await page.locator('#account-email').textContent(),user.email);
+ assert.equal(await page.locator('#account-verification').textContent(),'已验证');
+ assert.equal(apiCalls.filter(path=>path.endsWith('/meet_posts')).length,postReadsBeforeCenter,'Default account center must not fetch dating data');
+ for (const width of [320,375,1365]) {
+   await page.setViewportSize({width,height:900});
+   const sizes=await page.evaluate(()=>({scroll:document.documentElement.scrollWidth,width:innerWidth}));
+   assert.ok(sizes.scroll<=sizes.width,`Personal center overflow at ${width}px`);
+ }
+ await page.screenshot({path:screenshot('account-center'),fullPage:true});
+ failAccountPosts=true;
+ await page.locator('#account-meet summary').click();
+ await page.locator('#retry-my-post').waitFor({state:'visible'});
+ assert.equal(await page.getByRole('link',{name:'进入西湖飞车',exact:true}).isVisible(),true,'Post failure must not hide the general account center');
+ assert.equal(await page.locator('#community-message').textContent(),'');
+ failAccountPosts=false;
+ await page.locator('#retry-my-post').click();
  await page.getByText('待审核',{exact:true}).waitFor();
+ const postReadsAfterExpand=apiCalls.filter(path=>path.endsWith('/meet_posts')).length;
+ await page.locator('#account-meet summary').click();
+ await page.locator('#account-meet summary').click();
+ assert.equal(apiCalls.filter(path=>path.endsWith('/meet_posts')).length,postReadsAfterExpand,'Reopening a loaded section must not duplicate requests');
  page.once('dialog',dialog=>dialog.accept());
  await page.getByRole('button',{name:'撤回帖子'}).click();
  await page.getByText('已撤回',{exact:true}).waitFor();
  await page.getByRole('button',{name:'退出登录'}).click();
- await page.waitForURL('**/meet**');
+ await page.waitForURL(origin+'/');
+ await page.goto(origin+'/account');
+ await page.waitForURL('**/login**');
  // Signed-out visitors see a consented contact directly, without a login step.
  await page.goto(origin+'/meet/post?id=18');
  await page.getByText('wechat-test-only').waitFor();
@@ -233,7 +267,7 @@ try {
    }
  }
  assert.deepEqual(errors,[]);
- console.log(JSON.stringify({result:'PASS',checks:[...(checkHomepage ? ['homepage navigation via daily tab and logo'] : []),'email link error/success','callback fragment cleanup','return path','no city filter/empty state','required city/age/gender','submit consent','post persistence','edit prefill','post cooldown on load and reload','server cooldown and form preservation','XSS rendering','public contact without login','withdraw','sign out','no analytics','320px/375px/1365px layout'],apiCalls:apiCalls.length}));
+ console.log(JSON.stringify({result:'PASS',checks:[...(checkHomepage ? ['homepage navigation via daily tab and logo'] : []),'email link error/success','callback fragment cleanup','return path','no city filter/empty state','required city/age/gender','submit consent','post persistence','edit prefill','post cooldown on load and reload','server cooldown and form preservation','XSS rendering','public contact without login','general personal center','lazy post management with isolated error and retry','contextual post management after submit','withdraw','sign out to homepage and protected center','no analytics','320px/375px/1365px layout'],apiCalls:apiCalls.length}));
 } catch(error) {
  if(testPage) {
    await testPage.screenshot({path:screenshot('mock-failure'),fullPage:true});
