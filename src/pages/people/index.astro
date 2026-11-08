@@ -11,6 +11,7 @@ import { FEATURED_LIMIT } from '../../lib/people-home';
 import { PEOPLE_PATH } from '../../lib/people';
 import { SITE_URL, siteTitle } from '../../lib/site';
 import '../../styles/people.css';
+import PhotoManager from '../../components/people/PhotoManager.astro';
 
 const { people, grids, featured } = await getPeople();
 const others = people.length + grids.length - featured.length;
@@ -41,7 +42,7 @@ const no = (rank: number) => String(rank).padStart(2, '0');
         <li>
           <a class="pd-card" href={`${PEOPLE_PATH}/${c.slug}`}>
             <span class="pd-no">{no(c.rank)}</span>
-            <span class="pd-photo" aria-hidden="true">
+            <span class="pd-photo" data-person-photo={c.slug} aria-hidden="true">
               {c.avatar ? <img src={c.avatar} alt="" width="64" height="64" loading="lazy" decoding="async" /> : <span>{c.initial}</span>}
             </span>
             <span class="pd-name">{c.name}</span>
@@ -49,6 +50,7 @@ const no = (rank: number) => String(rank).padStart(2, '0');
             {c.role && <span class="pd-role">{c.role}</span>}
             {c.tags.length > 0 && <span class="pd-tags">{c.tags.map((t) => <span>{t}</span>)}</span>}
           </a>
+          <button type="button" class="portrait-entry" data-portrait-edit data-slug={c.slug} data-name={c.name} data-avatar={c.avatar || ''} hidden>{c.avatar ? '更换照片' : '添加照片'}</button>
         </li>
       ))}
     </ol>
@@ -59,4 +61,5 @@ const no = (rank: number) => String(rank).padStart(2, '0');
       <a href="/feed">动态</a>里的 {others} 位博主也有个人档案，点动态里的头像或名字进入。
     </p>
   )}
+  <PhotoManager />
 </TabLayout>
