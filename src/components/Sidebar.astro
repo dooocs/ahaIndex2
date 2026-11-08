@@ -1,6 +1,6 @@
 ---
 import type { ProcessedItem, DailyArchive } from '../lib/types';
-import { SITE_NAME, SITE_INTRO, SITE_SLOGAN_LEAD, SITE_SLOGAN_ACCENT, visibleShelves } from '../lib/site';
+import { SITE_NAME, SITE_INTRO, SITE_SLOGAN_LEAD, SITE_SLOGAN_ACCENT, SITE_SLOGAN_TAIL, visibleShelves } from '../lib/site';
 import { community } from '../lib/community-config';
 import SidePanel from './panel/SidePanel.astro';
 import PanelHead from './panel/PanelHead.astro';
@@ -34,7 +34,8 @@ const panelClass = mode === 'intro' ? 'sidebar-panel-intro' : 'aha-score-card';
 
 <Panel class={panelClass} data-sidebar data-date={date}>
     {mode === 'intro' ? (
-      <PanelHead kicker="关于本站 / About" title={SITE_SLOGAN_LEAD} accent={SITE_SLOGAN_ACCENT} text={SITE_INTRO}>
+      <PanelHead kicker="关于本站 / About" text={SITE_INTRO}>
+        <h2 slot="title" class="panel-title sidebar-slogan">{SITE_SLOGAN_LEAD}<span>{SITE_SLOGAN_ACCENT}</span>{SITE_SLOGAN_TAIL}</h2>
         <div class="sidebar-shelves">
           <div class="sidebar-shelves-title">所里在做什么 / In the lab</div>
           <ol class="shelf-list">
@@ -100,6 +101,14 @@ const panelClass = mode === 'intro' ? 'sidebar-panel-intro' : 'aha-score-card';
 <script src="../scripts/sidebar.ts"></script>
 
 <style>
+  .sidebar-slogan {
+    white-space: nowrap;
+  }
+
+  .sidebar-slogan span {
+    color: var(--accent);
+  }
+
   .sidebar-panel-intro .sidebar-archive-section {
     margin-bottom: 0;
   }

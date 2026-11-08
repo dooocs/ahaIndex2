@@ -1,12 +1,12 @@
 // Site-wide brand copy. Change names here, not in individual pages.
 export const SITE_NAME = '向上研究所';
-// The slogan in two parts: the homepage panel sets the accent on its own line.
+// The homepage panel highlights only the middle part of the slogan.
 export const SITE_SLOGAN_LEAD = '每天';
-export const SITE_SLOGAN_ACCENT = '向上一点';
-export const SITE_SLOGAN = `${SITE_SLOGAN_LEAD}${SITE_SLOGAN_ACCENT}`;
-export const SITE_SLOGAN_EN = 'A little better, every day.';
-export const SITE_INTRO = `${SITE_NAME}是一个独立开发者小站，专门做前沿、好玩、有用的小东西。`;
-export const SITE_DESCRIPTION = `${SITE_INTRO}${SITE_SLOGAN}。`;
+export const SITE_SLOGAN_ACCENT = '向上';
+export const SITE_SLOGAN_TAIL = '一点';
+export const SITE_SLOGAN = `${SITE_SLOGAN_LEAD}${SITE_SLOGAN_ACCENT}${SITE_SLOGAN_TAIL}`;
+export const SITE_INTRO = `${SITE_NAME}，汇集拓展认知、提升能力、探索生活的内容与工具，陪你${SITE_SLOGAN}，遇见更强的自己。`;
+export const SITE_DESCRIPTION = SITE_INTRO;
 
 // The daily AI briefing keeps its original name as a column of the site.
 export const DAILY_NAME = 'AmazingIndex';
