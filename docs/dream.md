@@ -25,6 +25,27 @@ planet, a new way to move or a new render effect is a change in one module, not 
 - Rendering reads the world and the avatar's pose; it never decides where the avatar may go.
 - `app.html` only connects these, so it is the only file that knows they all exist.
 
+## 云栖府 residential garden
+
+The home district keeps its original site, perimeter, car and bus connection. Its three towers now
+have 10 / 13 / 11 residential floors above taller glazed lobbies, warm stone piers, bronze reveals,
+planted balconies and roof gardens. A wider entrance canopy opens onto a reflecting pool with a ring
+sculpture; the garden includes a reading pavilion, tea pavilion, benches, flower beds and a walking loop.
+Furniture footprints match the geometry; pavilions remain open to walk into. Courtyard paths avoid
+the pool and connect to each tower instead of radiating through the water.
+
+`public/dream/js/home/patrol.js` owns the shared garden loops and deterministic distance-based patrols.
+`residents.js` creates six local NPCs (concierge, neighbours, runner, gardener and reader) from the shared
+avatar cache. Near their characters, click a label explicitly marked `NPC` to greet them. They pause
+for a conversation or let a nearby visitor pass, then resume; close the note or press Escape to dismiss.
+Labels disappear beyond nine units, avatars cull beyond 34 units, and the district releases its DOM and
+groups when switching planets. NPCs never join presence, affect online counts or send network messages.
+
+`tests/dream-home.test.mjs` samples every patrol against the actual home collision declarations, checks
+the entrance and open pavilions, builds the actual home geometry without a WebGL renderer, bounds its
+triangle count, and exercises greeting / resume / cleanup. Final rendered appearance still needs a
+WebGL-capable browser.
+
 ## Done: walking (`public/dream/js/walk/`)
 
 Free walking used to undo any step that ended in water, a building or across the railing. Nothing slid
