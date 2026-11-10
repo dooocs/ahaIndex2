@@ -7,7 +7,7 @@ var Companions = (function () {
     gender: { female: '女性', male: '男性', any: '都可以', off: '暂时不考虑' },
     ages: { '19-21': '19～21岁', '22-29': '22～29岁', '30-35': '30～35岁', '36-41': '36～41岁' },
     heights: { short: '偏矮（≤164cm）', medium: '中等（165～174cm）', tall: '高挑（≥175cm）' },
-    bodies: { slim: '纤细、清瘦', balanced: '匀称', full: '丰盈、厚实', athletic: '健美、结实' },
+    bodies: { slim: '纤细、清瘦', balanced: '匀称', full: '体格厚实', athletic: '健美、结实' },
     temperaments: { assertive: '强势、果断', gentle: '温柔、细腻', lively: '开朗、主动', reserved: '清冷、慢热', mature: '成熟、从容' },
     approaches: { lead: '喜欢主导', equal: '互相照顾', follow: '偏被带领' }
   };
@@ -183,7 +183,7 @@ var Companions = (function () {
     ui.body.appendChild(el('p', p.appearance.split('。')[0] + '。', 'companion-prose'));
     ui.body.appendChild(el('p', '接受这次邀约，先从认识彼此开始。', 'companion-muted'));
     ui.actions.append(
-      button('仔细端详', function () { profileView(id, true); }, 'details'),
+      button('了解对方', function () { profileView(id, true); }, 'details'),
       button('接受邀约', function () { acceptInvite(id); }, 'accept'),
       button('婉拒', function () {
         save(M.decline(read(), id, Date.now())); encounterOpen = false;
@@ -209,7 +209,7 @@ var Companions = (function () {
     var s = read(), p = M.person(id), r = s.people[id];
     if (!p || !r) { managerView(); return; }
     save(M.view(s, id)); s = read(); r = s.people[id];
-    var ui = reset('仔细端详 · ' + p.name);
+    var ui = reset('了解对方 · ' + p.name);
     profileText(ui.body, p, r.level >= 2 && (!s.partnerId || s.partnerId === id));
     if (invited && r.status === 'invited') {
       ui.actions.append(button('接受邀约', function () { acceptInvite(id); }, 'accept'), button('返回邀约', function () { inviteView(id); }, 'back-invite'));
@@ -283,7 +283,7 @@ var Companions = (function () {
       open(function () {
         var ui = reset('又见面了 · ' + p.name);
         ui.body.appendChild(el('p', p.name + '忙完了手头的事，想邀你一起坐坐。'));
-        ui.actions.append(button('相处一下', function () { interactionView(p.id); }, 'interact'), button('仔细端详', function () { profileView(p.id); }, 'details'), button('稍后再说', function () { close(false); }, 'later'));
+        ui.actions.append(button('相处一下', function () { interactionView(p.id); }, 'interact'), button('了解对方', function () { profileView(p.id); }, 'details'), button('稍后再说', function () { close(false); }, 'later'));
       }, true);
     }
   }
