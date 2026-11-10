@@ -36,6 +36,6 @@ jobs:
   deploy:
     uses: ./.github/workflows/deploy.yml
     with:
-      mode: full
+      mode: daily
       backfill: ${{ inputs.backfill || '' }}
     secrets: inherit
