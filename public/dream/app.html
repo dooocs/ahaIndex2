@@ -79,6 +79,15 @@
   .tag::after { content: ""; position: absolute; left: 50%; bottom: -7px; width: 2px; height: 6px; background: var(--ink); transform: translateX(-50%); }
 
   #peer-tags { position: fixed; inset: 0; pointer-events: none; }
+  #home-npc-tags { position: fixed; inset: 0; pointer-events: none; }
+  .home-npc-tag { position: absolute; left: 0; top: 0; padding: 5px 9px; border: 1px solid #a99c7e; border-radius: 12px; background: rgba(251,248,239,.94); color: #3d5147; font: 12px/1.3 system-ui, sans-serif; white-space: nowrap; cursor: pointer; pointer-events: auto; }
+  .home-npc-tag small { margin-right: 5px; color: #8a7959; font-size: 9px; }
+  .home-npc-tag:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .home-note { position: fixed; left: max(18px, env(safe-area-inset-left)); bottom: calc(24px + env(safe-area-inset-bottom)); width: min(300px, calc(100vw - 64px)); padding: 18px 40px 18px 20px; border: 1px solid #cbbfa5; border-radius: 14px; background: rgba(251,248,239,.97); color: #3d5147; box-shadow: 0 8px 28px #293d3622; font: 14px/1.7 system-ui, sans-serif; }
+  .home-note[hidden], .home-npc-tag[hidden] { display: none; }
+  .home-note small { display: block; margin-bottom: 6px; color: #8a7959; font-size: 10px; letter-spacing: .16em; }
+  .home-note p { margin: 8px 0 0; }
+  .home-note button { position: absolute; right: 3px; top: 3px; width: 44px; height: 44px; border: 0; background: none; color: inherit; font-size: 24px; cursor: pointer; }
   .stick {
     position: fixed; left: 0; top: 0; width: 112px; height: 112px; margin: -56px 0 0 -56px; pointer-events: none;
     border-radius: 50%; background: rgba(251, 252, 247, 0.22); border: 1.5px solid rgba(251, 252, 247, 0.75);
@@ -238,6 +247,8 @@
 <div id="stage"><canvas id="c" aria-label="梦想星球 3D 场景"></canvas></div>
 <div id="labels" aria-hidden="true"></div>
 <div id="peer-tags" aria-hidden="true"></div>
+<div id="home-npc-tags" aria-label="小区 NPC"></div>
+<aside id="home-note" class="home-note" aria-live="polite" hidden><small>云栖府 · NPC</small><b id="home-note-name"></b><p id="home-note-text"></p><button id="home-note-close" type="button" aria-label="关闭对话">×</button></aside>
 <div class="stick" id="stick" aria-hidden="true"><div class="knob"></div></div>
 <div class="ride-card" id="ride-card" hidden>
   <b id="rc-line"></b><span id="rc-now"></span><small id="rc-sub"></small>
@@ -308,6 +319,8 @@ import { lookupProvince } from './js/net/province.js';
 import { makeTimetable } from './js/bus/timetable.js';
 import { syncClock } from './js/bus/clock.js';
 import { ridersOn, hasRoom, isBumped } from './js/bus/riders.js';
+import { HOME_LOOP, POOL_WALK } from './js/home/patrol.js';
+import { createResidents } from './js/home/residents.js';
 
 // Authored hex colours are used as-is in every shader (no sRGB conversion), so the
 // palette on screen is exactly the palette written here.
@@ -1839,14 +1852,18 @@ async function buildHangzhou() {
   const share = f => { const n = 6000, v = new THREE.Vector3(); let m = 0; for (let i = 0; i < n; i++) { const y = 1 - 2 * (i + 0.5) / n, r = Math.sqrt(1 - y * y), a = i * 2.399963; m += f(v.set(r * Math.cos(a), y, r * Math.sin(a))); } return m / n; };
   const TREE_SHARE = share(treeFill), GRASS_SHARE = share(grassFill);
 
-// 小区: three 15-floor towers round a courtyard, behind a railing with a gate on the road side. The courtyard
+// 云栖府: three staggered residential towers round a landscaped courtyard. The courtyard
 // is 80 × 25 (eight times its first area, 19 × 13), wide along the road rather than deep, so it stays where the
 // ground is fine (within ~30 units of the ring); its front leaves room for the 1314's 家 stop by the gate.
-const HOME_FENCE = { x0: -40, x1: 40, z0: -23.5, z1: 1.5 }, HOME_GATE = 1.2;
+const HOME_FENCE = { x0: -40, x1: 40, z0: -23.5, z1: 1.5 }, HOME_GATE = 2.1;
 // the railing all round the courtyard except the gate: drawn by buildHome, walked against via walk.barrier
 const HOME_RAIL = (({ x0, x1, z0, z1 }, gw) => [[-gw, z1], [x0, z1], [x0, z0], [x1, z0], [x1, z1], [gw, z1]])(HOME_FENCE, HOME_GATE + 0.55);
-const TOWERS = [[-24.4, -14.0], [0, -18.0], [24.4, -14.0]], TOWER = { w: 4.5, d: 3.1, floors: 15, fh: 0.46 };
-const CAR = [12, -1.4], FOUNTAIN = [0, -5.5], FOUNTAIN_R = 3.4, HOME_BOOTH = [-2.6, HOME_FENCE.z1 + 0.8];
+const TOWERS = [[-24.4, -14.0], [0, -18.0], [24.4, -14.0]], TOWER = { w: 5.8, d: 4.2, fh: 0.72, lobby: 1.25 };
+const HOME_FLOORS = [10, 13, 11];
+const HOME_PAVILIONS = [[-13.5, -15], [13.5, -15]];
+const HOME_BENCHES = [[-6.5, -6], [6.5, -6], [-23, -6.3], [23, -6.3]];
+const HOME_PLANTERS = [[-17, -6.8], [17, -6.8], [-32, -16], [32, -16]];
+const CAR = [12, -1.4], FOUNTAIN = [0, -5.5], FOUNTAIN_R = 3.7, HOME_BOOTH = [-4.3, HOME_FENCE.z1 + 0.8];
 // 天街
 const MALL_BOX = { x0: -6.0, x1: 6.0, z0: -4.6, z1: -0.4 };
 // 西湖文体中心: round plan of two halves under a square roof plate
@@ -1944,16 +1961,22 @@ sites.forEach((s, i) => {
   for (let k = 0; k < n; k++) (ringKind[i] === 'road' ? ROADS : STONES).push([sph(0, s.lon + gap * k / n), sph(0, s.lon + gap * (k + 1) / n), ringKind[i] === 'road' ? 0.05 : 0.03]);
 });
 arcsIn(HOME, [[0, HOME.roadZ], [0, HOME_FENCE.z1 + 0.2]], 0.03, ROADS);
-// the courtyard's paths: the drive to the car, gate to fountain, fountain to each tower's door (trees keep off them)
+// Arrival axis, two garden loops and separate approaches to the three lobbies.
 const HOME_PATHS = [
   [[0.9, HOME_FENCE.z1 - 0.2], [CAR[0] - 1.5, CAR[1] + 0.4]],
-  [[0, HOME_FENCE.z1], [0, FOUNTAIN[1] + FOUNTAIN_R - 0.3]],
-  ...TOWERS.map(([x, z]) => [FOUNTAIN, [x * 0.45, (z + FOUNTAIN[1]) / 2 + 1.5], [x, z + TOWER.d / 2 + 1.3]]),
+  [[0, HOME_FENCE.z1], [0, -2.45]],
+  [[0, -8.55], [0, TOWERS[1][1] + TOWER.d / 2 + 1.3]],
+  [[-3.05, -5.5], [-12, -10.3], [-24.4, -10.3]],
+  [[3.05, -5.5], [12, -10.3], [24.4, -10.3]],
+  HOME_LOOP, POOL_WALK,
+  ...HOME_PAVILIONS.map(([x, z]) => [[x, -11], [x, z + 1.5]]),
 ];
 arcsIn(HOME, HOME_PATHS[0], 0.022, ROADS);
-HOME_PATHS.slice(1).forEach((pts, i) => arcsIn(HOME, pts, i ? 0.02 : 0.022, STONES));
-STONE_RECTS.push([HOME, -2.4, 2.4, HOME_FENCE.z1, HOME.roadZ - 0.7]);
-STONE_CIRCS.push([HOME, FOUNTAIN[0], FOUNTAIN[1], FOUNTAIN_R], [HOME, CAR[0], CAR[1], 1.35]);
+HOME_PATHS.slice(1).forEach(pts => arcsIn(HOME, pts, 0.021, STONES));
+STONE_RECTS.push([HOME, -3, 3, HOME_FENCE.z1, HOME.roadZ - 0.7]);
+STONE_CIRCS.push([HOME, FOUNTAIN[0], FOUNTAIN[1], FOUNTAIN_R], [HOME, CAR[0], CAR[1], 1.7]);
+HOME_PAVILIONS.forEach(([x, z]) => STONE_RECTS.push([HOME, x - 3, x + 3, z - 2, z + 2]));
+HOME_BENCHES.forEach(([x, z]) => STONE_RECTS.push([HOME, x - 1.4, x + 1.4, z - 0.7, z + 0.9]));
 STONE_RECTS.push([MALL, -6.4, 6.4, -0.6, MALL.roadZ - 0.7]);
 STONE_RECTS.push([SPORTS, -4.3, 4.3, 2.4, SPORTS.roadZ - 0.7]);
 STONE_CIRCS.push([SPORTS, DRUM.cx, DRUM.cz, DRUM.r + 0.7]);
@@ -2081,9 +2104,17 @@ await slice();
   // h: roughly how tall each thing is, so the camera can move in front of what would hide you
   const box = (s, x0, x1, z0, z1, h) => walk.footprint(s, shapes.box(x0, x1, z0, z1), { h });
   const disc = (s, x, z, r, h) => walk.footprint(s, shapes.circle(x, z, r), { h });
-  TOWERS.forEach(([x, z]) => box(HOME, x - TOWER.w / 2 - 0.1, x + TOWER.w / 2 + 0.1, z - TOWER.d / 2 - 0.1, z + TOWER.d / 2 + 0.65, TOWER.floors * TOWER.fh + 1));
+  TOWERS.forEach(([x, z], i) => box(HOME, x - TOWER.w / 2 - 0.1, x + TOWER.w / 2 + 0.1, z - TOWER.d / 2 - 0.1, z + TOWER.d / 2 + 0.95, HOME_FLOORS[i] * TOWER.fh + TOWER.lobby + 0.8));
+  HOME_PAVILIONS.forEach(([x, z], i) => {
+    // Open pavilions: columns, rear seats and the tea table block walking.
+    [-2.4, 2.4].forEach(dx => [-1.4, 1.4].forEach(dz => box(HOME, x + dx - 0.1, x + dx + 0.1, z + dz - 0.1, z + dz + 0.1, 2.2)));
+    box(HOME, x - 1.7, x + 1.7, z - 1.5, z - 0.95, 0.8);
+    if (i) disc(HOME, x, z - 0.1, 0.6, 0.65);
+  });
+  HOME_BENCHES.forEach(([x, z]) => box(HOME, x - 1.05, x + 1.05, z - 0.3, z + 0.3, 0.8));
+  HOME_PLANTERS.forEach(([x, z]) => box(HOME, x - 2, x + 2, z - 0.8, z + 0.8, 0.6));
   disc(HOME, FOUNTAIN[0], FOUNTAIN[1], 2.05);
-  box(HOME, HOME_BOOTH[0] - 0.55, HOME_BOOTH[0] + 0.55, HOME_BOOTH[1] - 0.5, HOME_BOOTH[1] + 0.5);
+  box(HOME, HOME_BOOTH[0] - 0.8, HOME_BOOTH[0] + 0.8, HOME_BOOTH[1] - 0.7, HOME_BOOTH[1] + 0.7);
   box(HOME, CAR[0] - 0.75, CAR[0] + 0.75, CAR[1] - 1.25, CAR[1] + 1.25, 1.5);
   box(MALL, MALL_BOX.x0 - 0.1, MALL_BOX.x1 + 0.1, MALL_BOX.z0 - 0.1, MALL_BOX.z1 + 0.15, 3.6);
   disc(MALL, 0, -0.6, 2.1, 4.5);
@@ -2098,7 +2129,7 @@ await slice();
 // ---------- stops shown in the HUD, and smaller landmark tags ----------
 // via: points walked through after leaving the ring road; stand/look: where to stop and what to face
 zones = [
-  { name: '家', s: HOME, via: [[0, HOME_FENCE.z1 + 1.8], [0, HOME_FENCE.z1 - 0.8]], stand: [0, HOME_FENCE.z1 - 1.4], look: TOWERS[1], zoom: 2.9, label: TOWERS[1], h: 8.6 },
+  { name: '家', s: HOME, via: [[0, HOME_FENCE.z1 + 1.8], [0, HOME_FENCE.z1 - 0.8]], stand: [0, HOME_FENCE.z1 - 1.4], look: TOWERS[1], zoom: 2.9, label: TOWERS[1], h: HOME_FLOORS[1] * TOWER.fh + TOWER.lobby + 1.3 },
   { name: '车子', noTag: true, s: HOME, via: [[0, HOME_FENCE.z1 + 1.8], [0, HOME_FENCE.z1 - 0.8], [CAR[0] - 3.2, CAR[1] + 1.4]], stand: [CAR[0] + 2.8, CAR[1] + 0.8], look: CAR, zoom: 1.0, label: CAR, h: 1.9 },
   { name: '天街', s: MALL, via: [], stand: [0.9, 3.0], look: [0, -1.8], zoom: 1.75, label: [0, -0.6], h: 5.9 },
   { name: '文体中心', s: SPORTS, via: [], stand: [0.9, 4.4], look: [0, -1], zoom: 1.85, label: [0, -1], h: 5.9 },
@@ -2252,94 +2283,153 @@ await buildGround({ step: z => 0.4 + 1.2 * bandFade(z) + 0.8 * sstep(70, 110, z)
 // trees planted by the builders below (place, x, z, kind)
 const heroTrees = [];
 
-// ---------- 小区: three 12-floor flat-plan towers, courtyard, railing, gate ----------
-function buildTower(x, z) {
+// ---------- 云栖府: warm stone, bronze details and a sequence of garden rooms ----------
+function buildTower(x, z, index) {
   const k = kit(HOME, x, z);
-  const { w, d, floors, fh } = TOWER, H = floors * fh;
-  const STONE = 0xe4d9c6, SLAB = 0xf7f3ec, GLASS = 0x86b0bf, FRAME = 0x56616b;
-  const RAIL = { kind: 'GLASS', shade: 0x9cc0ca };
-  k.box(w - 0.36, H + 1, d - 0.3, GLASS, 0, (H - 1) / 2, 0, G_OPTS);                  // glass core
-  [-1, 1].forEach(sx => k.box(0.34, H + 1.1, d + 0.02, STONE, sx * (w / 2 - 0.17), (H - 0.9) / 2, 0));
-  k.box(0.24, H + 1.1, d + 0.06, STONE, 0, (H - 0.9) / 2, 0);                         // party wall: two flats a floor
-  for (let i = 0; i < 6; i++) {
-    const mx = -w / 2 + 0.5 + i * ((w - 1) / 5);
-    k.box(0.05, H, 0.04, FRAME, mx, H / 2, d / 2 - 0.13);
-    k.box(0.05, H, 0.04, FRAME, mx, H / 2, -d / 2 + 0.13);
+  const { w, d, fh, lobby } = TOWER, floors = HOME_FLOORS[index], H = lobby + floors * fh;
+  const STONE = [0xe1d6c0, 0xeee4d1, 0xdcd3c0][index], IVORY = 0xf5efdf, BRONZE = 0x9c8257, GLASS = 0x668e91, DARK = 0x344d4c;
+  // A taller glazed lobby, two framed bays and slender vertical stone piers.
+  k.box(w, 0.2, d + 0.6, STONE, 0, 0.05, 0.15);
+  k.box(w - 0.24, H, d - 0.25, GLASS, 0, H / 2, 0, G_OPTS);
+  [-1, 1].forEach(side => {
+    k.box(0.42, H + 0.24, d, STONE, side * (w / 2 - 0.21), H / 2, 0);
+    k.box(0.075, H - lobby, 0.08, BRONZE, side * 1.1, (H + lobby) / 2, d / 2 - 0.08);
+    // The side elevations have recessed windows, rather than blank walls.
+    [-0.95, 0, 0.95].forEach(pz => k.box(0.1, H - lobby, 0.1, BRONZE, side * (w / 2 + 0.01), (H + lobby) / 2, pz));
+  });
+  k.box(0.28, H - lobby + 0.2, d + 0.14, STONE, 0, (H + lobby) / 2, 0);
+  for (let i = 0; i <= floors; i++) {
+    const y = lobby + i * fh;
+    k.box(w + 0.24, 0.075, d + 0.72, IVORY, 0, y, 0.25);
+    k.box(w + 0.22, 0.025, 0.04, BRONZE, 0, y - 0.045, d / 2 + 0.6);
+    if (i < floors) {
+      k.box(w - 0.18, 0.24, 0.035, 0xb8d1ca, 0, y + 0.16, d / 2 + 0.58, { kind: 'GLASS', shade: 0x6d9998 });
+      [-1, 1].forEach(side => {
+        k.box(0.035, 0.29, 0.035, BRONZE, side * (w / 2 - 0.15), y + 0.16, d / 2 + 0.6);
+        // Staggered planted balconies soften the otherwise repeated floor plates.
+        if ((i + (side > 0 ? 1 : 0)) % 3 === 0) {
+          k.box(0.95, 0.18, 0.3, STONE, side * (w / 2 - 0.75), y + 0.15, d / 2 + 0.3);
+          k.box(0.87, 0.17, 0.26, 0x66835b, side * (w / 2 - 0.75), y + 0.3, d / 2 + 0.3);
+        }
+      });
+    }
   }
-  for (let i = 1; i <= floors; i++) {
-    const y = i * fh;
-    k.box(w + 0.12, 0.08, d + 0.62, SLAB, 0, y - 0.04, 0.22);                         // slab with a deep balcony
-    if (i < floors) k.box(w - 0.06, 0.18, 0.03, 0xd2e8ec, 0, y + 0.09, d / 2 + 0.52, RAIL);
-  }
-  k.box(1.5, 0.07, 0.95, SLAB, 0, fh * 1.35, d / 2 + 0.55);                            // lobby canopy
-  [-0.68, 0.68].forEach(px => k.box(0.08, fh * 1.35, 0.08, STONE, px, fh * 0.67, d / 2 + 0.98));
-  k.box(w + 0.12, 0.3, d + 0.12, STONE, 0, H + 0.15, 0);                               // parapet
-  const cw = w - 0.7, cd = d - 0.6, ch = 0.75;                                          // open crown frame
-  [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([a, b]) => k.box(0.12, ch, 0.12, STONE, a * cw / 2, H + 0.3 + ch / 2, b * cd / 2));
-  [cd / 2, -cd / 2].forEach(pz => k.box(cw + 0.12, 0.1, 0.12, STONE, 0, H + 0.3 + ch, pz));
-  [cw / 2, -cw / 2].forEach(px => k.box(0.12, 0.1, cd, STONE, px, H + 0.3 + ch, 0));
+  // Recessed double doors, a floating canopy, and warm soffit strips.
+  k.box(2.05, 1.1, 0.07, DARK, 0, 0.6, d / 2 + 0.07);
+  [-0.46, 0.46].forEach(px => k.box(0.83, 0.92, 0.025, 0xa5c1b5, px, 0.58, d / 2 + 0.12, G_OPTS));
+  [-0.07, 0.07].forEach(px => k.box(0.025, 0.25, 0.035, BRONZE, px, 0.57, d / 2 + 0.16));
+  k.box(3.15, 0.13, 1.1, DARK, 0, 1.28, d / 2 + 0.55);
+  k.box(2.8, 0.025, 0.06, 0xffdf9b, 0, 1.2, d / 2 + 0.98, { shade: 0xe8ba70, breakMul: 0 });
+  [-1.4, 1.4].forEach(px => k.box(0.1, 1.22, 0.1, BRONZE, px, 0.61, d / 2 + 0.96));
+  k.place(signMesh(['西园', '云庭', '东园'][index], 0.78, 0.25, '#344d4c', '#f4e4bc'), 0, 1.56, d / 2 + 0.13);
+  // Set-back rooftop garden and open crown; no floating extra storey.
+  k.box(w + 0.24, 0.25, d + 0.2, STONE, 0, H + 0.15, 0);
+  k.box(w - 0.55, 0.1, d - 0.6, 0x66835b, 0, H + 0.3, 0);
+  [-1, 1].forEach(side => {
+    k.box(0.14, 0.7, d - 0.4, IVORY, side * (w / 2 - 0.4), H + 0.55, 0);
+    k.box(w - 0.65, 0.1, 0.12, IVORY, 0, H + 0.87, side * (d / 2 - 0.3));
+  });
+  for (let i = -2; i <= 2; i++) k.box(0.055, 0.06, d - 0.5, BRONZE, i * 0.85, H + 0.86, 0);
 }
 function buildHome() {
-  TOWERS.forEach(([x, z]) => buildTower(x, z));
-  // railing on a low stone base, all round the courtyard except the gate
+  TOWERS.forEach(([x, z], i) => buildTower(x, z, i));
+  // Keep the original continuous boundary and matching collision polyline.
   const { z1 } = HOME_FENCE, run = HOME_RAIL;
-  const bars = [], baseG = new THREE.BoxGeometry(0.2, 0.3, 1), railG = new THREE.BoxGeometry(0.05, 0.05, 1), postG = new THREE.BoxGeometry(0.16, 1.15, 0.16);
+  const bars = [], baseG = new THREE.BoxGeometry(0.22, 0.26, 1), railG = new THREE.BoxGeometry(0.055, 0.055, 1), postG = new THREE.BoxGeometry(0.18, 1.08, 0.18);
   for (let i = 0; i < run.length - 1; i++) {
-    const [ax, az] = run[i], [bx, bz] = run[i + 1];
-    const len = Math.hypot(bx - ax, bz - az), fwd = LT(HOME, (bx - ax) / len, (bz - az) / len);
-    const nb = Math.round(len / 0.17);
+    const [ax, az] = run[i], [bx, bz] = run[i + 1], len = Math.hypot(bx - ax, bz - az);
+    const fwd = LT(HOME, (bx - ax) / len, (bz - az) / len), nb = Math.round(len / 0.24), np = Math.max(1, Math.round(len / 1.1));
     for (let j = 1; j < nb; j++) bars.push(frameMatrix(L(HOME, ax + (bx - ax) * j / nb, az + (bz - az) * j / nb), fwd));
-    const np = Math.max(1, Math.round(len / 1.1));
     for (let j = 0; j < np; j++) {
       const t = (j + 0.5) / np, m = frameMatrix(L(HOME, ax + (bx - ax) * t, az + (bz - az) * t), fwd, new THREE.Vector3(1, 1, len / np * 1.02));
-      addAt(baseG.clone().translate(0, 0.1, 0), 0xd9cfbd, {}, m);
-      addAt(railG.clone().translate(0, 1.0, 0), 0x3c434b, {}, m);
+      addAt(baseG.clone().translate(0, 0.08, 0), 0xdcd3c0, {}, m);
+      addAt(railG.clone().translate(0, 0.95, 0), 0x9c8257, {}, m);
     }
-    for (let j = 0; j <= Math.round(len / 2.2); j++) {
-      const t = j / Math.round(len / 2.2);
-      addAt(postG.clone().translate(0, 0.52, 0), 0xd9cfbd, {}, frameMatrix(L(HOME, ax + (bx - ax) * t, az + (bz - az) * t), fwd));
+    for (let j = 0, n = Math.round(len / 2.8); j <= n; j++) {
+      const t = j / n;
+      addAt(postG.clone().translate(0, 0.46, 0), 0xdcd3c0, {}, frameMatrix(L(HOME, ax + (bx - ax) * t, az + (bz - az) * t), fwd));
     }
   }
-  const barG = new THREE.BoxGeometry(0.03, 0.78, 0.03); barG.translate(0, 0.62, 0);
-  const im = new THREE.InstancedMesh(barG, toon(0x3c434b, { breakMul: 0.2 }), bars.length);
-  bars.forEach((m, i) => im.setMatrixAt(i, m));
-  im.castShadow = im.receiveShadow = true;
-  addObj(im);
-  // gate: stone pillars, a dark beam with a warm light strip, a raised barrier arm
+  const barG = new THREE.BoxGeometry(0.035, 0.74, 0.045); barG.translate(0, 0.58, 0);
+  const im = new THREE.InstancedMesh(barG, toon(0x52635a, { breakMul: 0.2 }), bars.length);
+  bars.forEach((m, i) => im.setMatrixAt(i, m)); im.castShadow = im.receiveShadow = true; addObj(im);
+  // Hotel-style arrival: broad floating roof, stone portals and bronze name wall.
   const g = kit(HOME, 0, z1);
-  [-1, 1].forEach(s => g.box(0.55, 2.7, 0.55, 0xd9cdb8, s * (HOME_GATE + 0.28), 1.35, 0));
-  g.box(2 * HOME_GATE + 1.2, 0.24, 0.7, 0x3c434b, 0, 2.68, 0);
-  g.box(2 * HOME_GATE + 0.9, 0.05, 0.5, 0xffe2a6, 0, 2.54, 0, { shade: 0xf6d18e, breakMul: 0 });
-  const arm = new THREE.BoxGeometry(0.06, 1.7, 0.06); arm.translate(0, 0.85, 0); arm.rotateZ(0.25); arm.translate(HOME_GATE - 0.1, 0.75, 0.35);
-  g.add(arm, 0xe25a4a);
-  g.box(0.22, 0.75, 0.22, 0x3c434b, HOME_GATE - 0.1, 0.37, 0.35);
-  // guard booth outside the gate
-  const b = kit(HOME, HOME_BOOTH[0], HOME_BOOTH[1]);
-  b.box(1.0, 1.0, 0.85, 0xf3efe7, 0, 0.5, 0);
-  b.box(1.02, 0.42, 0.7, 0x86b0bf, 0, 0.62, 0, G_OPTS);
-  b.box(1.25, 0.08, 1.1, 0x3c434b, 0, 1.04, 0);
-  // fountain in the middle of the courtyard
-  const f = kit(HOME, FOUNTAIN[0], FOUNTAIN[1]), fs = 1.6;                           // a size up, for the bigger courtyard
-  f.cyl(1.2 * fs, 1.25 * fs, 0.34, 0xd8cfbe, 0, 0.1, 0, 48);
-  f.cyl(1.02 * fs, 1.02 * fs, 0.06, 0x7cc4c8, 0, 0.26, 0, 48, { kind: 'WATER', shade: 0x4e93a8, breakMul: 0.2, noiseScale: 3 });
-  f.cyl(0.16 * fs, 0.22 * fs, 0.6 * fs, 0xd8cfbe, 0, 0.5 * fs, 0, 12);
-  f.cyl(0.45 * fs, 0.2 * fs, 0.12 * fs, 0xd8cfbe, 0, 0.82 * fs, 0, 20);
-  f.cyl(0.03 * fs, 0.11 * fs, 0.55 * fs, 0xe8f6f7, 0, 1.15 * fs, 0, 10, { shade: 0xbfdde4, breakMul: 0 });
-  // the car, parked on its pad
+  [-1, 1].forEach(s => {
+    g.box(0.6, 2.85, 0.8, 0xe1d6c0, s * (HOME_GATE + 0.28), 1.4, 0);
+    g.box(0.055, 2.45, 0.04, 0x9c8257, s * (HOME_GATE + 0.28), 1.4, 0.42);
+  });
+  g.box(7.2, 0.22, 2.25, 0x344d4c, 0, 2.92, 0.12);
+  g.box(6.8, 0.07, 2.0, 0xe1d6c0, 0, 2.77, 0.12);
+  g.box(5.5, 0.03, 0.065, 0xffdf9b, 0, 2.72, 1.04, { shade: 0xe8ba70, breakMul: 0 });
+  g.box(4.0, 1.2, 0.35, 0xe1d6c0, 5.1, 0.6, 0);
+  g.place(signMesh('云 栖 府', 2.7, 0.58, '#e1d6c0', '#78603f', 500), 5.1, 0.76, 0.19);
+  g.place(signMesh('YUNQI RESIDENCES', 2.5, 0.18, '#e1d6c0', '#78603f', 500), 5.1, 0.3, 0.19);
+  const b = kit(HOME, ...HOME_BOOTH);
+  b.box(1.45, 1.65, 1.2, 0xe1d6c0, 0, 0.8, 0);
+  b.box(1.48, 0.92, 1.05, 0x668e91, 0, 0.98, 0, G_OPTS);
+  b.box(1.85, 0.12, 1.6, 0x344d4c, 0, 1.69, 0);
+  b.place(signMesh('礼宾', 0.7, 0.22, '#344d4c', '#f4e4bc'), 0, 1.45, 0.62);
+  // Reflecting pool, champagne-bronze ring sculpture and restrained concentric ripples.
+  const f = kit(HOME, ...FOUNTAIN);
+  f.cyl(2.05, 2.1, 0.2, 0x344d4c, 0, 0.07, 0, 64);
+  f.cyl(1.95, 1.95, 0.035, 0x93c3bd, 0, 0.18, 0, 64, { kind: 'WATER', shade: 0x527e82, breakMul: 0.1, noiseScale: 3 });
+  f.cyl(0.4, 0.48, 0.34, 0xe1d6c0, 0, 0.26, 0, 24);
+  const sculpture = new THREE.TorusGeometry(0.58, 0.065, 10, 48); sculpture.rotateY(-0.4); sculpture.translate(0, 1.0, 0); f.add(sculpture, 0xb49a64);
+  [0.85, 1.35, 1.76].forEach(r => { const ring = new THREE.TorusGeometry(r, 0.012, 4, 48); ring.rotateX(Math.PI / 2); ring.translate(0, 0.203, 0); f.add(ring, 0xc2dfd3, { shade: 0x93c3bd, breakMul: 0 }); });
+  // Curved paving in short pieces follows the sphere instead of hovering over it.
+  for (let i = 0; i < 32; i++) {
+    const a = i / 32 * Math.PI * 2;
+    kit(HOME, Math.sin(a) * 2.63, FOUNTAIN[1] + Math.cos(a) * 2.63, Math.sin(a), Math.cos(a)).box(0.06, 0.025, 0.95, 0xb5a482, 0, 0.035, 0);
+  }
+  // Open reading and tea pavilions, each with a timber bench and slatted roof.
+  HOME_PAVILIONS.forEach(([x, z], i) => {
+    const p = kit(HOME, x, z);
+    [-2.4, 2.4].forEach(px => [-1.4, 1.4].forEach(pz => p.box(0.16, 2.15, 0.16, 0x9c8257, px, 1.05, pz)));
+    p.box(5.5, 0.16, 3.5, 0x344d4c, 0, 2.17, 0);
+    for (let j = -6; j <= 6; j++) p.box(0.1, 0.08, 3.3, 0xb39b73, j * 0.4, 2.3, 0);
+    p.box(3.4, 0.11, 0.55, 0xb39b73, 0, 0.4, -1.22);
+    p.box(3.4, 0.37, 0.09, 0xb39b73, 0, 0.65, -1.48);
+    [-1.4, 1.4].forEach(px => p.box(0.1, 0.4, 0.5, 0x344d4c, px, 0.2, -1.22));
+    p.place(signMesh(i ? '听风茶亭' : '林下书廊', 1.25, 0.24, '#344d4c', '#f4e4bc'), 0, 1.91, 1.76);
+    if (i) {
+      p.cyl(0.58, 0.58, 0.08, 0xe1d6c0, 0, 0.58, -0.1, 32);
+      p.cyl(0.08, 0.18, 0.55, 0x9c8257, 0, 0.28, -0.1, 12);
+      [-0.22, 0.22].forEach(px => p.cyl(0.07, 0.055, 0.09, 0xf5efdf, px, 0.67, -0.1, 12));
+    }
+  });
+  HOME_BENCHES.forEach(([x, z]) => {
+    const k = kit(HOME, x, z);
+    k.box(2.1, 0.1, 0.55, 0xb39b73, 0, 0.4, 0);
+    k.box(2.1, 0.35, 0.07, 0xb39b73, 0, 0.65, -0.25);
+    [-0.85, 0.85].forEach(px => k.box(0.1, 0.4, 0.5, 0x344d4c, px, 0.2, 0));
+  });
+  HOME_PLANTERS.forEach(([x, z], i) => {
+    const p = kit(HOME, x, z);
+    p.box(4, 0.35, 1.6, 0xdcd3c0, 0, 0.14, 0);
+    p.box(3.8, 0.22, 1.4, 0x66835b, 0, 0.4, 0);
+    for (let j = 0; j < 12; j++) {
+      const px = (j % 6 - 2.5) * 0.57, pz = (j < 6 ? -1 : 1) * 0.38;
+      p.ball(0.13, i % 2 ? 0xe8d8b3 : 0xd8bddb, px, 0.58, pz);
+    }
+  });
+  // Human-scale bollards, not dozens of real-time point lights.
+  [-28, -20, -9, 9, 20, 28].forEach(x => {
+    const k = kit(HOME, x, -4.7);
+    k.box(0.12, 0.68, 0.12, 0x344d4c, 0, 0.34, 0);
+    k.box(0.15, 0.09, 0.15, 0xffdf9b, 0, 0.61, 0, { shade: 0xe8ba70, breakMul: 0 });
+  });
   const car = new THREE.Group(), body = buildCar(); body.rotation.y = -Math.PI / 2; car.add(body);
-  placeFrame(car, L(HOME, CAR[0], CAR[1]), LT(HOME, -0.12, 1));
-  addObj(car);
-  // trees: a row inside the front railing (clear of the gate and the drive), a ring round the fountain (clear
-  // of its paths), groves in the corners and between the towers
-  const { x0, x1, z0 } = HOME_FENCE, T = [];
-  for (let x = 6; x <= 36; x += 6) T.push([-x, z1 - 2.2], [x, z1 - 2.2]);
-  for (let a = 0; a < 8; a++) { const t = (a + 0.5) / 8 * Math.PI * 2; T.push([FOUNTAIN[0] + Math.cos(t) * (FOUNTAIN_R + 2.0), FOUNTAIN[1] + Math.sin(t) * (FOUNTAIN_R + 2.0)]); }
-  [[x0 + 3.5, -6], [x0 + 3.2, -12.5], [x0 + 4.0, -19.5], [x0 + 9.5, z0 + 2.6], [-14, z0 + 2.4], [-10.5, -11], [-15, -6.5],
-   [x1 - 3.5, -6], [x1 - 3.2, -12.5], [x1 - 4.0, -19.5], [x1 - 9.5, z0 + 2.6], [14, z0 + 2.4], [10.5, -11], [20, -6.5], [-31, -9], [31, -9],
-   [-12, -15.5], [12, -15.5], [-18, -20.5], [18, -20.5], [-33, -16.5], [33, -16.5], [-7, -19.5], [7, -19.5], [-30, -3], [30, -3], [-21, -8], [24.5, -8]]
-    .forEach(p => T.push(p));
-  const clear = ([x, z]) => Math.hypot(x - CAR[0], z - CAR[1]) > 3.2 && HOME_PATHS.every(pts => polyD({ x, z }, pts) > 2.0) && TOWERS.every(([tx, tz]) => Math.abs(x - tx) > TOWER.w / 2 + 2.2 || Math.abs(z - tz) > TOWER.d / 2 + 2.6);
-  T.filter(clear).forEach(([x, z]) => heroTrees.push([HOME, x, z]));
+  placeFrame(car, L(HOME, ...CAR), LT(HOME, -0.12, 1)); addObj(car);
+  const trees = [];
+  for (let x = 9; x <= 36; x += 5.5) trees.push([-x, z1 - 1.7], [x, z1 - 1.7]);
+  for (const side of [-1, 1]) for (const [x, z] of [[36, -6], [36, -12], [36, -20], [30, -20], [20, -20], [8, -20], [6.5, -13.6], [19, -13.5], [8.5, -7.3], [26, -6], [31, -12]]) trees.push([side * x, z]);
+  const clear = ([x, z]) => Math.hypot(x - CAR[0], z - CAR[1]) > 3.2 && Math.hypot(x, z - FOUNTAIN[1]) > 4.3
+    && HOME_PATHS.every(pts => polyD({ x, z }, pts) > 1.6)
+    && TOWERS.every(([tx, tz]) => Math.abs(x - tx) > TOWER.w / 2 + 1.4 || Math.abs(z - tz) > TOWER.d / 2 + 1.8)
+    && HOME_PAVILIONS.every(([px, pz]) => Math.abs(x - px) > 3.6 || Math.abs(z - pz) > 2.5)
+    && !walk.inFootprint(L(HOME, x, z), 0.7);
+  trees.filter(clear).forEach(([x, z]) => heroTrees.push([HOME, x, z]));
 }
 
 // ---------- 天街: a mall of the user's own design, on the road opposite ----------
@@ -3153,7 +3243,11 @@ await slice();
   addObj(flowers);
 }
 
-W.update = t => { updateBoats(t); updateFountain(t); };
+const residents = createResidents({ planet, site: HOME, ground: L, tangent: LT, makeAvatar, poseAvatar, radius: R, surfaceHeight: d => walk.surfaceH(d),
+  playerDirection: () => new THREE.Vector3(0, 1, 0).applyQuaternion(planet.quaternion.clone().invert()) });
+W.update = t => { updateBoats(t); updateFountain(t); residents.update(t); };
+W.placeHomeTags = () => residents.placeTags(camera, insetTop);
+W.dispose = () => residents.dispose();
 W.lines = LINES;
 // 西湖's overview: from anywhere round the lake, up and out over the water toward its middle
 W.overview = { s: LAKE, near: d => nearLake(d), centre: mp(1000, 760), label: '俯瞰西湖', zoom: 10, pitch: 1.22, ahead: 42 };
@@ -3899,6 +3993,7 @@ function aimSun(ahead = -5) {
 }
 function disposeWorld() {
   if (!W) return;
+  if (W.dispose) W.dispose();
   scene.remove(planet);
   planet.traverse(o => { if (o.geometry) o.geometry.dispose(); if (o.material && o.material.map) o.material.map.dispose(); });
   W.extras.forEach(o => { scene.remove(o); if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
@@ -4694,6 +4789,7 @@ function frame() {
   }
 
   company.placeTags();
+  if (W.placeHomeTags) W.placeHomeTags();
 
   // fps + adaptive resolution (drops pixel ratio on slow GPUs, never below 1)
   frames++; fpsT += dt;
