@@ -1,0 +1,40 @@
+[data-portrait-edit][hidden], .portrait-editor[hidden], .portrait-drop[hidden] { display: none !important; }
+.pd-grid > li { position: relative; }
+.portrait-entry { border: 1px solid var(--border-strong); color: var(--ink); background: var(--paper); padding: 6px 10px; font: inherit; font-size: 11px; cursor: pointer; }
+.pd-grid .portrait-entry { position: absolute; right: 10px; bottom: 9px; z-index: 1; }
+.pd-grid > li:has(.portrait-entry:not([hidden])) .pd-card { padding-bottom: 44px; }
+.portrait-entry:hover, .portrait-entry:focus-visible { color: var(--accent); border-color: var(--accent); }
+.portrait-person-photo { display: grid; place-items: center; flex: none; width: 76px; height: 76px; overflow: hidden; background: var(--paper-dark); border: 1px solid var(--border); font-size: 30px; color: var(--muted); }
+.portrait-person-photo img { width: 100%; height: 100%; object-fit: cover; }
+.lg-who { flex: 1; }
+.portrait-detail-action { margin: -3px 0 18px; }
+.portrait-detail-action:not(:has([data-portrait-edit]:not([hidden]))) { display: none; }
+.portrait-dialog { width: min(560px, calc(100vw - 28px)); max-height: calc(100dvh - 32px); margin: auto; padding: 0; border: 1px solid var(--border-strong); background: var(--paper, #faf8f3); color: var(--ink, #1a1714); box-shadow: 0 20px 80px #0003; }
+.portrait-dialog::backdrop { background: #18161288; backdrop-filter: blur(3px); }
+.portrait-form { padding: 24px; }
+.portrait-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.portrait-eyebrow { margin: 0 0 5px; color: var(--accent); font-size: 11px; letter-spacing: .16em; }
+.portrait-heading h2 { margin: 0; font-size: 24px; font-weight: 800; }
+.portrait-close { display: grid; place-items: center; width: 40px; height: 40px; border: 1px solid var(--border); background: transparent; font-size: 28px; line-height: 1; cursor: pointer; }
+.portrait-intro { margin: 14px 0 18px; font-size: 13px; color: var(--muted); line-height: 1.8; }
+.portrait-drop { width: 100%; min-height: 220px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; border: 1px dashed var(--border-strong); background: var(--paper-warm); cursor: pointer; padding: 18px; color: var(--ink); }
+.portrait-drop.is-dragging { border-color: var(--accent); background: var(--accent-muted); }
+.portrait-plus { font-size: 38px; color: var(--accent); font-weight: 300; }
+.portrait-drop strong { font-size: 15px; }
+.portrait-drop > span:last-child { font-size: 11px; color: var(--muted); }
+.portrait-previews { display: flex; gap: 22px; align-items: flex-end; }
+[data-portrait-canvas] { width: min(64%, 300px); height: auto; aspect-ratio: 1; background: #e5e1d9; }
+.portrait-small { display: grid; gap: 8px; text-align: center; font-size: 11px; color: var(--muted); }
+[data-portrait-thumb] { width: 64px; height: 64px; border-radius: 50%; }
+.portrait-controls { display: grid; gap: 10px; margin: 20px 0 12px; }
+.portrait-controls label { display: flex; align-items: center; gap: 15px; font-size: 12px; }
+.portrait-controls input { flex: 1; accent-color: var(--accent); }
+.portrait-link { border: 0; padding: 4px 0; color: var(--accent); background: transparent; text-decoration: underline; font-size: 12px; cursor: pointer; }
+.portrait-message { min-height: 22px; margin: 16px 0; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.portrait-message[data-error="true"] { color: #b33128; }
+.portrait-actions { display: flex; justify-content: flex-end; gap: 10px; border-top: 1px solid var(--border); padding-top: 16px; }
+.portrait-actions button { font: inherit; font-size: 13px; padding: 10px 20px; cursor: pointer; }
+.portrait-cancel { background: transparent; color: var(--ink); border: 1px solid var(--border-strong); }
+.portrait-save { background: var(--ink); color: var(--paper); border: 1px solid var(--ink); }
+.portrait-actions button:disabled, .portrait-close:disabled { opacity: .45; cursor: default; }
+@media (max-width: 640px) { .portrait-form { padding: 20px; } .portrait-person-photo { width: 60px; height: 60px; } }

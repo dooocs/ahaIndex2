@@ -1,0 +1,35 @@
+---
+import '../../styles/people-photo.css';
+---
+<dialog class="portrait-dialog" data-portrait-dialog aria-labelledby="portrait-title">
+  <form class="portrait-form" data-portrait-form>
+    <header class="portrait-heading">
+      <div><p class="portrait-eyebrow">人物照片</p><h2 id="portrait-title" data-portrait-title>添加照片</h2></div>
+      <button type="button" class="portrait-close" data-portrait-close aria-label="关闭照片编辑">×</button>
+    </header>
+    <p class="portrait-intro">复制一张照片，在这里粘贴。也可以拖入图片或从设备选择。</p>
+    <button type="button" class="portrait-drop" data-portrait-drop>
+      <span class="portrait-plus" aria-hidden="true">＋</span>
+      <strong>粘贴、拖拽或选择照片</strong>
+      <span>⌘V / Ctrl+V · JPG、PNG、WebP · 最大 10 MB</span>
+    </button>
+    <input type="file" accept="image/jpeg,image/png,image/webp" data-portrait-file hidden />
+    <div class="portrait-editor" data-portrait-editor hidden>
+      <div class="portrait-previews">
+        <canvas width="640" height="640" data-portrait-canvas aria-label="照片裁剪预览"></canvas>
+        <div class="portrait-small"><canvas width="96" height="96" data-portrait-thumb aria-label="头像预览"></canvas><span>头像效果</span></div>
+      </div>
+      <div class="portrait-controls">
+        <label>放大<input type="range" min="1" max="3" step="0.01" value="1" data-portrait-zoom /></label>
+        <label>左右<input type="range" min="0" max="100" value="50" data-portrait-x /></label>
+        <label>上下<input type="range" min="0" max="100" value="50" data-portrait-y /></label>
+      </div>
+      <button type="button" class="portrait-link" data-portrait-reselect>重新选择照片</button>
+    </div>
+    <p class="portrait-message" data-portrait-message role="status" aria-live="polite"></p>
+    <footer class="portrait-actions"><button type="button" class="portrait-cancel" data-portrait-close>取消</button><button type="submit" class="portrait-save" data-portrait-save disabled>保存照片</button></footer>
+  </form>
+</dialog>
+<script>
+  import '../../scripts/people-photo';
+</script>

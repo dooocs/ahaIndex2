@@ -17,6 +17,7 @@ import { VALENCES, dotDate } from '../../lib/life-grid';
 import { SITE_URL, siteTitle } from '../../lib/site';
 import '../../styles/people.css';
 import '../../styles/life-grid.css';
+import PhotoManager from './PhotoManager.astro';
 
 interface Props { slug: string }
 
@@ -44,6 +45,7 @@ const canonical = `${SITE_URL}${PEOPLE_PATH}/${g.slug}`;
   <a class="person-back" href={PEOPLE_PATH}>← 人物 / People</a>
 
   <header class="lg-head">
+    <div class="portrait-person-photo" data-person-photo={g.slug} aria-hidden="true">{g.avatarUrl ? <img src={g.avatarUrl} alt="" width="76" height="76" decoding="async" /> : [...display][0]}</div>
     <div class="lg-who">
       <div class="lg-name">
         <h1>{display}</h1>
@@ -58,6 +60,7 @@ const canonical = `${SITE_URL}${PEOPLE_PATH}/${g.slug}`;
       {g.facts.map((f) => <div><dd>{f.value}</dd><dt>{f.label}</dt></div>)}
     </dl>
   </header>
+  <div class="portrait-detail-action"><button type="button" class="portrait-entry" data-portrait-edit data-slug={g.slug} data-name={display} data-avatar={g.avatarUrl || ''} hidden>{g.avatarUrl ? '更换照片' : '添加照片'}</button></div>
 
   {g.labels.length > 0 && (
     <div class="lg-about">
@@ -222,6 +225,7 @@ const canonical = `${SITE_URL}${PEOPLE_PATH}/${g.slug}`;
       )))}
     </div>
   </section>
+  <PhotoManager />
 </TabLayout>
 
 <script>
