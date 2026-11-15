@@ -300,7 +300,7 @@ function updateHud() {
   const rk = ranking(), pos = rk.indexOf(player) + 1;
   $('pos').innerHTML = `${pos}<small>/${cars.length}</small>`;
   $('lap').textContent = `${lapOf(player)}/${LAPS}`;
-  $('time').textContent = fmt(raceT);
+  $('time').textContent = fmt(player.finished ? player.time : raceT);
   $('best').textContent = fmt(bestLap);
   // 氮气瓶：前 nitroN 瓶满，下一瓶按集气进度从下往上灌
   const n = player.nitroN;
