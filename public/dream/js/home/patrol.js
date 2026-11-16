@@ -1,13 +1,4 @@
 // Deterministic local residents. No presence transport or online-user accounting.
-// The same paths are painted on the ground and used for their walks.
-export const HOME_LOOP = [
-  [-31, -5], [-28, -9], [-8, -11], [8, -11], [28, -9], [31, -5],
-  [23, -3.3], [8, -3.3], [3.5, -2.4], [-3.5, -2.4], [-8, -3.3], [-23, -3.3], [-31, -5],
-];
-export const POOL_WALK = Array.from({ length: 33 }, (_, i) => {
-  const a = i / 32 * Math.PI * 2;
-  return [Math.sin(a) * 3.05, -5.5 + Math.cos(a) * 3.05];
-});
 
 /** A closed path sampled by distance, with optional time to rest at its start.
  * The position depends on time alone: pausing a tab never accumulates drift.

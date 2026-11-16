@@ -27,24 +27,27 @@ planet, a new way to move or a new render effect is a change in one module, not 
 
 ## 云栖府 residential garden
 
-The home district keeps its original site, perimeter, car and bus connection. Its three towers now
-have 10 / 13 / 11 residential floors above taller glazed lobbies, warm stone piers, bronze reveals,
-planted balconies and roof gardens. A wider entrance canopy opens onto a reflecting pool with a ring
-sculpture; the garden includes a reading pavilion, tea pavilion, benches, flower beds and a walking loop.
-Furniture footprints match the geometry; pavilions remain open to walk into. Courtyard paths avoid
-the pool and connect to each tower instead of radiating through the water.
+The home park expands from 80 × 25 to 110 × 54.5 plan units (~3× the footprint) while keeping
+the original gate, driveway, car and 1314 stop. Three staggered warm-stone towers sit to the
+sides of a central open lawn; the reflecting court, reading pavilion, and tea pavilion mark
+different points along the garden walk. Planted groves, shrubs and flowerbeds are separate layers
+so there are open sightlines as well as sheltered garden rooms.
 
-`public/dream/js/home/patrol.js` owns the shared garden loops and deterministic distance-based patrols.
-`residents.js` creates six local NPCs (concierge, neighbours, runner, gardener and reader) from the shared
-avatar cache. Near their characters, click a label explicitly marked `NPC` to greet them. They pause
-for a conversation or let a nearby visitor pass, then resume; close the note or press Escape to dismiss.
-Labels disappear beyond nine units, avatars cull beyond 34 units, and the district releases its DOM and
-groups when switching planets. NPCs never join presence, affect online counts or send network messages.
+`public/dream/js/home/park.js` declares the shared layout: a dedicated terracotta running loop
+around the garden, and stone walking shortcuts through it. The running loop is ~310 in-world
+metres, with a start/finish, 75 m distance signs and low warm bollards. Distances account for the
+sphere projection (one unit is approximately 1.5 m). The surface and pale edge inlays are projected
+onto the terrain in ribbons so the track does not depend on ground-paint tessellation. Bollards use
+the existing baked/shaded materials, not a point light per fixture.
 
-`tests/dream-home.test.mjs` samples every patrol against the actual home collision declarations, checks
-the entrance and open pavilions, builds the actual home geometry without a WebGL renderer, bounds its
-triangle count, and exercises greeting / resume / cleanup. Final rendered appearance still needs a
-WebGL-capable browser.
+`patrol.js` samples closed paths by distance. `residents.js` keeps six local NPCs separate from
+real online visitors: the jogger now runs the dedicated loop, while a neighbour walks a small dog
+through the garden. Nearby NPC labels offer a greeting, then hide at a distance; they and their
+local props are removed when switching planets. NPCs never affect online counts or send messages.
+
+`tests/dream-home.test.mjs` checks the full-width loop and shortcuts against the shipped collision
+declarations, drives the walking controller from the gate around a full lap and back, samples NPC
+patrols, and checks geometry, outward-facing track winding, triangle budget, and greeting cleanup.
 
 ## Done: walking (`public/dream/js/walk/`)
 

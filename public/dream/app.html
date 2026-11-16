@@ -319,7 +319,10 @@ import { lookupProvince } from './js/net/province.js';
 import { makeTimetable } from './js/bus/timetable.js';
 import { syncClock } from './js/bus/clock.js';
 import { ridersOn, hasRoom, isBumped } from './js/bus/riders.js';
-import { HOME_LOOP, POOL_WALK } from './js/home/patrol.js';
+import {
+  HOME_FENCE, HOME_PAVILIONS, CENTRAL_LAWN, HOME_LOOP, POOL_WALK, PARK_SHORTCUTS,
+  RUN_LOOP, RUN_METRES, TRACK_HALF_WIDTH, TRACK_MARKS, TRACK_LIGHTS, GROVES, FLOWER_BEDS, trackAt,
+} from './js/home/park.js';
 import { createResidents } from './js/home/residents.js';
 
 // Authored hex colours are used as-is in every shader (no sRGB conversion), so the
@@ -1852,17 +1855,15 @@ async function buildHangzhou() {
   const share = f => { const n = 6000, v = new THREE.Vector3(); let m = 0; for (let i = 0; i < n; i++) { const y = 1 - 2 * (i + 0.5) / n, r = Math.sqrt(1 - y * y), a = i * 2.399963; m += f(v.set(r * Math.cos(a), y, r * Math.sin(a))); } return m / n; };
   const TREE_SHARE = share(treeFill), GRASS_SHARE = share(grassFill);
 
-// 云栖府: three staggered residential towers round a landscaped courtyard. The courtyard
-// is 80 × 25 (eight times its first area, 19 × 13), wide along the road rather than deep, so it stays where the
-// ground is fine (within ~30 units of the ring); its front leaves room for the 1314's 家 stop by the gate.
-const HOME_FENCE = { x0: -40, x1: 40, z0: -23.5, z1: 1.5 }, HOME_GATE = 2.1;
+// 云栖府: a residential park (110 × 54.5 in the home plan, about three times the
+// former 80 × 25 lot). The original arrival edge leaves the 1314's 家 stop unchanged.
+const HOME_GATE = 2.1;
 // the railing all round the courtyard except the gate: drawn by buildHome, walked against via walk.barrier
 const HOME_RAIL = (({ x0, x1, z0, z1 }, gw) => [[-gw, z1], [x0, z1], [x0, z0], [x1, z0], [x1, z1], [gw, z1]])(HOME_FENCE, HOME_GATE + 0.55);
-const TOWERS = [[-24.4, -14.0], [0, -18.0], [24.4, -14.0]], TOWER = { w: 5.8, d: 4.2, fh: 0.72, lobby: 1.25 };
+const TOWERS = [[-46, -25], [44, -34], [47, -16.5]], TOWER = { w: 5.8, d: 4.2, fh: 0.72, lobby: 1.25 };
 const HOME_FLOORS = [10, 13, 11];
-const HOME_PAVILIONS = [[-13.5, -15], [13.5, -15]];
-const HOME_BENCHES = [[-6.5, -6], [6.5, -6], [-23, -6.3], [23, -6.3]];
-const HOME_PLANTERS = [[-17, -6.8], [17, -6.8], [-32, -16], [32, -16]];
+const HOME_BENCHES = [[-6.5, -4.7], [6.5, -4.7], [-13, -25], [13.5, -22], [-17, -39.1], [17.8, -28.5], [5.5, -35.6]];
+const HOME_PLANTERS = [[-12, -5.2], [12, -5.2], [-26, -23], [27.5, -22.3]];
 const CAR = [12, -1.4], FOUNTAIN = [0, -5.5], FOUNTAIN_R = 3.7, HOME_BOOTH = [-4.3, HOME_FENCE.z1 + 0.8];
 // 天街
 const MALL_BOX = { x0: -6.0, x1: 6.0, z0: -4.6, z1: -0.4 };
@@ -1961,18 +1962,11 @@ sites.forEach((s, i) => {
   for (let k = 0; k < n; k++) (ringKind[i] === 'road' ? ROADS : STONES).push([sph(0, s.lon + gap * k / n), sph(0, s.lon + gap * (k + 1) / n), ringKind[i] === 'road' ? 0.05 : 0.03]);
 });
 arcsIn(HOME, [[0, HOME.roadZ], [0, HOME_FENCE.z1 + 0.2]], 0.03, ROADS);
-// Arrival axis, two garden loops and separate approaches to the three lobbies.
-const HOME_PATHS = [
-  [[0.9, HOME_FENCE.z1 - 0.2], [CAR[0] - 1.5, CAR[1] + 0.4]],
-  [[0, HOME_FENCE.z1], [0, -2.45]],
-  [[0, -8.55], [0, TOWERS[1][1] + TOWER.d / 2 + 1.3]],
-  [[-3.05, -5.5], [-12, -10.3], [-24.4, -10.3]],
-  [[3.05, -5.5], [12, -10.3], [24.4, -10.3]],
-  HOME_LOOP, POOL_WALK,
-  ...HOME_PAVILIONS.map(([x, z]) => [[x, -11], [x, z + 1.5]]),
-];
-arcsIn(HOME, HOME_PATHS[0], 0.022, ROADS);
-HOME_PATHS.slice(1).forEach(pts => arcsIn(HOME, pts, 0.021, STONES));
+// Keep the driveway on the road shader. Walkways use exact-width surfaces;
+// narrow paths deeper in the park no longer depend on the ground tessellation.
+const HOME_DRIVE = [[0.9, HOME_FENCE.z1 - 0.2], [CAR[0] - 1.5, CAR[1] + 0.4]];
+const HOME_PATHS = [[[0, HOME_FENCE.z1], [0, -2.45]], POOL_WALK, HOME_LOOP, ...PARK_SHORTCUTS];
+arcsIn(HOME, HOME_DRIVE, 0.022, ROADS);
 STONE_RECTS.push([HOME, -3, 3, HOME_FENCE.z1, HOME.roadZ - 0.7]);
 STONE_CIRCS.push([HOME, FOUNTAIN[0], FOUNTAIN[1], FOUNTAIN_R], [HOME, CAR[0], CAR[1], 1.7]);
 HOME_PAVILIONS.forEach(([x, z]) => STONE_RECTS.push([HOME, x - 3, x + 3, z - 2, z + 2]));
@@ -2116,6 +2110,9 @@ await slice();
   disc(HOME, FOUNTAIN[0], FOUNTAIN[1], 2.05);
   box(HOME, HOME_BOOTH[0] - 0.8, HOME_BOOTH[0] + 0.8, HOME_BOOTH[1] - 0.7, HOME_BOOTH[1] + 0.7);
   box(HOME, CAR[0] - 0.75, CAR[0] + 0.75, CAR[1] - 1.25, CAR[1] + 1.25, 1.5);
+  TRACK_LIGHTS.forEach(([x, z]) => disc(HOME, x, z, 0.11, 0.65));
+  TRACK_MARKS.forEach(({ x, z }) => disc(HOME, x, z, 0.29, 1.15));
+  box(HOME, 3.1, 7.1, HOME_FENCE.z1 - 0.18, HOME_FENCE.z1 + 0.18, 1.2);
   box(MALL, MALL_BOX.x0 - 0.1, MALL_BOX.x1 + 0.1, MALL_BOX.z0 - 0.1, MALL_BOX.z1 + 0.15, 3.6);
   disc(MALL, 0, -0.6, 2.1, 4.5);
   disc(SPORTS, DRUM.cx, DRUM.cz, DRUM.r + 0.12, 3.2);
@@ -2129,7 +2126,7 @@ await slice();
 // ---------- stops shown in the HUD, and smaller landmark tags ----------
 // via: points walked through after leaving the ring road; stand/look: where to stop and what to face
 zones = [
-  { name: '家', s: HOME, via: [[0, HOME_FENCE.z1 + 1.8], [0, HOME_FENCE.z1 - 0.8]], stand: [0, HOME_FENCE.z1 - 1.4], look: TOWERS[1], zoom: 2.9, label: TOWERS[1], h: HOME_FLOORS[1] * TOWER.fh + TOWER.lobby + 1.3 },
+  { name: '家', s: HOME, via: [[0, HOME_FENCE.z1 + 1.8], [0, HOME_FENCE.z1 - 0.8]], stand: [0, HOME_FENCE.z1 - 1.4], look: [0, -15.5], zoom: 2.9, label: [0, -1.5], h: 3.8 },
   { name: '车子', noTag: true, s: HOME, via: [[0, HOME_FENCE.z1 + 1.8], [0, HOME_FENCE.z1 - 0.8], [CAR[0] - 3.2, CAR[1] + 1.4]], stand: [CAR[0] + 2.8, CAR[1] + 0.8], look: CAR, zoom: 1.0, label: CAR, h: 1.9 },
   { name: '天街', s: MALL, via: [], stand: [0.9, 3.0], look: [0, -1.8], zoom: 1.75, label: [0, -0.6], h: 5.9 },
   { name: '文体中心', s: SPORTS, via: [], stand: [0.9, 4.4], look: [0, -1], zoom: 1.85, label: [0, -1], h: 5.9 },
@@ -2331,9 +2328,108 @@ function buildTower(x, z, index) {
   });
   for (let i = -2; i <= 2; i++) k.box(0.055, 0.06, d - 0.5, BRONZE, i * 0.85, H + 0.86, 0);
 }
+function buildGardenSurfaces() {
+  // These narrow surfaces are projected to the analytic ground. Unlike a
+  // broad shader-painted road, their edges stay crisp beyond the equator.
+  const ground = (x, z, lift) => {
+    const d = L(HOME, x, z);
+    return d.multiplyScalar(R + terrainH(d) + lift);
+  };
+  const meshOnGround = (positions, indices, hex, opts) => {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+    pushGeo(prep(geo), hex, opts);
+  };
+  const ribbon = (path, half, offset, lift, hex, opts) => {
+    const points = [path[0]];
+    for (let i = 1; i < path.length; i++) {
+      const a = path[i - 1], b = path[i], n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / 0.8));
+      for (let j = 1; j <= n; j++) points.push(j === n ? b : [a[0] + (b[0] - a[0]) * j / n, a[1] + (b[1] - a[1]) * j / n]);
+    }
+    const last = points.length - 1, closed = points[0][0] === points[last][0] && points[0][1] === points[last][1];
+    const pos = [], inds = [];
+    points.forEach(([x, z], i) => {
+      const prev = points[i - 1] || points[closed ? last - 1 : 0], next = points[i + 1] || points[closed ? 1 : last];
+      const dx = next[0] - prev[0], dz = next[1] - prev[1], inv = 1 / Math.hypot(dx, dz);
+      for (const off of [offset - half, offset + half]) {
+        ground(x - dz * inv * off, z + dx * inv * off, lift).toArray(pos, pos.length);
+      }
+      if (i) { const j = (i - 1) * 2; inds.push(j, j + 1, j + 2, j + 1, j + 3, j + 2); }
+    });
+    meshOnGround(pos, inds, hex, opts);
+  };
+  const oval = (x, z, rx, rz, lift, hex, shade) => {
+    const pos = [], inds = [], n = 30;
+    ground(x, z, lift).toArray(pos);
+    for (const radius of [0.45, 0.75, 1]) {
+      const base = pos.length / 3;
+      for (let i = 0; i < n; i++) {
+        const a = 2 * Math.PI * i / n;
+        ground(x + Math.cos(a) * rx * radius, z - Math.sin(a) * rz * radius, lift).toArray(pos, pos.length);
+      }
+      for (let i = 0; i < n; i++) {
+        const j = (i + 1) % n;
+        if (base === 1) inds.push(0, base + i, base + j);
+        else inds.push(base - n + i, base + i, base - n + j, base + i, base + j, base - n + j);
+      }
+    }
+    meshOnGround(pos, inds, hex, { shade, breakMul: 0.36, cast: false });
+  };
+  const { x, z, rx, rz } = CENTRAL_LAWN;
+  oval(x, z, rx, rz, 0.018, 0x94b66e, 0x5d8f5f);
+  HOME_PATHS.forEach((path, i) => ribbon(path, i < 2 ? 0.93 : 0.78, 0, 0.035, 0xdcd1b6, { shade: 0xaeac8c, breakMul: 0.22, cast: false }));
+
+  // Restrained terracotta, continuous pale edges, inlaid lane marks and a
+  // start/finish stripe. Paths reaching it are ordinary paving, not barriers.
+  ribbon(RUN_LOOP, TRACK_HALF_WIDTH, 0, 0.055, 0xad6857, { shade: 0x764c45, breakMul: 0.18, cast: false });
+  for (const sign of [-1, 1]) ribbon(RUN_LOOP, 0.026, sign * (TRACK_HALF_WIDTH - 0.075), 0.069, 0xe8d7b0, { shade: 0xc1aa94, breakMul: 0, cast: false });
+  const start = trackAt(0);
+  kit(HOME, start.x, start.z, start.dx, start.dz)
+    .box(2 * (TRACK_HALF_WIDTH - 0.07), 0.013, 0.16, 0xf4e4bc, 0, 0.079, 0, { shade: 0xd1bca4, breakMul: 0, cast: false });
+  TRACK_MARKS.forEach(({ distance, x, z, dx, dz }) => {
+    const k = kit(HOME, x, z, dz, -dx), first = distance === 0;
+    k.box(0.11, first ? 1.24 : 0.7, 0.11, 0x3c504a, 0, first ? 0.62 : 0.35, 0);
+    k.box(first ? 2.35 : 0.5, first ? 0.52 : 0.32, 0.07, 0x344d4c, 0, first ? 1.26 : 0.7, 0);
+    const face = signMesh(first ? `云栖跑道 · 约 ${RUN_METRES} 米` : `${distance} 米`, first ? 2.3 : 0.47, first ? 0.44 : 0.27, '#344d4c', '#f4e4bc');
+    if (first) k.place(face.clone(), 0, 1.26, -0.039, Math.PI); // readable approaching from the entrance
+    k.place(face, 0, first ? 1.26 : 0.7, 0.039);
+    if (first) k.place(signMesh('起点 / 终点', 0.9, 0.25, '#344d4c', '#f4e4bc'), 0, 0.87, 0.06);
+  });
+  TRACK_LIGHTS.forEach(([x, z]) => {
+    const k = kit(HOME, x, z);
+    // Warm markers read at dusk without allocating a real-time light per lamp.
+    k.box(0.13, 0.61, 0.13, 0x344d4c, 0, 0.305, 0);
+    k.box(0.18, 0.11, 0.18, 0xffdf9b, 0, 0.58, 0, { shade: 0xe8ba70, breakMul: 0 });
+  });
+
+  // Varied, low clusters give flowerbeds volume without walling off shortcuts.
+  const greens = [0x426e52, 0x638b58, 0x758e50, 0x537b62];
+  const blooms = [0xe2a8a5, 0xd2b6d8, 0xe5ce97, 0xd1d6ae];
+  const shrub = new THREE.IcosahedronGeometry(1, 1);
+  const petal = new THREE.IcosahedronGeometry(1, 0);
+  const clearPlanting = (x, z, radius) => polyD({ x, z }, RUN_LOOP) > TRACK_HALF_WIDTH + radius + 0.15
+    && [HOME_DRIVE, ...HOME_PATHS].every(path => polyD({ x, z }, path) > 1.05 + radius)
+    && !walk.inFootprint(L(HOME, x, z), radius + 0.12);
+  FLOWER_BEDS.filter(([x, z, rx, rz]) => clearPlanting(x, z, Math.max(rx, rz) * 0.75)).forEach(([x, z, rx, rz], i) => {
+    oval(x, z, rx, rz, 0.023, 0x716d50, 0x5e6148);
+    const k = kit(HOME, x, z), steps = Math.max(8, Math.round(rx * 6));
+    for (let j = 0; j < steps; j++) {
+      const a = j * 2.399963, r = Math.sqrt((j + 0.5) / steps) * 0.83;
+      const px = r * Math.cos(a) * rx, pz = r * Math.sin(a) * rz;
+      const h = 0.18 + (j % 4) * 0.052;
+      k.add(shrub.clone().scale(0.32, h, 0.24).translate(px, h * 0.75, pz), greens[(i + j) % greens.length], { breakMul: 0.32 });
+      if (j % 3 !== 1) for (const dx of [-0.09, 0.09]) {
+        k.add(petal.clone().scale(0.09, 0.065, 0.09).translate(px + dx, h * 1.65, pz + 0.035), blooms[i % blooms.length], { breakMul: 0.15 });
+      }
+    }
+  });
+}
 function buildHome() {
   TOWERS.forEach(([x, z], i) => buildTower(x, z, i));
-  // Keep the original continuous boundary and matching collision polyline.
+  buildGardenSurfaces();
+  // Use the same expanded boundary for the railing mesh and walking collision.
   const { z1 } = HOME_FENCE, run = HOME_RAIL;
   const bars = [], baseG = new THREE.BoxGeometry(0.22, 0.26, 1), railG = new THREE.BoxGeometry(0.055, 0.055, 1), postG = new THREE.BoxGeometry(0.18, 1.08, 0.18);
   for (let i = 0; i < run.length - 1; i++) {
@@ -2345,7 +2441,7 @@ function buildHome() {
       addAt(baseG.clone().translate(0, 0.08, 0), 0xdcd3c0, {}, m);
       addAt(railG.clone().translate(0, 0.95, 0), 0x9c8257, {}, m);
     }
-    for (let j = 0, n = Math.round(len / 2.8); j <= n; j++) {
+    for (let j = 0, n = Math.max(1, Math.round(len / 2.8)); j <= n; j++) {
       const t = j / n;
       addAt(postG.clone().translate(0, 0.46, 0), 0xdcd3c0, {}, frameMatrix(L(HOME, ax + (bx - ax) * t, az + (bz - az) * t), fwd));
     }
@@ -2413,23 +2509,17 @@ function buildHome() {
       p.ball(0.13, i % 2 ? 0xe8d8b3 : 0xd8bddb, px, 0.58, pz);
     }
   });
-  // Human-scale bollards, not dozens of real-time point lights.
-  [-28, -20, -9, 9, 20, 28].forEach(x => {
-    const k = kit(HOME, x, -4.7);
-    k.box(0.12, 0.68, 0.12, 0x344d4c, 0, 0.34, 0);
-    k.box(0.15, 0.09, 0.15, 0xffdf9b, 0, 0.61, 0, { shade: 0xe8ba70, breakMul: 0 });
-  });
   const car = new THREE.Group(), body = buildCar(); body.rotation.y = -Math.PI / 2; car.add(body);
   placeFrame(car, L(HOME, ...CAR), LT(HOME, -0.12, 1)); addObj(car);
-  const trees = [];
-  for (let x = 9; x <= 36; x += 5.5) trees.push([-x, z1 - 1.7], [x, z1 - 1.7]);
-  for (const side of [-1, 1]) for (const [x, z] of [[36, -6], [36, -12], [36, -20], [30, -20], [20, -20], [8, -20], [6.5, -13.6], [19, -13.5], [8.5, -7.3], [26, -6], [31, -12]]) trees.push([side * x, z]);
-  const clear = ([x, z]) => Math.hypot(x - CAR[0], z - CAR[1]) > 3.2 && Math.hypot(x, z - FOUNTAIN[1]) > 4.3
-    && HOME_PATHS.every(pts => polyD({ x, z }, pts) > 1.6)
+  // Hand-placed groves leave the lawn open and create changing views around
+  // the loop. All tree crowns continue to use the planet's instanced vegetation.
+  const clear = ([x, z]) => polyD({ x, z }, RUN_LOOP) > 2.75
+    && [HOME_DRIVE, ...HOME_PATHS].every(pts => polyD({ x, z }, pts) > 1.55)
+    && Math.hypot(x - CAR[0], z - CAR[1]) > 3.2 && Math.hypot(x, z - FOUNTAIN[1]) > 4.3
     && TOWERS.every(([tx, tz]) => Math.abs(x - tx) > TOWER.w / 2 + 1.4 || Math.abs(z - tz) > TOWER.d / 2 + 1.8)
     && HOME_PAVILIONS.every(([px, pz]) => Math.abs(x - px) > 3.6 || Math.abs(z - pz) > 2.5)
-    && !walk.inFootprint(L(HOME, x, z), 0.7);
-  trees.filter(clear).forEach(([x, z]) => heroTrees.push([HOME, x, z]));
+    && !walk.inFootprint(L(HOME, x, z), 0.85);
+  GROVES.forEach(grove => grove.filter(clear).forEach(([x, z], i) => heroTrees.push([HOME, x, z, i % 5 === 4 ? 'small' : undefined])));
 }
 
 // ---------- 天街: a mall of the user's own design, on the road opposite ----------
