@@ -19,7 +19,7 @@ export function siteTitle(page: string): string {
   return `${page} | ${SITE_NAME}`;
 }
 
-export type SectionId = 'daily' | 'feed' | 'people' | 'meet' | 'dream' | 'race' | 'dark-room';
+export type SectionId = 'daily' | 'guide' | 'feed' | 'people' | 'meet' | 'dream' | 'race' | 'dark-room';
 
 /**
  * One section of the site. The same list drives the tab bar (SiteNav) and the
@@ -50,6 +50,10 @@ export const SHELVES: Shelf[] = [
   {
     id: 'daily', href: '/daily', name: `${DAILY_NAME} 每日 AI 精选`, desc: '每天用算法从全网筛出最值得看的 AI 动态',
     tab: 'AI 日报', tabHref: '/', paths: ['/', '/daily', '/article', '/history', '/projects'],
+  },
+  {
+    id: 'guide', href: '/guide', name: '向上指南', desc: '关于成长、选择与行动的原创长文',
+    tab: '向上指南', tabHref: '/guide', paths: ['/guide'],
   },
   {
     id: 'feed', href: '/feed', name: '动态', desc: 'AI 圈博主最近 24 小时在 X 上说了什么，中文翻译、可看原文',

@@ -1,0 +1,37 @@
+---
+import TabLayout from '../../layouts/TabLayout.astro';
+import { getGuideArticles, estimateMinutes } from '../../guide/articles';
+import { SITE_URL, siteTitle } from '../../lib/site';
+import '../../styles/guide.css';
+
+export function getStaticPaths() {
+  const articles = getGuideArticles();
+  return articles.map((article, i) => ({
+    params: {slug: article.frontmatter.slug},
+    props: {article, next: articles[i + 1]?.frontmatter ?? null},
+  }));
+}
+const { article, next } = Astro.props;
+const { Content } = article;
+const { title, deck, topic, slug } = article.frontmatter;
+const headings = (await article.getHeadings()).filter(({depth}) => depth === 2);
+const canonicalUrl = SITE_URL + '/guide/' + slug + '/';
+---
+<TabLayout tab="guide" title={siteTitle(title)} description={deck} showScore={false} canonicalUrl={canonicalUrl} noindex>
+  <div class="guide guide-reading">
+    <article class="guide-article">
+      <a class="guide-back" href="/guide/">← 向上指南</a>
+      <header class="guide-article-header">
+        <p class="guide-meta">{topic} · {estimateMinutes(article.rawContent())} 分钟阅读 · 样稿</p>
+        <h1>{title}</h1>
+        <p class="guide-intro">{deck}</p>
+      </header>
+      {headings.length > 0 && <details class="guide-mobile-toc"><summary>本文目录</summary><nav aria-label="本文目录"><ol>{headings.map(h => <li><a href={'#' + h.slug}>{h.text}</a></li>)}</ol></nav></details>}
+      <div class="guide-prose"><Content /></div>
+      <footer class="guide-next">
+        {next ? <><p class="guide-kicker">系列下一篇</p><a href={'/guide/' + next.slug + '/'}>{next.title} →</a></> : <a href="/guide/">返回全部文章 →</a>}
+      </footer>
+    </article>
+    {headings.length > 0 && <aside class="guide-desktop-toc"><nav aria-label="本文目录"><p class="guide-kicker">本文目录</p><ol>{headings.map(h => <li><a href={'#' + h.slug}>{h.text}</a></li>)}</ol></nav></aside>}
+  </div>
+</TabLayout>
