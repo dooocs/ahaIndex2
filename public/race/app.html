@@ -54,10 +54,9 @@
   .btn { font: 700 18px/1 var(--body); letter-spacing: 0.12em; padding: 13px 26px; border: 2px solid var(--ink); border-radius: 10px; background: var(--accent); color: #fffaf2; cursor: pointer; box-shadow: 3px 3px 0 var(--ink); }
   .btn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
   .btn:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
-  .multiplayer-entry { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; min-height: 44px; max-width: 100%; margin-top: 12px; padding: 8px 12px; border: 1.5px solid var(--ink); border-radius: 9px; background: var(--paper); color: var(--ink); text-decoration: none; }
-  .multiplayer-entry:hover { background: #e5f3ed; }
-  .multiplayer-entry:focus-visible { outline: 3px solid var(--sun); outline-offset: 2px; }
-  .multiplayer-entry span { color: #4f5b61; font-size: 13px; }
+  .race-entry-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .race-entry-row .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding-inline: 8px; text-decoration: none; white-space: nowrap; }
+  @media (max-width: 440px) { .race-entry-row .btn { padding-inline: 5px; font-size: 14px; letter-spacing: 0.04em; } }
   .touch .keys { display: none; }
   .touchhint { display: none; margin: 0 0 16px; font-size: 13px; color: #3f4a50; }
   .touch .touchhint { display: block; }
@@ -231,8 +230,11 @@
   </dl>
   <p class="touchhint">自动油门。左边两个键转向；右边按住“漂移”配合方向漂移（会掉速、但能集氮气），松开自动小喷；车头对准了按“氮气”直接冲出去。</p>
   </details>
-  <div class="row2"><button class="btn" id="start">开始比赛</button><button class="btn ghost" id="lb-open">排行榜</button></div>
-  <a class="multiplayer-entry" href="https://game.amazingindex.com/race/multiplayer/" target="_top"><strong>多人联机</strong><span>2–4 人 · 游客可玩</span></a>
+  <div class="race-entry-row">
+    <button class="btn" id="start">单人比赛</button>
+    <a class="btn" href="https://game.amazingindex.com/race/multiplayer/" target="_top">多人联机</a>
+    <button class="btn ghost" id="lb-open">排行榜</button>
+  </div>
   <p class="pb" id="pb">个人最佳：还没有成绩</p>
 </div></div>
 
