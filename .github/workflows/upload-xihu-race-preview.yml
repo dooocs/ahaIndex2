@@ -1,0 +1,40 @@
+name: Upload Xihu race preview to OSS
+
+on:
+  push:
+    branches:
+      - codex/oss-xihu-preview-a0960f84c80a
+    paths:
+      - oss-upload/xihu-race-ecs-preview.tar.gz
+      - .github/workflows/upload-xihu-race-preview.yml
+
+permissions:
+  contents: read
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify the original preview archive
+        run: |
+          printf '%s  %s\n' a0960f84c80a83e778916b3c1002227d0167c811115666548bc5321c09393676 oss-upload/xihu-race-ecs-preview.tar.gz | sha256sum -c -
+      - name: Install the OSS CLI
+        run: |
+          curl -fsSL --retry 2 -o ossutil.zip https://gosspublic.alicdn.com/ossutil/v2/2.2.1/ossutil-2.2.1-linux-amd64.zip
+          unzip -q ossutil.zip
+      - name: Upload one OSS object and verify its bytes
+        env:
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+        run: |
+          set -euo pipefail
+          test -n "$OSS_ACCESS_KEY_ID" && test -n "$OSS_ACCESS_KEY_SECRET"
+          ossutil=./ossutil-2.2.1-linux-amd64/ossutil
+          flags=(--endpoint https://oss-cn-hangzhou.aliyuncs.com --region cn-hangzhou --access-key-id "$OSS_ACCESS_KEY_ID" --access-key-secret "$OSS_ACCESS_KEY_SECRET")
+          "$ossutil" cp oss-upload/xihu-race-ecs-preview.tar.gz oss://amazingindex/downloads/xihu-race/a0960f84c80a/xihu-race-ecs-preview.tar.gz "${flags[@]}" --ignore-existing --content-type application/gzip
+          "$ossutil" cp oss://amazingindex/downloads/xihu-race/a0960f84c80a/xihu-race-ecs-preview.tar.gz verified-preview.tar.gz "${flags[@]}"
+          cmp oss-upload/xihu-race-ecs-preview.tar.gz verified-preview.tar.gz
