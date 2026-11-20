@@ -33,7 +33,23 @@ const fmt = t => { if (!isFinite(t)) return '--:--.--'; const m = Math.floor(t /
 const canvas = $('c');
 let renderer;
 try { renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' }); }
-catch (e) { $('loadmsg').textContent = '这台设备的浏览器没有开启 WebGL，无法运行西湖飞车。'; throw e; }
+catch (e) {
+  const loading = $('loading');
+  const help = $('webgl-help');
+  if (help) {
+    loading.classList.add('webgl-failed');
+    $('loadmsg').hidden = true;
+    loading.querySelector('.card > h2').hidden = true;
+    help.hidden = false;
+    $('webgl-title').focus({ preventScroll: true });
+    $('webgl-retry').addEventListener('click', () => location.reload());
+    void import('./webgl-help-1.js').then(({ wireWebGLHelp }) => wireWebGLHelp()).catch(() => {});
+  } else {
+    $('loadmsg').textContent = '浏览器暂时无法启动 WebGL 2。请更新浏览器后重试。';
+    loading.classList.add('webgl-failed');
+  }
+  throw e;
+}
 renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;

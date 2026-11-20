@@ -26,6 +26,16 @@
   #loadmsg { margin: 0 0 14px; color: #5a666c; font-size: 13px; }
   .bar { height: 10px; border: 2px solid var(--ink); border-radius: 6px; overflow: hidden; background: #fff; }
   #bar { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  #loading.webgl-failed { overflow: auto; padding: max(12px, env(safe-area-inset-top)) 12px 12px; }
+  #loading.webgl-failed .card { width: min(420px, 100%); text-align: left; }
+  #loading.webgl-failed .bar { display: none; }
+  #webgl-help .recovery-steps { margin: 10px 0; padding-inline-start: 22px; }
+  #webgl-help .recovery-steps li + li { margin-top: 6px; }
+  #webgl-settings { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+  #webgl-address { flex: 1 1 190px; min-width: 0; width: 100%; min-height: 44px; padding: 4px 8px; border: 1px solid var(--ink); border-radius: 6px; background: var(--paper); font: 16px/1.2 monospace; color: var(--ink); -webkit-user-select: text; user-select: text; touch-action: manipulation; }
+  #webgl-help .btn { min-height: 44px; padding: 8px 12px; font-size: 14px; }
+  #webgl-feedback { min-height: 1.4em; margin: 5px 0; font-size: 13px; }
+  #webgl-help p:last-of-type { overflow-wrap: anywhere; }
 
   /* 片头 */
   #title { position: fixed; inset: 0; display: flex; align-items: flex-end; justify-content: flex-start; z-index: 10; padding: calc(var(--inset-top) + 16px) 28px 28px; pointer-events: none; }
@@ -209,6 +219,21 @@
   <h2>西湖飞车</h2>
   <p id="loadmsg">正在铺西湖赛道……</p>
   <div class="bar"><div id="bar"></div></div>
+  <section id="webgl-help" aria-labelledby="webgl-title" hidden>
+    <h2 id="webgl-title" tabindex="-1">浏览器暂时无法启动 WebGL 2</h2>
+    <p>西湖飞车需要 WebGL 2 来显示 3D 赛道。</p>
+    <ol id="webgl-steps" class="recovery-steps">
+      <li>更新浏览器和系统，完全退出浏览器后重新打开。</li>
+      <li>如果是在其他 App 内打开，请试试系统浏览器。</li>
+    </ol>
+    <div id="webgl-settings" hidden>
+      <input id="webgl-address" aria-label="浏览器设置地址" readonly spellcheck="false">
+      <button class="btn small ghost" id="webgl-copy" type="button">复制设置地址</button>
+    </div>
+    <p id="webgl-feedback" role="status"></p>
+    <button class="btn small" id="webgl-retry" type="button">重试</button>
+    <p>如果仍无法运行，可以换一台设备试试。</p>
+  </section>
 </div></div>
 
 <div id="tour" hidden aria-label="西湖赛道航拍">
@@ -290,7 +315,7 @@
   "three/addons/": "/dream/vendor/three-r170/addons/"
 } }
 </script>
-<script type="module" src="./js/main.js"></script>
+<script type="module" src="./js/main.js?v=webgl-help-1"></script>
 </body>
 </html>
 
