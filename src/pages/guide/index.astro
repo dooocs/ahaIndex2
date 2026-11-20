@@ -1,0 +1,32 @@
+---
+import TabLayout from '../../layouts/TabLayout.astro';
+import { getGuideArticles, estimateMinutes } from '../../guide/articles';
+import { SITE_URL, siteTitle } from '../../lib/site';
+import '../../styles/guide.css';
+
+const articles = getGuideArticles();
+const description = '关于成长、选择与行动的原创长文。';
+---
+<TabLayout tab="guide" title={siteTitle('向上指南')} description={description} showScore={false} canonicalUrl={SITE_URL + '/guide/'} noindex>
+  <div class="guide guide-index">
+    <header class="guide-index-header">
+      <p class="guide-kicker">向上研究所 / 原创专栏</p>
+      <h1>向上指南</h1>
+      <p>什么是向上，为什么值得做，以及今天可以从哪一步开始。</p>
+      <p class="guide-sample">阅读设计样稿 · 正式文章待发布</p>
+    </header>
+    <ol class="guide-index-list" aria-label="系列文章">
+      {articles.map((article, i) => {
+        const { title, deck, topic, slug } = article.frontmatter;
+        return <li>
+          <span class="guide-sequence" aria-hidden="true">{String(i + 1).padStart(2, '0')}</span>
+          <div>
+            <p class="guide-meta">{topic} · {estimateMinutes(article.rawContent())} 分钟阅读</p>
+            <h2><a href={'/guide/' + slug + '/'}>{title}</a></h2>
+            <p class="guide-deck">{deck}</p>
+          </div>
+        </li>;
+      })}
+    </ol>
+  </div>
+</TabLayout>

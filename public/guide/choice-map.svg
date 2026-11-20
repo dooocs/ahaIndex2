@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="660" height="250" viewBox="0 0 660 250" fill="none">
+ <rect width="660" height="250" rx="14" fill="#F1F4FC"/>
+ <path d="M189 132H246m126 0h43m0 0v-65h52m-52 65h52m-52 0v65h52" stroke="#6676A5" stroke-width="2.5" stroke-linecap="round"/>
+ <g stroke="#A6B3D3" stroke-width="1.5" fill="#fff">
+  <rect x="50" y="101" width="139" height="62" rx="10"/><rect x="246" y="101" width="126" height="62" rx="10"/>
+  <rect x="467" y="43" width="143" height="48" rx="10"/><rect x="467" y="108" width="143" height="48" rx="10"/><rect x="467" y="173" width="143" height="48" rx="10"/>
+ </g>
+ <g text-anchor="middle" font-family="PingFang SC, Noto Sans CJK SC, Microsoft YaHei, sans-serif" font-size="22" fill="#283750">
+  <text x="119" y="140">试一种能力</text><text x="309" y="140">收到反馈</text>
+  <text x="539" y="75">继续做</text><text x="539" y="140">调整做法</text><text x="539" y="205">换个方向</text>
+ </g>
+</svg>
