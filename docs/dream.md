@@ -25,6 +25,30 @@ planet, a new way to move or a new render effect is a change in one module, not 
 - Rendering reads the world and the avatar's pose; it never decides where the avatar may go.
 - `app.html` only connects these, so it is the only file that knows they all exist.
 
+## 云栖府 residential garden
+
+The home park expands from 80 × 25 to 110 × 54.5 plan units (~3× the footprint) while keeping
+the original gate, driveway, car and 1314 stop. Three staggered warm-stone towers sit to the
+sides of a central open lawn; the reflecting court, reading pavilion, and tea pavilion mark
+different points along the garden walk. Planted groves, shrubs and flowerbeds are separate layers
+so there are open sightlines as well as sheltered garden rooms.
+
+`public/dream/js/home/park.js` declares the shared layout: a dedicated terracotta running loop
+around the garden, and stone walking shortcuts through it. The running loop is ~310 in-world
+metres, with a start/finish, 75 m distance signs and low warm bollards. Distances account for the
+sphere projection (one unit is approximately 1.5 m). The surface and pale edge inlays are projected
+onto the terrain in ribbons so the track does not depend on ground-paint tessellation. Bollards use
+the existing baked/shaded materials, not a point light per fixture.
+
+`patrol.js` samples closed paths by distance. `residents.js` keeps six local NPCs separate from
+real online visitors: the jogger now runs the dedicated loop, while a neighbour walks a small dog
+through the garden. Nearby NPC labels offer a greeting, then hide at a distance; they and their
+local props are removed when switching planets. NPCs never affect online counts or send messages.
+
+`tests/dream-home.test.mjs` checks the full-width loop and shortcuts against the shipped collision
+declarations, drives the walking controller from the gate around a full lap and back, samples NPC
+patrols, and checks geometry, outward-facing track winding, triangle budget, and greeting cleanup.
+
 ## Done: walking (`public/dream/js/walk/`)
 
 Free walking used to undo any step that ended in water, a building or across the railing. Nothing slid
