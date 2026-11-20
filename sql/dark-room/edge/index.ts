@@ -127,6 +127,149 @@ export async function handleCommunity(request: Request, env: (name: string) => s
   } catch (error) { return reply(error instanceof SyntaxError ? invalid : unavailable, error instanceof SyntaxError ? 400 : 503); }
 }
 
-if (typeof Deno !== 'undefined') Deno.serve(request => new URL(request.url).pathname.endsWith('/dark-room')
-  ? handleDarkRoom(request, name => Deno.env.get(name))
-  : handleCommunity(request, name => Deno.env.get(name)));
+// Shared owner guard for this and future administration routes. GoTrue
+// authenticates the token; the SQL function pins the original account UUID.
+export async function authorizeSiteOwner(request: Request, env: (name: string) => string | undefined, fetcher = fetch) {
+  const token = request.headers.get('x-community-authorization') || request.headers.get('authorization');
+  if (!token?.startsWith('Bearer ')) return { error: 'login_required', status: 401 } as const;
+  const url = env('SUPABASE_LOCAL_URL') || env('SUPABASE_URL');
+  const key = env('SUPABASE_SERVICE_ROLE_KEY');
+  if (!url || !key) return { error: 'service_unavailable', status: 503 } as const;
+  const auth = await fetcher(`${url}/auth/v1/user`, {
+    headers: { apikey: key, Authorization: token }, signal: AbortSignal.timeout(10000),
+  });
+  if (auth.status >= 500 || auth.status === 429) return { error: 'service_unavailable', status: 503 } as const;
+  if (!auth.ok) return { error: 'login_required', status: 401 } as const;
+  const user = await auth.json();
+  if (!user.id || !user.email_confirmed_at || user.is_anonymous
+    || user.email?.trim().toLowerCase() !== 'szqsunny@outlook.com'
+    || (user.banned_until && Date.parse(user.banned_until) > Date.now())) return { error: 'owner_required', status: 403 } as const;
+  const owner = await fetcher(`${url}/rest/v1/rpc/site_admin_authorize`, {
+    method: 'POST', signal: AbortSignal.timeout(10000),
+    headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_actor: user.id }),
+  });
+  if (!owner.ok) return { error: 'service_unavailable', status: 503 } as const;
+  if (await owner.json() !== true) return { error: 'owner_required', status: 403 } as const;
+  return { id: user.id, url, key };
+}
+
+async function boundedBody(request: Request, limit: number) {
+  if (Number(request.headers.get('content-length')) > limit) throw new Error('image_too_large');
+  const reader = request.body?.getReader();
+  if (!reader) throw new Error('invalid_request');
+  const parts: Uint8Array[] = []; let size = 0;
+  while (true) {
+    const { done, value } = await reader.read(); if (done) break;
+    size += value.length;
+    if (size > limit) { await reader.cancel(); throw new Error('image_too_large'); }
+    parts.push(value);
+  }
+  const body = new Uint8Array(size); let offset = 0;
+  for (const part of parts) { body.set(part, offset); offset += part.length; }
+  return body;
+}
+
+export function portraitJpeg(bytes: Uint8Array): boolean {
+  if (bytes.length < 512 || bytes.length > 900000 || bytes[0] !== 255 || bytes[1] !== 216
+    || bytes.at(-2) !== 255 || bytes.at(-1) !== 217) return false;
+  for (let i = 2; i + 8 < bytes.length;) {
+    if (bytes[i++] !== 255) return false;
+    while (bytes[i] === 255) i++;
+    const marker = bytes[i++];
+    if (marker === 218 || marker === 217) return false;
+    const length = (bytes[i] << 8) | bytes[i + 1];
+    if (length < 2 || i + length > bytes.length) return false;
+    if ([192, 193, 194].includes(marker)) return length >= 8
+      && ((bytes[i + 3] << 8) | bytes[i + 4]) === 640 && ((bytes[i + 5] << 8) | bytes[i + 6]) === 640;
+    i += length;
+  }
+  return false;
+}
+
+export async function handlePeoplePhotos(request: Request, env: (name: string) => string | undefined, fetcher = fetch) {
+  const origin = request.headers.get('origin') || '';
+  const allowed = ['https://www.amazingindex.com', 'https://amazingindex.com'].includes(origin);
+  const headers = new Headers({
+    'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Vary': 'Origin',
+    'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-community-authorization, x-client-info',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  });
+  if (allowed) headers.set('Access-Control-Allow-Origin', origin);
+  const reply = (body: unknown, status = 200) => Response.json(body, { status, headers });
+  if (origin && !allowed) return reply({ error: 'origin_denied' }, 403);
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers });
+  if (request.method !== 'POST') return reply({ error: 'method_not_allowed' }, 405);
+  const url = env('SUPABASE_LOCAL_URL') || env('SUPABASE_URL');
+  const publicUrl = env('SUPABASE_URL')?.replace(/\/$/, '');
+  const key = env('SUPABASE_SERVICE_ROLE_KEY');
+  if (!url || !publicUrl || !key) return reply({ error: 'service_unavailable' }, 503);
+  const rpc = async (action: string, actor: string | null, payload: unknown) => fetcher(`${url}/rest/v1/rpc/people_photo_api`, {
+    method: 'POST', signal: AbortSignal.timeout(15000),
+    headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ p_action: action, p_actor: actor, p_payload: payload }),
+  });
+  const rpcError = async (response: Response) => {
+    const data = await response.json();
+    if (data.message === 'photo_conflict') return reply({ error: 'photo_conflict' }, 409);
+    if (data.code === '42501') return reply({ error: 'owner_required' }, 403);
+    if (data.code === 'P0002') return reply({ error: 'not_found' }, 404);
+    return reply({ error: 'service_unavailable' }, 503);
+  };
+  try {
+    const type = request.headers.get('content-type') || '';
+    if (type.startsWith('application/json')) {
+      const body = JSON.parse(new TextDecoder().decode(await boundedBody(request, 12000)));
+      if (body?.action === 'list') {
+        if (!Array.isArray(body.slugs) || body.slugs.length > 100 || body.slugs.some((s: unknown) => typeof s !== 'string' || !/^[a-z0-9][a-z0-9-]{0,120}$/.test(s))) return reply({ error: 'invalid_request' }, 400);
+        const result = await rpc('list', null, { slugs: body.slugs });
+        return result.ok ? reply(await result.json()) : rpcError(result);
+      }
+      if (body?.action !== 'access') return reply({ error: 'invalid_request' }, 400);
+      const owner = await authorizeSiteOwner(request, env, fetcher);
+      return 'error' in owner ? reply({ error: owner.error }, owner.status) : reply({ owner: true });
+    }
+    if (!type.startsWith('multipart/form-data;')) return reply({ error: 'invalid_request' }, 400);
+    // Check identity BEFORE reading image bytes or making any Storage write.
+    const owner = await authorizeSiteOwner(request, env, fetcher);
+    if ('error' in owner) return reply({ error: owner.error }, owner.status);
+    const bytes = await boundedBody(request, 920000);
+    const form = await new Request(request.url, { method: 'POST', headers: { 'Content-Type': type }, body: bytes }).formData();
+    const slug = form.get('slug'), expected = form.get('expected_avatar'), photo = form.get('photo');
+    if (typeof slug !== 'string' || !/^[a-z0-9][a-z0-9-]{0,120}$/.test(slug)
+      || typeof expected !== 'string' || expected.length > 2048 || !(photo instanceof File) || photo.type !== 'image/jpeg') return reply({ error: 'invalid_request' }, 400);
+    const image = new Uint8Array(await photo.arrayBuffer());
+    if (!portraitJpeg(image)) return reply({ error: 'invalid_image' }, 400);
+    const payload = { slug, expected_avatar: expected };
+    const inspected = await rpc('inspect', owner.id, payload);
+    if (!inspected.ok) return rpcError(inspected);
+    const objectPath = `${slug}/${crypto.randomUUID()}.jpg`;
+    const avatarUrl = `${publicUrl}/storage/v1/object/public/people-portraits/${objectPath}`;
+    const upload = await fetcher(`${url}/storage/v1/object/people-portraits/${objectPath}`, {
+      method: 'POST', signal: AbortSignal.timeout(20000), body: image,
+      headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'image/jpeg', 'Cache-Control': 'max-age=31536000', 'x-upsert': 'false' },
+    });
+    if (!upload.ok) return reply({ error: 'service_unavailable' }, 503);
+    const saved = await rpc('save', owner.id, { ...payload, object_path: objectPath, avatar_url: avatarUrl });
+    if (!saved.ok) {
+      // Only clean up a definitely rejected transaction. On a network timeout
+      // the commit outcome is unknown, so retain the object to avoid a broken URL.
+      await fetcher(`${url}/storage/v1/object/people-portraits`, { method: 'DELETE', signal: AbortSignal.timeout(10000),
+        headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ prefixes: [objectPath] }),
+      }).catch(() => {});
+      return rpcError(saved);
+    }
+    return reply(await saved.json());
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '';
+    if (message === 'image_too_large') return reply({ error: message }, 413);
+    return reply({ error: error instanceof SyntaxError ? 'invalid_request' : 'service_unavailable' }, error instanceof SyntaxError ? 400 : 503);
+  }
+}
+
+if (typeof Deno !== 'undefined') Deno.serve(request => {
+  const path = new URL(request.url).pathname;
+  const env = (name: string) => Deno.env.get(name);
+  if (path.endsWith('/people-photos')) return handlePeoplePhotos(request, env);
+  return path.endsWith('/dark-room') ? handleDarkRoom(request, env) : handleCommunity(request, env);
+});

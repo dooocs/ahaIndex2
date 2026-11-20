@@ -104,6 +104,16 @@ select set_featured_people(array['lei-jun', 'sam-altman']);
 
 ## 照片
 
+人物首页卡片和人物详情页增加「添加照片 / 更换照片」入口，只在已验证的
+`szqsunny@outlook.com` 账号通过 Function 的固定账号 ID 校验后展示。
+支持粘贴图片、拖拽、文件选择和头像裁剪。上传、保存均经过 Function，普通用户
+不能直接写入图片桶或调用保存 RPC。部署顺序和权限测试见
+[`sql/site-admin/README.md`](../sql/site-admin/README.md)。该规则也适用于后续管理功能。
+
+手动照片存于阿里云项目的 `people-portraits` 公共读桶，由 Function 单独写入，
+并设置 `persons.avatar_is_manual`。人物页会读取最新公开照片地址，保存后即可展示；
+原有快照同步和静态构建也会保留此地址。自动头像任务和已在队列里的任务都不能覆盖手动照片。
+
 GitHub Actions 的 **People Avatars** 每天 05:30（北京时间）跑一次，也可以手动触发
 （可选只看不改的 dry run）：给每个已发布、有 `x_handle` 或 `github_handle` 的人取照片，
 X 头像（unavatar.io）优先，其次 GitHub 头像，存到 OSS 的 `media/people/avatars/`，再把地址写进
