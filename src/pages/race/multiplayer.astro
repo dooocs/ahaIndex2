@@ -36,8 +36,9 @@ const gameUrl = new URL('https://game.amazingindex.com/race/multiplayer/?embed=s
     const sendInset = () => {
       frame.contentWindow?.postMessage({ type: 'race:inset', top: Math.round(head.getBoundingClientRect().bottom) }, gameOrigin);
     };
-    const resizeObserver = new ResizeObserver(sendInset);
-    resizeObserver.observe(head);
+    const resizeObserver = window.ResizeObserver ? new ResizeObserver(sendInset) : null;
+    resizeObserver?.observe(head, { box: 'border-box' });
+    window.addEventListener('resize', sendInset);
     frame.addEventListener('load', sendInset);
     sendInset();
     const onMessage = (event) => {
@@ -47,7 +48,8 @@ const gameUrl = new URL('https://game.amazingindex.com/race/multiplayer/?embed=s
     };
     window.addEventListener('message', onMessage);
     document.addEventListener('astro:before-swap', () => {
-      resizeObserver.disconnect();
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', sendInset);
       frame.removeEventListener('load', sendInset);
       window.removeEventListener('message', onMessage);
     }, { once: true });
