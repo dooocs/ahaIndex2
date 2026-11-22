@@ -1,0 +1,49 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import Masthead from '../../components/Masthead.astro';
+import { SITE_URL, siteTitle } from '../../lib/site';
+
+const canonical = `${SITE_URL}/race/multiplayer/`;
+const gameUrl = new URL('https://game.amazingindex.com/race/multiplayer/?embed=site');
+---
+
+<BaseLayout title={siteTitle('西湖飞车 · 多人联机')} description="叫上朋友，联机绕西湖竞速。" canonicalUrl={canonical} ogUrl={canonical} noindex>
+  <div class="multiplayer-shell">
+    <Masthead tab="race" showScore={false} />
+    <main class="multiplayer-page">
+      <h1 class="sr-only">西湖飞车 · 多人联机</h1>
+      <iframe id="race-multiplayer-app" class="multiplayer-app" src={gameUrl.href} title="西湖飞车 · 多人联机" referrerpolicy="origin" allow="fullscreen; autoplay"></iframe>
+      <noscript><p>西湖飞车多人联机需要开启 JavaScript。<a href="/race">返回单人比赛</a></p></noscript>
+    </main>
+  </div>
+</BaseLayout>
+
+<style>
+  :global(html:has(.multiplayer-shell)), :global(body:has(.multiplayer-shell)) {
+    overflow: hidden;
+    scrollbar-gutter: auto;
+  }
+  .multiplayer-shell {
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    height: 100vh;
+    height: 100dvh;
+  }
+  .multiplayer-page { position: relative; min-width: 0; background: #cfe9e4; }
+  .multiplayer-app { display: block; width: 100%; height: 100%; border: 0; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+</style>
+
+<script is:inline>
+  (() => {
+    const frame = document.getElementById('race-multiplayer-app');
+    if (!frame) return;
+    const gameOrigin = new URL(frame.src).origin;
+    const onMessage = (event) => {
+      if (event.origin !== gameOrigin || event.source !== frame.contentWindow) return;
+      if (event.data?.type === 'race:back-to-solo') location.assign('/race');
+    };
+    window.addEventListener('message', onMessage);
+    document.addEventListener('astro:before-swap', () => window.removeEventListener('message', onMessage), { once: true });
+  })();
+</script>
