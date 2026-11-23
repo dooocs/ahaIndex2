@@ -13,6 +13,7 @@
 // pages' data and drops (with a warning) any row that breaks the rules below,
 // so one bad edit never stops a deploy.
 import type { FeedPost } from './feed.ts';
+import { validPortraitUrl } from './site-admin.ts';
 
 export const PEOPLE_PATH = '/people';
 
@@ -239,7 +240,8 @@ export function personFromRows(row: PersonRow, profile: ProfileRow | undefined):
     compare: list(profile?.compare),
     former_subjects: row.former_subjects?.length ? row.former_subjects : undefined,
     // Only a photo the site serves itself: other hosts are not reachable for every reader.
-    avatar_url: typeof row.avatar_url === 'string' && row.avatar_url.startsWith(SITE_MEDIA) ? row.avatar_url : undefined,
+    avatar_url: typeof row.avatar_url === 'string' && (row.avatar_url.startsWith(SITE_MEDIA)
+      || validPortraitUrl(row.avatar_url, 'https://spb-x6r06737x2zdpg3x.supabase.opentrust.net')) ? row.avatar_url : undefined,
     nickname: opt(row.nickname?.trim()),
     added_at: day(row.added_at),
     updated_at: updated,

@@ -21,6 +21,7 @@ import FeedPost from '../../components/feed/FeedPost.astro';
 import { SITE_URL, siteTitle } from '../../lib/site';
 import '../../styles/feed.css';
 import '../../styles/people.css';
+import PhotoManager from './PhotoManager.astro';
 
 interface Props { slug: string }
 
@@ -56,7 +57,7 @@ const others = [...new Map(p.stances.flatMap((s) => s.others ?? []).map((o) => [
   <a class="person-back" href={PEOPLE_PATH}>← 人物 / People</a>
 
   <header class="person-header">
-    <div class="people-avatar" aria-hidden="true">{avatar ? <img src={avatar} alt="" width="56" height="56" decoding="async" /> : initialOf(p.name)}</div>
+    <div class="people-avatar" data-person-photo={p.slug} aria-hidden="true">{avatar ? <img src={avatar} alt="" width="56" height="56" decoding="async" /> : initialOf(p.name)}</div>
     <div style="min-width: 0;">
       <div class="person-kicker">人物 · {p.group}</div>
       <h1 class="person-title">{p.name}{hasAltName && <> <small>{p.name_zh}</small></>}</h1>
@@ -66,6 +67,7 @@ const others = [...new Map(p.stances.flatMap((s) => s.others ?? []).map((o) => [
       </div>
     </div>
   </header>
+  <div class="portrait-detail-action"><button type="button" class="portrait-entry" data-portrait-edit data-slug={p.slug} data-name={p.name} data-avatar={p.avatar_url || ''} hidden>{avatar ? '更换照片' : '添加照片'}</button></div>
 
   {pinned && (
     <section class="person-one" aria-labelledby="person-one-h">
@@ -200,6 +202,7 @@ const others = [...new Map(p.stances.flatMap((s) => s.others ?? []).map((o) => [
 
     <p class="panel-note">收录 {dotDate(p.added_at)} · 更新 {dotDate(p.updated_at)}</p>
   </div>
+  <PhotoManager />
 </TabLayout>
 
 <script>
